@@ -238,27 +238,33 @@ private fun dumpAst(node: ASTNode, text: String, indent: String = "") {
 
 object HeaderStyle {
     val H1 = TextStyle(
-        fontStyle = FontStyle.Normal, fontWeight = FontWeight.Bold, fontSize = 24.sp
+        fontStyle = FontStyle.Normal, fontWeight = FontWeight.SemiBold, fontSize = 22.sp,
+        lineHeight = 30.sp
     )
 
     val H2 = TextStyle(
-        fontStyle = FontStyle.Normal, fontWeight = FontWeight.Bold, fontSize = 22.sp
+        fontStyle = FontStyle.Normal, fontWeight = FontWeight.SemiBold, fontSize = 20.sp,
+        lineHeight = 28.sp
     )
 
     val H3 = TextStyle(
-        fontStyle = FontStyle.Normal, fontWeight = FontWeight.Bold, fontSize = 20.sp
+        fontStyle = FontStyle.Normal, fontWeight = FontWeight.Medium, fontSize = 18.sp,
+        lineHeight = 26.sp
     )
 
     val H4 = TextStyle(
-        fontStyle = FontStyle.Normal, fontWeight = FontWeight.Bold, fontSize = 18.sp
+        fontStyle = FontStyle.Normal, fontWeight = FontWeight.Medium, fontSize = 16.sp,
+        lineHeight = 24.sp
     )
 
     val H5 = TextStyle(
-        fontStyle = FontStyle.Normal, fontWeight = FontWeight.Bold, fontSize = 16.sp
+        fontStyle = FontStyle.Normal, fontWeight = FontWeight.Medium, fontSize = 15.sp,
+        lineHeight = 22.sp
     )
 
     val H6 = TextStyle(
-        fontStyle = FontStyle.Normal, fontWeight = FontWeight.Bold, fontSize = 14.sp
+        fontStyle = FontStyle.Normal, fontWeight = FontWeight.Medium, fontSize = 14.sp,
+        lineHeight = 20.sp
     )
 }
 
@@ -729,7 +735,7 @@ private fun Paragraph(
     val density = LocalDensity.current
     FlowRow(
         modifier = modifier.then(
-            if (node.nextSibling() != null) Modifier.padding(bottom = LocalTextStyle.current.fontSize.toDp())
+            if (node.nextSibling() != null) Modifier.padding(bottom = LocalTextStyle.current.fontSize.toDp() * 1.5f)
             else Modifier
         )
     ) {
@@ -757,7 +763,7 @@ private fun Paragraph(
             softWrap = true,
             overflow = TextOverflow.Visible,
             style = LocalTextStyle.current.copy(
-                lineHeight = if (hasInlineMath && enableLatexRendering) TextUnit.Unspecified else LocalTextStyle.current.lineHeight
+                lineHeight = if (hasInlineMath && enableLatexRendering) TextUnit.Unspecified else 1.6.em
             )
         )
     }
