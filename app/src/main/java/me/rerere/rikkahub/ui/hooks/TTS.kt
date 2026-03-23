@@ -1,6 +1,7 @@
 package me.rerere.rikkahub.ui.hooks
 
 import android.content.Context
+import android.content.Intent
 import android.util.Log
 import android.widget.Toast
 import androidx.compose.runtime.Composable
@@ -22,6 +23,7 @@ import me.rerere.tts.model.TTSResponse
 import me.rerere.tts.provider.TTSManager
 import me.rerere.tts.provider.TTSProviderSetting
 import me.rerere.tts.controller.TtsController
+import me.rerere.rikkahub.service.TtsPlaybackService
 import org.koin.compose.koinInject
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
@@ -139,11 +141,21 @@ private class CustomTtsStateImpl(
 
     override fun speak(text: String, flushCalled: Boolean) {
         val processed = text.stripMarkdown()
+        // 启动前台服务，防止后台/锁屏时被杀进程
+        try {
+            val intent = Intent(context, TtsPlaybackService::class.java).apply {
+                action = TtsPlaybackService.ACTION_START
+            }
+            context.startForegroundService(intent)
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to start TTS foreground service", e)
+        }
         controller.speak(processed, flushCalled)
     }
 
     override fun stop() {
         controller.stop()
+        stopTtsService()
     }
 
     override fun pause() {
@@ -170,6 +182,18 @@ private class CustomTtsStateImpl(
 
     override fun cleanup() {
         controller.dispose()
+        stopTtsService()
         currentJob = null
+    }
+
+    private fun stopTtsService() {
+        try {
+            val intent = Intent(context, TtsPlaybackService::class.java).apply {
+                action = TtsPlaybackService.ACTION_STOP
+            }
+            context.startService(intent)
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to stop TTS foreground service", e)
+        }
     }
 }

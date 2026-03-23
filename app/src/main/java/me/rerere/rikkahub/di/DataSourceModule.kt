@@ -14,7 +14,8 @@ import kotlinx.serialization.json.Json
 import me.rerere.ai.provider.ProviderManager
 import me.rerere.common.http.AcceptLanguageBuilder
 import me.rerere.rikkahub.BuildConfig
-import me.rerere.rikkahub.data.ai.AIRequestInterceptor
+// [FORK] Firebase removed — AIRequestInterceptor depends on RemoteConfig
+// import me.rerere.rikkahub.data.ai.AIRequestInterceptor
 import me.rerere.rikkahub.data.ai.RequestLoggingInterceptor
 import me.rerere.rikkahub.data.ai.transformers.AssistantTemplateLoader
 import me.rerere.rikkahub.data.ai.GenerationHandler
@@ -175,13 +176,13 @@ val dataSourceModule = module {
 
                 chain.proceed(requestBuilder.build())
             }
-            .addInterceptor { chain ->
+            .addNetworkInterceptor { chain ->
                 val request = chain.request()
-                val contentType = request.body?.contentType()
-                if (contentType?.charset() != null) {
+                val contentTypeHeader = request.header("Content-Type")
+                if (contentTypeHeader != null && contentTypeHeader.contains(";")) {
                     chain.proceed(
                         request.newBuilder()
-                            .header("Content-Type", "${contentType.type}/${contentType.subtype}")
+                            .header("Content-Type", contentTypeHeader.substringBefore(";").trim())
                             .build()
                     )
                 } else {
@@ -189,7 +190,7 @@ val dataSourceModule = module {
                 }
             }
             .addInterceptor(RequestLoggingInterceptor())
-            .addInterceptor(AIRequestInterceptor(remoteConfig = get()))
+            // .addInterceptor(AIRequestInterceptor(remoteConfig = get())) // [FORK] Firebase removed
             .addInterceptor(HttpLoggingInterceptor().apply {
                 level = HttpLoggingInterceptor.Level.HEADERS
             })

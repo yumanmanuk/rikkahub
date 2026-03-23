@@ -82,6 +82,7 @@ import me.rerere.rikkahub.ui.pages.history.HistoryPage
 import me.rerere.rikkahub.ui.pages.imggen.ImageGenPage
 import me.rerere.rikkahub.ui.pages.log.LogPage
 import me.rerere.rikkahub.ui.pages.extensions.ExtensionsPage
+import me.rerere.rikkahub.ui.pages.extensions.SkillDetailPage
 import me.rerere.rikkahub.ui.pages.extensions.SkillsPage
 import me.rerere.rikkahub.ui.pages.extensions.PromptPage
 import me.rerere.rikkahub.ui.pages.extensions.QuickMessagesPage
@@ -109,6 +110,8 @@ import me.rerere.rikkahub.data.db.DatabaseMigrationTracker
 import me.rerere.rikkahub.data.event.AppEventBus
 import me.rerere.rikkahub.data.event.AppEvent
 import me.rerere.rikkahub.data.db.MigrationState
+import me.rerere.rikkahub.ui.activity.SafeModeActivity
+import me.rerere.rikkahub.utils.CrashHandler
 import okhttp3.OkHttpClient
 import org.koin.android.ext.android.inject
 import org.koin.compose.koinInject
@@ -126,6 +129,11 @@ class RouteActivity : ComponentActivity() {
         enableEdgeToEdge()
         disableNavigationBarContrast()
         super.onCreate(savedInstanceState)
+        if (CrashHandler.hasCrashed(this)) {
+            startActivity(Intent(this, SafeModeActivity::class.java))
+            finish()
+            return
+        }
         setContent {
             RikkahubTheme {
                 setSingletonImageLoaderFactory { context ->
@@ -415,6 +423,10 @@ class RouteActivity : ComponentActivity() {
                                 SkillsPage()
                             }
 
+                            entry<Screen.SkillDetail> { key ->
+                                SkillDetailPage(skillName = key.skillName)
+                            }
+
                             entry<Screen.MessageSearch> {
                                 SearchPage()
                             }
@@ -585,6 +597,9 @@ sealed interface Screen : NavKey {
 
     @Serializable
     data object Skills : Screen
+
+    @Serializable
+    data class SkillDetail(val skillName: String) : Screen
 
     @Serializable
     data object MessageSearch : Screen

@@ -9,8 +9,9 @@ plugins {
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ksp)
-    alias(libs.plugins.google.services)
-    alias(libs.plugins.firebase.crashlytics)
+    // [FORK] Firebase removed
+    // alias(libs.plugins.google.services)
+    // alias(libs.plugins.firebase.crashlytics)
 }
 
 android {
@@ -21,8 +22,8 @@ android {
         applicationId = "me.rerere.rikkahub"
         minSdk = 26
         targetSdk = 36
-        versionCode = 146
-        versionName = "2.1.3"
+        versionCode = 149
+        versionName = "2.1.6"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -165,6 +166,7 @@ dependencies {
     implementation(libs.androidx.ui)
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
+    implementation(libs.androidx.ui.text.google.fonts) // [FORK] Google Fonts for Noto Sans SC + DM Sans
     implementation(libs.androidx.material3)
     implementation(libs.androidx.material3.adaptive)
     implementation(libs.androidx.material3.adaptive.layout)
@@ -175,11 +177,11 @@ dependencies {
     implementation(libs.androidx.lifecycle.viewmodel.navigation3)
     implementation(libs.androidx.material3.adaptive.navigation3)
 
-    // Firebase
-    implementation(platform(libs.firebase.bom))
-    implementation(libs.firebase.analytics)
-    implementation(libs.firebase.crashlytics)
-    implementation(libs.firebase.config)
+    // Firebase — [FORK] disabled
+    // implementation(platform(libs.firebase.bom))
+    // implementation(libs.firebase.analytics)
+    // implementation(libs.firebase.crashlytics)
+    // implementation(libs.firebase.config)
 
     // DataStore
     implementation(libs.androidx.datastore.preferences)

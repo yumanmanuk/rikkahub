@@ -46,7 +46,7 @@ sonner = "0.3.9"
 leakcanary = "2.14"
 workmanager = "2.11.1"
 reorderable = "3.0.0"
-mcp = "0.9.0"
+mcp = "0.8.4"
 pebble = "4.1.1"
 browser = "1.9.0"
 appcompat = "1.7.1"
@@ -82,6 +82,7 @@ androidx-lifecycle-process = { group = "androidx.lifecycle", name = "lifecycle-p
 androidx-activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "activityCompose" }
 androidx-compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "composeBom" }
 androidx-ui = { group = "androidx.compose.ui", name = "ui" }
+androidx-ui-text-google-fonts = { group = "androidx.compose.ui", name = "ui-text-google-fonts" }
 androidx-ui-graphics = { group = "androidx.compose.ui", name = "ui-graphics" }
 androidx-ui-tooling = { group = "androidx.compose.ui", name = "ui-tooling" }
 androidx-ui-tooling-preview = { group = "androidx.compose.ui", name = "ui-tooling-preview" }

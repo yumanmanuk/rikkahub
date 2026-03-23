@@ -181,7 +181,7 @@
   <string name="calculating">计算中...</string>
   <string name="cancel">取消</string>
   <string name="cancel_edit">取消编辑</string>
-  <string name="chat_input_placeholder">输入消息与AI聊天</string>
+  <string name="chat_input_placeholder"></string>
   <string name="chat_message_tool_call_generic">调用工具 %1$s</string>
   <string name="chat_message_tool_call_label">调用工具 %1$s</string>
   <string name="chat_message_tool_call_result">调用结果</string>
@@ -376,7 +376,7 @@
   <string name="setting_display_page_developer_mode_desc">显示更多调试功能,不建议普通用户使用。</string>
   <string name="setting_display_page_enable_message_generation_haptic_effect_desc">消息生成时启用触觉反馈效果</string>
   <string name="setting_display_page_enable_message_generation_haptic_effect_title">消息生成触觉反馈</string>
-  <string name="setting_display_page_font_size_preview">这是一个**示例**的聊天文本</string>
+  <string name="setting_display_page_font_size_preview">凌晨四点钟，看到海棠花未眠。我常常这样，在无人的夜里独自醒着，想，若有人此刻也在想我，那就好了。</string>
   <string name="setting_display_page_font_size_title">聊天字体大小</string>
   <string name="setting_display_page_message_jumper_position_desc">将消息导航移到左侧</string>
   <string name="setting_display_page_message_jumper_position_title">消息导航按钮位置</string>
@@ -966,5 +966,26 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="quick_messages_page_empty_hint">点击右下角的 + 按钮添加快捷消息</string>
   <string name="quick_messages_page_untitled">无标题</string>
   <string name="extensions_page_quick_messages_desc">管理共享的快速消息模板</string>
+  <string name="safe_mode_title">安全模式</string>
+  <string name="safe_mode_description">应用上次启动时崩溃了。您可以切换到其他助手来解决此问题。</string>
+  <string name="safe_mode_current_assistant">当前助手：%s</string>
+  <string name="safe_mode_default_assistant">默认助手</string>
+  <string name="safe_mode_switch_assistant">切换助手</string>
+  <string name="safe_mode_crash_report">崩溃报告</string>
+  <string name="safe_mode_copy">复制</string>
+  <string name="safe_mode_assistants">助手</string>
+  <string name="setting_display_page_chat_font_family_title">聊天字体</string>
+  <string name="setting_display_page_chat_font_family_default">默认</string>
+  <string name="setting_display_page_chat_font_family_serif">衬线体</string>
+  <string name="setting_display_page_chat_font_family_monospace">等宽字体</string>
+  <string name="skill_detail_page_delete_file">删除文件</string>
+  <string name="skill_detail_page_delete_failed">删除失败</string>
+  <string name="skill_detail_page_delete_confirm">确定要删除文件“%s”吗？</string>
+  <string name="skill_detail_page_content">内容</string>
+  <string name="skill_detail_page_save">保存</string>
+  <string name="skill_detail_page_new_file">新建文件</string>
+  <string name="skill_detail_page_file_name">文件名</string>
+  <string name="skill_detail_page_file_name_invalid">无效的文件名</string>
+  <string name="skill_detail_page_create">创建</string>
 </resources>
 

@@ -11,8 +11,9 @@ import androidx.compose.runtime.tooling.ComposeStackTraceMode
 import androidx.core.app.NotificationChannelCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
-import com.google.firebase.remoteconfig.FirebaseRemoteConfig
-import com.google.firebase.remoteconfig.remoteConfigSettings
+// [FORK] Firebase removed
+// import com.google.firebase.remoteconfig.FirebaseRemoteConfig
+// import com.google.firebase.remoteconfig.remoteConfigSettings
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.CoroutineScope
@@ -30,6 +31,7 @@ import me.rerere.rikkahub.di.viewModelModule
 import me.rerere.rikkahub.data.files.FilesManager
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.service.WebServerService
+import me.rerere.rikkahub.utils.CrashHandler
 import me.rerere.rikkahub.utils.DatabaseUtil
 import org.koin.android.ext.android.get
 import org.koin.android.ext.koin.androidContext
@@ -42,6 +44,7 @@ private const val TAG = "RikkaHubApp"
 const val CHAT_COMPLETED_NOTIFICATION_CHANNEL_ID = "chat_completed"
 const val CHAT_LIVE_UPDATE_NOTIFICATION_CHANNEL_ID = "chat_live_update"
 const val WEB_SERVER_NOTIFICATION_CHANNEL_ID = "web_server"
+const val TTS_NOTIFICATION_CHANNEL_ID = "tts_playback"
 
 class RikkaHubApp : Application() {
     override fun onCreate() {
@@ -57,20 +60,23 @@ class RikkaHubApp : Application() {
         // set cursor window size to 32MB
         DatabaseUtil.setCursorWindowSize(32 * 1024 * 1024)
 
+        // install crash handler
+        CrashHandler.install(this)
+
         // delete temp files
         deleteTempFiles()
 
         // sync upload files to DB
         syncManagedFiles()
 
-        // Init remote config
-        get<FirebaseRemoteConfig>().apply {
-            setConfigSettingsAsync(remoteConfigSettings {
-                minimumFetchIntervalInSeconds = 1800
-            })
-            setDefaultsAsync(R.xml.remote_config_defaults)
-            fetchAndActivate()
-        }
+        // Init remote config — [FORK] Firebase disabled
+        // get<FirebaseRemoteConfig>().apply {
+        //     setConfigSettingsAsync(remoteConfigSettings {
+        //         minimumFetchIntervalInSeconds = 1800
+        //     })
+        //     setDefaultsAsync(R.xml.remote_config_defaults)
+        //     fetchAndActivate()
+        // }
 
         // Start WebServer if enabled in settings
         startWebServerIfEnabled()
@@ -170,6 +176,14 @@ class RikkaHubApp : Application() {
             .setShowBadge(false)
             .build()
         notificationManager.createNotificationChannel(webServerChannel)
+
+        val ttsChannel = NotificationChannelCompat
+            .Builder(TTS_NOTIFICATION_CHANNEL_ID, NotificationManagerCompat.IMPORTANCE_LOW)
+            .setName("TTS 语音朗读")
+            .setVibrationEnabled(false)
+            .setShowBadge(false)
+            .build()
+        notificationManager.createNotificationChannel(ttsChannel)
     }
 
     override fun onTerminate() {
