@@ -376,7 +376,7 @@ private fun MarkdownNode(
                                 node = node,
                                 content = content,
                                 onClickCitation = onClickCitation,
-                                modifier = modifier.padding(vertical = headingPadding),
+                                modifier = modifier.padding(top = headingTopPadding, bottom = headingBottomPadding),
                                 trim = true,
                             )
                         }
@@ -659,7 +659,8 @@ private fun UnorderedListNode(
     }
 
     Column(
-        modifier = modifier.padding(start = (level * 8).dp)
+        modifier = modifier.padding(start = (level * 8).dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp), // [FORK] 列表项间距加大
     ) {
         node.children.fastForEach { child ->
             if (child.type == MarkdownElementTypes.LIST_ITEM) {
@@ -683,7 +684,7 @@ private fun OrderedListNode(
     onClickCitation: (String) -> Unit = {},
     level: Int = 0
 ) {
-    Column(modifier.padding(start = (level * 8).dp)) {
+    Column(modifier.padding(start = (level * 8).dp), verticalArrangement = Arrangement.spacedBy(6.dp)) { // [FORK] 列表项间距加大
         var index = 1
         node.children.fastForEach { child ->
             if (child.type == MarkdownElementTypes.LIST_ITEM) {
@@ -793,7 +794,7 @@ private fun Paragraph(
     val latexColorArgb = LocalContentColor.current.toArgb()
     FlowRow(
         modifier = modifier.then(
-            if (node.nextSibling() != null) Modifier.padding(bottom = LocalTextStyle.current.fontSize.toDp() * 1.5f)
+            if (node.nextSibling() != null) Modifier.padding(bottom = LocalTextStyle.current.fontSize.toDp() * 1.8f) // [FORK] 段落间距加大
             else Modifier
         )
     ) {
@@ -815,14 +816,17 @@ private fun Paragraph(
                 }
             }
         }
+        // [FORK] 正文颜色柔化，降低视觉疲劳
+        val softTextColor = colorScheme.onSurface.copy(alpha = 0.85f)
         Text(
             text = annotatedString,
             modifier = Modifier,
             inlineContent = inlineContents,
             softWrap = true,
             overflow = TextOverflow.Visible,
+            color = softTextColor,
             style = LocalTextStyle.current.copy(
-                lineHeight = if (hasInlineMath && enableLatexRendering) TextUnit.Unspecified else 1.6.em
+                lineHeight = if (hasInlineMath && enableLatexRendering) TextUnit.Unspecified else 1.75.em
             )
         )
     }

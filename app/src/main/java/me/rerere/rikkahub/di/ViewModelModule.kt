@@ -33,7 +33,7 @@ val viewModelModule = module {
             conversationRepo = get(),
             chatService = get(),
             updateChecker = get(),
-            analytics = get(),
+            // analytics = get(), // [FORK] Firebase removed
             filesManager = get(),
             favoriteRepository = get(),
         )
