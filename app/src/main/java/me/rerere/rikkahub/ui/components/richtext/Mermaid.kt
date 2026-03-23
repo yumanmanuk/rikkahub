@@ -33,7 +33,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.dokar.sonner.ToastType
-import com.google.common.cache.CacheBuilder
+import androidx.collection.LruCache
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Cancel01
 import me.rerere.hugeicons.stroke.Download01
@@ -47,9 +47,7 @@ import me.rerere.rikkahub.utils.escapeHtml
 import me.rerere.rikkahub.utils.exportImage
 import me.rerere.rikkahub.utils.toCssHex
 
-private val mermaidHeightCache = CacheBuilder.newBuilder()
-    .maximumSize(100)
-    .build<String, Int>()
+private val mermaidHeightCache = LruCache<String, Int>(100)
 
 /**
  * A component that renders Mermaid diagrams.
@@ -69,7 +67,7 @@ fun Mermaid(
     val activity = LocalActivity.current
     val toaster = LocalToaster.current
 
-    var contentHeight by remember { mutableIntStateOf(mermaidHeightCache.getIfPresent(code) ?: 150) }
+    var contentHeight by remember { mutableIntStateOf(mermaidHeightCache.get(code) ?: 150) }
     val height = with(density) {
         contentHeight.toDp()
     }

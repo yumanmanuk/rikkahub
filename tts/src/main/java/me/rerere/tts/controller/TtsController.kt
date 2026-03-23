@@ -56,7 +56,7 @@ class TtsController(
 
     // 行为参数
     private val chunkDelayMs = 120L
-    private val prefetchCount = 4
+    private val prefetchCount = 2
 
     // 状态流（保留与旧版兼容的 StateFlow）
     private val _isAvailable = MutableStateFlow(false)
@@ -268,6 +268,9 @@ class TtsController(
                         Log.e(TAG, "Playback error", e)
                         _error.update { e.message ?: "Audio playback error" }
                     }
+
+                    // 播放完毕，立即释放缓存中的音频数据，避免内存累积导致GC杂音
+                    cache.remove(chunk.id)
 
                     if (queue.isNotEmpty()) delay(chunkDelayMs)
 

@@ -304,14 +304,24 @@ private fun MarkdownNode(
                 MarkdownElementTypes.ATX_6 -> HeaderStyle.H6
                 else -> throw IllegalArgumentException("Unknown header type")
             }
-            val headingPadding = when (node.type) {
-                MarkdownElementTypes.ATX_1 -> 16.dp
-                MarkdownElementTypes.ATX_2 -> 14.dp
-                MarkdownElementTypes.ATX_3 -> 12.dp
-                MarkdownElementTypes.ATX_4 -> 10.dp
-                MarkdownElementTypes.ATX_5 -> 8.dp
-                MarkdownElementTypes.ATX_6 -> 6.dp
-                else -> 8.dp
+            // [FORK] 标题间距改为非对称：上方留白大，下方紧凑，模仿 Google AI Studio
+            val headingTopPadding = when (node.type) {
+                MarkdownElementTypes.ATX_1 -> 28.dp
+                MarkdownElementTypes.ATX_2 -> 24.dp
+                MarkdownElementTypes.ATX_3 -> 20.dp
+                MarkdownElementTypes.ATX_4 -> 16.dp
+                MarkdownElementTypes.ATX_5 -> 12.dp
+                MarkdownElementTypes.ATX_6 -> 10.dp
+                else -> 12.dp
+            }
+            val headingBottomPadding = when (node.type) {
+                MarkdownElementTypes.ATX_1 -> 8.dp
+                MarkdownElementTypes.ATX_2 -> 6.dp
+                MarkdownElementTypes.ATX_3 -> 4.dp
+                MarkdownElementTypes.ATX_4 -> 4.dp
+                MarkdownElementTypes.ATX_5 -> 4.dp
+                MarkdownElementTypes.ATX_6 -> 4.dp
+                else -> 4.dp
             }
             ProvideTextStyle(value = style) {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -321,7 +331,7 @@ private fun MarkdownNode(
                                 node = node,
                                 content = content,
                                 onClickCitation = onClickCitation,
-                                modifier = modifier.padding(vertical = headingPadding),
+                                modifier = modifier.padding(top = headingTopPadding, bottom = headingBottomPadding),
                                 trim = true,
                             )
                         }
@@ -335,7 +345,7 @@ private fun MarkdownNode(
             UnorderedListNode(
                 node = node,
                 content = content,
-                modifier = modifier.padding(vertical = 4.dp),
+                modifier = modifier.padding(vertical = 8.dp), // [FORK] 列表容器间距加大
                 onClickCitation = onClickCitation,
                 level = listLevel
             )
@@ -345,7 +355,7 @@ private fun MarkdownNode(
             OrderedListNode(
                 node = node,
                 content = content,
-                modifier = modifier.padding(vertical = 4.dp),
+                modifier = modifier.padding(vertical = 8.dp), // [FORK] 列表容器间距加大
                 onClickCitation = onClickCitation,
                 level = listLevel
             )
@@ -602,7 +612,8 @@ private fun UnorderedListNode(
     }
 
     Column(
-        modifier = modifier.padding(start = (level * 8).dp)
+        modifier = modifier.padding(start = (level * 8).dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp), // [FORK] 列表项间距加大
     ) {
         node.children.fastForEach { child ->
             if (child.type == MarkdownElementTypes.LIST_ITEM) {
@@ -626,7 +637,7 @@ private fun OrderedListNode(
     onClickCitation: (String) -> Unit = {},
     level: Int = 0
 ) {
-    Column(modifier.padding(start = (level * 8).dp)) {
+    Column(modifier.padding(start = (level * 8).dp), verticalArrangement = Arrangement.spacedBy(6.dp)) { // [FORK] 列表项间距加大
         var index = 1
         node.children.fastForEach { child ->
             if (child.type == MarkdownElementTypes.LIST_ITEM) {
@@ -735,7 +746,7 @@ private fun Paragraph(
     val density = LocalDensity.current
     FlowRow(
         modifier = modifier.then(
-            if (node.nextSibling() != null) Modifier.padding(bottom = LocalTextStyle.current.fontSize.toDp() * 1.5f)
+            if (node.nextSibling() != null) Modifier.padding(bottom = LocalTextStyle.current.fontSize.toDp() * 1.8f) // [FORK] 段落间距加大
             else Modifier
         )
     ) {
@@ -756,14 +767,17 @@ private fun Paragraph(
                 }
             }
         }
+        // [FORK] 正文颜色柔化，降低视觉疲劳
+        val softTextColor = colorScheme.onSurface.copy(alpha = 0.85f)
         Text(
             text = annotatedString,
             modifier = Modifier,
             inlineContent = inlineContents,
             softWrap = true,
             overflow = TextOverflow.Visible,
+            color = softTextColor,
             style = LocalTextStyle.current.copy(
-                lineHeight = if (hasInlineMath && enableLatexRendering) TextUnit.Unspecified else 1.6.em
+                lineHeight = if (hasInlineMath && enableLatexRendering) TextUnit.Unspecified else 1.75.em
             )
         )
     }

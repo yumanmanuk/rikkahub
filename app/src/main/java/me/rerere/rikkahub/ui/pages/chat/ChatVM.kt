@@ -15,7 +15,8 @@ import androidx.paging.PagingData
 import androidx.paging.cachedIn
 import androidx.paging.insertSeparators
 import androidx.paging.map
-import com.google.firebase.analytics.FirebaseAnalytics
+// [FORK] Firebase removed
+// import com.google.firebase.analytics.FirebaseAnalytics
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharedFlow
@@ -63,7 +64,8 @@ class ChatVM(
     private val conversationRepo: ConversationRepository,
     private val chatService: ChatService,
     val updateChecker: UpdateChecker,
-    private val analytics: FirebaseAnalytics,
+    // [FORK] Firebase removed
+    // private val analytics: FirebaseAnalytics,
     private val filesManager: FilesManager,
     private val favoriteRepository: FavoriteRepository,
 ) : ViewModel() {
@@ -235,8 +237,9 @@ class ChatVM(
     }
 
     // Update checker
-    val updateState =
-        updateChecker.checkUpdate().stateIn(viewModelScope, SharingStarted.Eagerly, UiState.Loading)
+    // [FORK] 禁用官方更新检查，fork 通过 git 追踪上游
+    val updateState = kotlinx.coroutines.flow.MutableStateFlow<UiState<me.rerere.rikkahub.utils.UpdateInfo>>(UiState.Loading)
+        // updateChecker.checkUpdate().stateIn(viewModelScope, SharingStarted.Eagerly, UiState.Loading)
 
     /**
      * 处理消息发送
@@ -246,14 +249,14 @@ class ChatVM(
      */
     fun handleMessageSend(content: List<UIMessagePart>,answer: Boolean = true) {
         if (content.isEmptyInputMessage()) return
-        analytics.logEvent("ai_send_message", null)
+        // analytics.logEvent("ai_send_message", null) // [FORK] Firebase removed
 
         chatService.sendMessage(_conversationId, content, answer)
     }
 
     fun handleMessageEdit(parts: List<UIMessagePart>, messageId: Uuid) {
         if (parts.isEmptyInputMessage()) return
-        analytics.logEvent("ai_edit_message", null)
+        // analytics.logEvent("ai_edit_message", null) // [FORK] Firebase removed
 
         viewModelScope.launch {
             chatService.editMessage(_conversationId, messageId, parts)
@@ -296,7 +299,7 @@ class ChatVM(
         message: UIMessage,
         regenerateAssistantMsg: Boolean = true
     ) {
-        analytics.logEvent("ai_regenerate_at_message", null)
+        // analytics.logEvent("ai_regenerate_at_message", null) // [FORK] Firebase removed
         chatService.regenerateAtMessage(_conversationId, message, regenerateAssistantMsg)
     }
 
@@ -305,7 +308,7 @@ class ChatVM(
         approved: Boolean,
         reason: String = ""
     ) {
-        analytics.logEvent("ai_tool_approval", null)
+        // analytics.logEvent("ai_tool_approval", null) // [FORK] Firebase removed
         chatService.handleToolApproval(_conversationId, toolCallId, approved, reason)
     }
 
@@ -313,7 +316,7 @@ class ChatVM(
         toolCallId: String,
         answer: String,
     ) {
-        analytics.logEvent("ai_tool_answer", null)
+        // analytics.logEvent("ai_tool_answer", null) // [FORK] Firebase removed
         chatService.handleToolApproval(_conversationId, toolCallId, approved = true, answer = answer)
     }
 
