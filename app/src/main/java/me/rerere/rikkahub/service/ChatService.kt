@@ -12,6 +12,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.ProcessLifecycleOwner
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -490,8 +491,11 @@ class ChatService(
 
     private suspend fun handleMessageComplete(
         conversationId: Uuid,
-        messageRange: ClosedRange<Int>? = null
+        messageRange: ClosedRange<Int>? = null,
+        retryCount: Int = 0
     ) {
+        val maxRetries = 3
+        val retryDelayMs = 2000L
         val settings = settingsStore.settingsFlow.first()
         val initialConversation = getConversationFlow(conversationId).value
         val assistant = settings.getAssistantById(initialConversation.assistantId)
@@ -638,9 +642,21 @@ class ChatService(
             cancelLiveUpdateNotification(conversationId)
 
             it.printStackTrace()
-            addError(it, conversationId, title = context.getString(R.string.error_title_generation))
             Logging.log(TAG, "handleMessageComplete: $it")
             Logging.log(TAG, it.stackTraceToString())
+
+            // 自动重试：非429错误、非取消、未达最大重试次数时自动重试
+            val is429 = it.message?.contains("429") == true
+            val isCancellation = it is CancellationException
+            if (!is429 && !isCancellation && retryCount < maxRetries) {
+                Log.i(TAG, "Auto-retry ${retryCount + 1}/$maxRetries after error: ${it.message}")
+                addError(it, conversationId, title = "${context.getString(R.string.error_title_generation)} (${retryCount + 1}/$maxRetries 重试中...)")
+                delay(retryDelayMs)
+                handleMessageComplete(conversationId, messageRange, retryCount + 1)
+                return
+            }
+
+            addError(it, conversationId, title = context.getString(R.string.error_title_generation))
         }.onSuccess {
             val finalConversation = getConversationFlow(conversationId).value
             saveConversation(conversationId, finalConversation)
