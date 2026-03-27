@@ -22,6 +22,7 @@ import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Clock02
 import me.rerere.hugeicons.stroke.Download04
 import me.rerere.hugeicons.stroke.Upload02
+import me.rerere.hugeicons.stroke.Text
 import me.rerere.hugeicons.stroke.Zap
 import me.rerere.rikkahub.ui.context.LocalSettings
 import me.rerere.rikkahub.utils.formatNumber
@@ -81,6 +82,23 @@ fun ChatMessageNerdLine(
                             Text(text = "${usage.completionTokens.formatNumber()} tokens")
                         }
                     )
+                    // 字数
+                    val charCount = message.toText().length
+                    if (charCount > 0) {
+                        StatsItem(
+                            icon = {
+                                Icon(
+                                    imageVector = HugeIcons.Text,
+                                    contentDescription = "Characters",
+                                    tint = color,
+                                    modifier = Modifier.size(12.dp)
+                                )
+                            },
+                            content = {
+                                Text(text = "${charCount}字")
+                            }
+                        )
+                    }
                     // TPS
                     if (message.finishedAt != null) {
                         val duration = Duration.between(

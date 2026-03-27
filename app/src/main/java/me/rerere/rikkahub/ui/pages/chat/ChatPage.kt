@@ -6,10 +6,12 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.relocation.bringIntoViewResponder
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DrawerState
 import androidx.compose.material3.DrawerValue
@@ -32,6 +34,7 @@ import androidx.compose.material3.adaptive.currentWindowDpSize
 import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -40,6 +43,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -54,6 +58,7 @@ import com.dokar.sonner.ToastType
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import me.rerere.ai.provider.Model
 import me.rerere.ai.ui.UIMessagePart
@@ -184,8 +189,32 @@ fun ChatPage(id: Uuid, text: String?, files: List<Uri>, nodeId: Uuid? = null) {
             } else {
                 chatListState.requestScrollToItem(conversation.currentMessages.size + 5)
             }
+    }
+
+
+    LaunchedEffect(nodeId, conversation.messageNodes.size, initScrollDone, hasUserInteractedChatList) {
+        if (initScrollDone) return@LaunchedEffect
+        if (hasUserInteractedChatList) {
+            initScrollDone = true
             vm.chatListInitialized = true
+            return@LaunchedEffect
         }
+        if (conversation.messageNodes.isEmpty()) return@LaunchedEffect
+
+        val targetIndex = if (nodeId == null) {
+            conversation.messageNodes.lastIndex
+        } else {
+            val nodeIndex = conversation.messageNodes.indexOfFirst { it.id == nodeId }
+            if (nodeIndex >= 0) {
+                nodeIndex
+            } else {
+                conversation.messageNodes.lastIndex
+            }
+        }
+
+        chatListState.requestScrollToItem(targetIndex)
+        initScrollDone = true
+        vm.chatListInitialized = true
     }
 
     when {
@@ -297,9 +326,19 @@ private fun ChatPageContent(
 
     TTSAutoPlay(vm = vm, setting = setting, conversation = conversation)
 
+    @Suppress("DEPRECATION")
+    val noopBringIntoViewResponder = remember {
+        object : androidx.compose.foundation.relocation.BringIntoViewResponder {
+            override fun calculateRectForParent(localRect: Rect): Rect = Rect.Zero
+            override suspend fun bringChildIntoView(localRect: () -> Rect?) {}
+        }
+    }
+
     Surface(
         color = MaterialTheme.colorScheme.background,
-        modifier = Modifier.fillMaxSize()
+        modifier = Modifier
+            .fillMaxSize()
+            .bringIntoViewResponder(noopBringIntoViewResponder)
     ) {
         AssistantBackground(setting = setting, modifier = Modifier.hazeSource(hazeState))
         Scaffold(
@@ -347,9 +386,6 @@ private fun ChatPageContent(
                             )
                         } else {
                             vm.handleMessageSend(inputState.getContents())
-                            scope.launch {
-                                chatListState.requestScrollToItem(conversation.currentMessages.size + 5)
-                            }
                         }
                         inputState.clearInput()
                     },
@@ -361,9 +397,6 @@ private fun ChatPageContent(
                             )
                         } else {
                             vm.handleMessageSend(content = inputState.getContents(), answer = false)
-                            scope.launch {
-                                chatListState.requestScrollToItem(conversation.currentMessages.size + 5)
-                            }
                         }
                         inputState.clearInput()
                     },
@@ -396,6 +429,7 @@ private fun ChatPageContent(
                 )
             },
             containerColor = Color.Transparent,
+            contentWindowInsets = WindowInsets(0),
         ) { innerPadding ->
             ChatList(
                 innerPadding = innerPadding,
