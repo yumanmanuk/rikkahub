@@ -17,7 +17,10 @@ object ThinkTagTransformer : OutputMessageTransformer {
         messages: List<UIMessage>,
     ): List<UIMessage> {
         return messages.map { message ->
-            if (message.role == MessageRole.ASSISTANT && message.hasPart<UIMessagePart.Text>()) {
+            if (message.role == MessageRole.ASSISTANT
+                && message.hasPart<UIMessagePart.Text>()
+                && !message.hasPart<UIMessagePart.Reasoning>()  // 已有原生 Reasoning 则跳过
+            ) {
                 message.copy(
                     parts = message.parts.flatMap { part ->
                         if (part is UIMessagePart.Text && THINKING_REGEX.containsMatchIn(part.text)) {
@@ -51,7 +54,10 @@ object ThinkTagTransformer : OutputMessageTransformer {
     ): List<UIMessage> {
         val now = Clock.System.now()
         return messages.map { message ->
-            if (message.role == MessageRole.ASSISTANT && message.hasPart<UIMessagePart.Text>()) {
+            if (message.role == MessageRole.ASSISTANT
+                && message.hasPart<UIMessagePart.Text>()
+                && !message.hasPart<UIMessagePart.Reasoning>()  // 已有原生 Reasoning 则跳过
+            ) {
                 message.copy(
                     parts = message.parts.flatMap { part ->
                         if (part is UIMessagePart.Text && THINKING_REGEX.containsMatchIn(part.text)) {

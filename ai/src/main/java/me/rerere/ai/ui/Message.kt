@@ -74,15 +74,19 @@ data class UIMessage(
                         if (deltaPart.reasoning.isEmpty() && deltaPart.metadata == null) {
                             acc
                         } else {
-                            val lastPart = acc.lastOrNull()
-                            if (lastPart is UIMessagePart.Reasoning) {
-                                // Append to the last Reasoning part
-                                acc.dropLast(1) + UIMessagePart.Reasoning(
-                                    reasoning = lastPart.reasoning + deltaPart.reasoning,
-                                    createdAt = lastPart.createdAt,
-                                    finishedAt = null,
-                                ).also {
-                                    it.metadata = deltaPart.metadata ?: lastPart.metadata
+                            // 查找任意位置的已有 Reasoning（不只是 lastOrNull），
+                            // 防止中间穿插 Text 导致创建新的零时长 Reasoning
+                            val existingIndex = acc.indexOfLast { it is UIMessagePart.Reasoning }
+                            if (existingIndex >= 0) {
+                                val existing = acc[existingIndex] as UIMessagePart.Reasoning
+                                acc.toMutableList().apply {
+                                    this[existingIndex] = UIMessagePart.Reasoning(
+                                        reasoning = existing.reasoning + deltaPart.reasoning,
+                                        createdAt = existing.createdAt,
+                                        finishedAt = null,
+                                    ).also {
+                                        it.metadata = deltaPart.metadata ?: existing.metadata
+                                    }
                                 }
                             } else {
                                 // Create new Reasoning part

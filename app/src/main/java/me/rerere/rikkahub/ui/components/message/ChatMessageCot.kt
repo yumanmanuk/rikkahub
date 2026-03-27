@@ -29,32 +29,44 @@ sealed interface MessagePartBlock {
  * 连续的 Reasoning 和 Tool 会被分组到一个 ThinkingBlock 中
  */
 fun List<UIMessagePart>.groupMessageParts(): List<MessagePartBlock> {
-    val result = mutableListOf<MessagePartBlock>()
-    var currentThinkingSteps = mutableListOf<ThinkingStep>()
-
-    fun flushThinkingSteps() {
-        if (currentThinkingSteps.isNotEmpty()) {
-            result.add(MessagePartBlock.ThinkingBlock(currentThinkingSteps.toList()))
-            currentThinkingSteps = mutableListOf()
-        }
-    }
+    // 强制：将所有 Reasoning/Tool parts 提取到最前面，绝不让思考过程出现在正文中
+    val reasoningParts = mutableListOf<UIMessagePart.Reasoning>()
+    val toolSteps = mutableListOf<ThinkingStep.ToolStep>()
+    val contentBlocks = mutableListOf<MessagePartBlock>()
 
     this.fastForEachIndexed { index, part ->
         when (part) {
             is UIMessagePart.Reasoning -> {
-                currentThinkingSteps.add(ThinkingStep.ReasoningStep(part))
+                reasoningParts.add(part)
             }
 
             is UIMessagePart.Tool -> {
-                currentThinkingSteps.add(ThinkingStep.ToolStep(part))
+                toolSteps.add(ThinkingStep.ToolStep(part))
             }
 
             else -> {
-                flushThinkingSteps()
-                result.add(MessagePartBlock.ContentBlock(part, index))
+                contentBlocks.add(MessagePartBlock.ContentBlock(part, index))
             }
         }
     }
-    flushThinkingSteps()
-    return result
+
+    // 将所有碎片化的 Reasoning 合并为唯一一段，避免顶部出现多个思考气泡
+    val mergedThinkingSteps = mutableListOf<ThinkingStep>()
+    if (reasoningParts.isNotEmpty()) {
+        val merged = UIMessagePart.Reasoning(
+            reasoning = reasoningParts.joinToString("") { it.reasoning },
+            createdAt = reasoningParts.first().createdAt,
+            finishedAt = reasoningParts.lastOrNull { it.finishedAt != null }?.finishedAt
+                ?: reasoningParts.last().finishedAt,
+        )
+        mergedThinkingSteps.add(ThinkingStep.ReasoningStep(merged))
+    }
+    mergedThinkingSteps.addAll(toolSteps)
+
+    // 思考过程始终在最前面
+    return if (mergedThinkingSteps.isNotEmpty()) {
+        listOf(MessagePartBlock.ThinkingBlock(mergedThinkingSteps)) + contentBlocks
+    } else {
+        contentBlocks
+    }
 }

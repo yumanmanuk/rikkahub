@@ -140,6 +140,66 @@ class SystemTTSProvider : TTSProvider<TTSProviderSetting.SystemTTS> {
 
 ---
 
+### 2.4 强制分离并合并思考过程 (Reasoning/CoT)
+
+#### 问题现象
+
+- 聊天正文中偶尔会夹杂“思考了 0.0 秒”的碎片化思考块。
+- 顶部推演区出现多个零散的思考过程分支，影响阅读体验。
+
+#### 根因分析
+
+1. **流式合并缺陷**：在 `Message.kt` 的 `appendChunk` 中，如果 API 下发的推理碎片（Reasoning delta）中穿插了正文文本（Text delta），原有的合并逻辑仅仅检查 `acc.lastOrNull()`，导致新来的 Reasoning 无法与前面的 Reasoning 合并，从而创建出多个片段。
+2. **UI 渲染顺序**：在 `ChatMessageCot.kt` 的 `groupMessageParts()` 中，分组逻辑严格遵守原始 parts 序列，因此流式传输产生的零散 Reasoning 会穿插在正文 `ContentBlock` 中进行渲染。
+
+#### 修复方案
+
+**文件：`ai/src/main/java/me/rerere/ai/ui/Message.kt`**
+
+- 修改流式合并逻辑：使用 `indexOfLast` 寻找消息中**任意位置**已有的 Reasoning 部分，并强制将新来的 reasoning delta 拼接到上面，防止正文穿插打断合并。
+
+```kotlin
+// [FORK] 查找任意位置的已有 Reasoning 并合并，防止中间穿插 Text 导致创建新的零时长 Reasoning
+val existingIndex = acc.indexOfLast { it is UIMessagePart.Reasoning }
+if (existingIndex >= 0) {
+    val existing = acc[existingIndex] as UIMessagePart.Reasoning
+    acc.toMutableList().apply {
+        this[existingIndex] = existing.copy(
+            reasoning = existing.reasoning + deltaPart.reasoning
+        ) // ...更新时间戳与metadata
+    }
+}
+```
+
+**文件：`app/src/main/java/me/rerere/rikkahub/ui/components/message/ChatMessageCot.kt`**
+
+- **绝对前置**：在 `groupMessageParts()` 中，无论 Reasoning/Tool parts 原本在消息数组的什么位置，均将其强制提取到列表最前端。
+- **强制合并**：将提取出来的所有碎片化 Reasoning 拼凑为唯一的一段 `ReasoningStep`（保留最早的 `createdAt` 和最晚的 `finishedAt`），确保顶部只渲染一个思考气泡。
+
+```kotlin
+// [FORK] 将所有碎片化的 Reasoning 合并为唯一一段，避免顶部出现多个思考气泡
+val mergedThinkingSteps = mutableListOf<ThinkingStep>()
+if (reasoningParts.isNotEmpty()) {
+    val merged = UIMessagePart.Reasoning(
+        reasoning = reasoningParts.joinToString("") { it.reasoning },
+        createdAt = reasoningParts.first().createdAt,
+        finishedAt = reasoningParts.lastOrNull { it.finishedAt != null }?.finishedAt 
+            ?: reasoningParts.last().finishedAt,
+    )
+    mergedThinkingSteps.add(ThinkingStep.ReasoningStep(merged))
+}
+mergedThinkingSteps.addAll(toolSteps)
+
+// 思考过程始终在最前面
+return if (mergedThinkingSteps.isNotEmpty()) {
+    listOf(MessagePartBlock.ThinkingBlock(mergedThinkingSteps)) + contentBlocks
+} else {
+    // ...
+}
+```
+
+---
+
 ## 三、上游同步策略
 
 ### 3.1 初始化 upstream remote（只需一次）
