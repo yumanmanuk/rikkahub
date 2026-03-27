@@ -2,14 +2,11 @@ package me.rerere.rikkahub.ui.pages.chat
 
 import android.net.Uri
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.relocation.bringIntoViewResponder
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DrawerState
 import androidx.compose.material3.DrawerValue
@@ -29,16 +26,15 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.adaptive.currentWindowDpSize
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
@@ -49,7 +45,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.dokar.sonner.ToastType
 import dev.chrisbanes.haze.rememberHazeState
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import me.rerere.ai.provider.Model
 import me.rerere.ai.ui.UIMessagePart
@@ -149,53 +144,29 @@ fun ChatPage(id: Uuid, text: String?, files: List<Uri>, nodeId: Uuid? = null) {
         }
     }
 
-    val chatListState = rememberLazyListState()
-    // 初始进入对话时自动滚动到底部或目标节点
-    // 使用 rememberSaveable 确保即使 recomposition 也绝对只执行一次
-    var initScrollDone by rememberSaveable(nodeId) { mutableStateOf(false) }
-    var hasUserInteractedChatList by rememberSaveable(nodeId) { mutableStateOf(false) }
-
-    LaunchedEffect(chatListState) {
-        chatListState.interactionSource.interactions.collect { interaction ->
-            if (interaction is DragInteraction.Start) {
-                hasUserInteractedChatList = true
-            }
-        }
-    }
-
-    LaunchedEffect(chatListState) {
-        snapshotFlow { chatListState.isScrollInProgress }
-            .collect { inProgress ->
-                if (inProgress) {
-                    hasUserInteractedChatList = true
-                }
-            }
-    }
-
-
-    LaunchedEffect(nodeId, conversation.messageNodes.size, initScrollDone, hasUserInteractedChatList) {
-        if (initScrollDone) return@LaunchedEffect
-        if (hasUserInteractedChatList) {
-            initScrollDone = true
-            vm.chatListInitialized = true
-            return@LaunchedEffect
-        }
-        if (conversation.messageNodes.isEmpty()) return@LaunchedEffect
-
-        val targetIndex = if (nodeId == null) {
-            conversation.messageNodes.lastIndex
+    // 计算初始滚动位置：对话为空时从 0 开始，非空时直接定位到目标节点/底部
+    val initIndex = remember(conversation.messageNodes.size, nodeId) {
+        if (conversation.messageNodes.isEmpty()) {
+            0
+        } else if (nodeId != null) {
+            val idx = conversation.messageNodes.indexOfFirst { it.id == nodeId }
+            if (idx >= 0) idx else conversation.messageNodes.size
         } else {
-            val nodeIndex = conversation.messageNodes.indexOfFirst { it.id == nodeId }
-            if (nodeIndex >= 0) {
-                nodeIndex
-            } else {
-                conversation.messageNodes.lastIndex
-            }
+            conversation.messageNodes.size // 定位到底部哨兵
         }
+    }
 
-        chatListState.requestScrollToItem(targetIndex)
-        initScrollDone = true
-        vm.chatListInitialized = true
+    // 对话数据就绪后以正确的初始位置重建 LazyListState，避免先渲染顶部再跳底部
+    val conversationReady = conversation.messageNodes.isNotEmpty()
+    val chatListState = key(conversationReady) {
+        rememberLazyListState(initialFirstVisibleItemIndex = initIndex)
+    }
+
+    // 标记初始化完成
+    LaunchedEffect(conversationReady) {
+        if (conversationReady) {
+            vm.chatListInitialized = true
+        }
     }
 
     when {
@@ -289,19 +260,9 @@ private fun ChatPageContent(
 
     TTSAutoPlay(vm = vm, setting = setting, conversation = conversation)
 
-    @Suppress("DEPRECATION")
-    val noopBringIntoViewResponder = remember {
-        object : androidx.compose.foundation.relocation.BringIntoViewResponder {
-            override fun calculateRectForParent(localRect: Rect): Rect = Rect.Zero
-            override suspend fun bringChildIntoView(localRect: () -> Rect?) {}
-        }
-    }
-
     Surface(
         color = MaterialTheme.colorScheme.background,
-        modifier = Modifier
-            .fillMaxSize()
-            .bringIntoViewResponder(noopBringIntoViewResponder)
+        modifier = Modifier.fillMaxSize()
     ) {
         AssistantBackground(setting = setting)
         Scaffold(
@@ -350,6 +311,9 @@ private fun ChatPageContent(
                             )
                         } else {
                             vm.handleMessageSend(inputState.getContents())
+                            scope.launch {
+                                chatListState.requestScrollToItem(conversation.currentMessages.size + 5)
+                            }
                         }
                         inputState.clearInput()
                     },
@@ -361,6 +325,9 @@ private fun ChatPageContent(
                             )
                         } else {
                             vm.handleMessageSend(content = inputState.getContents(), answer = false)
+                            scope.launch {
+                                chatListState.requestScrollToItem(conversation.currentMessages.size + 5)
+                            }
                         }
                         inputState.clearInput()
                     },
@@ -393,7 +360,6 @@ private fun ChatPageContent(
                 )
             },
             containerColor = Color.Transparent,
-            contentWindowInsets = WindowInsets(0),
         ) { innerPadding ->
             ChatList(
                 innerPadding = innerPadding,
