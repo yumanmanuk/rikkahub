@@ -21,7 +21,6 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -56,7 +55,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.surfaceColorAtElevation
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -67,8 +65,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
-import androidx.compose.foundation.relocation.bringIntoViewResponder
-import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.gestures.scrollBy
@@ -251,6 +247,9 @@ private fun ChatListNormal(
     var selecting by remember { mutableStateOf(false) }
     var showExportSheet by remember { mutableStateOf(false) }
 
+    // 自动跟随键盘滚动
+    ImeLazyListAutoScroller(lazyListState = state)
+
     // 对话大小警告对话框
     val sizeInfo = rememberConversationSizeInfo(conversation)
     var showSizeWarningDialog by rememberSaveable(conversation.id) { mutableStateOf(true) }
@@ -275,49 +274,16 @@ private fun ChatListNormal(
         modifier = Modifier
             .fillMaxSize(),
     ) {
-        LaunchedEffect(state) {
-            state.interactionSource.interactions.collect { interaction ->
-                when (interaction) {
-                    is DragInteraction.Start -> isUserDragging = true
-                    is DragInteraction.Stop, is DragInteraction.Cancel -> isUserDragging = false
-                }
-            }
-        }
-
+        // 自动滚动到底部
         if (settings.displaySetting.enableAutoScroll) {
-            LaunchedEffect(state, isUserDragging) {
-                snapshotFlow {
-                    Pair(isUserDragging, state.canScrollForward)
-                }.collect { (dragging, canScrollForward) ->
-                    if (dragging && canScrollForward) {
-                        shouldAutoFollow = false
-                    } else if (!canScrollForward) {
-                        shouldAutoFollow = true
+            LaunchedEffect(state) {
+                snapshotFlow { state.layoutInfo.visibleItemsInfo }.collect { visibleItemsInfo ->
+                    if (!state.isScrollInProgress && loadingState) {
+                        if (visibleItemsInfo.isAtBottom()) {
+                            state.requestScrollToItem(conversationUpdated.messageNodes.lastIndex + 10)
+                        }
                     }
                 }
-            }
-
-            LaunchedEffect(state, isUserDragging, shouldAutoFollow, loadingState, conversation) {
-                snapshotFlow {
-                    Triple(
-                        state.layoutInfo.totalItemsCount,
-                        conversation.messageNodes.lastOrNull()?.currentMessage?.toText()?.length ?: 0,
-                        state.isScrollInProgress,
-                    )
-                }.collect { (totalItems, _, inProgress) ->
-                    if (!isUserDragging && !inProgress && loadingState && shouldAutoFollow && totalItems > 0) {
-                        state.requestScrollToItem(totalItems - 1)
-                    }
-                }
-            }
-        }
-
-        LaunchedEffect(state, isUserDragging, loadingState) {
-            snapshotFlow {
-                val lastVisible = state.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
-                "drag=$isUserDragging inProgress=${state.isScrollInProgress} atBottom=$isAtBottom follow=$shouldAutoFollow loading=$loadingState first=${state.firstVisibleItemIndex}:${state.firstVisibleItemScrollOffset} last=$lastVisible total=${state.layoutInfo.totalItemsCount}"
-            }.collect {
-                debugInfo = it
             }
         }
 
@@ -458,22 +424,6 @@ private fun ChatListNormal(
                     .align(Alignment.BottomCenter)
                     .zIndex(5f)
             )
-
-            if (debugInfo.isNotBlank()) {
-                Surface(
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .padding(horizontal = 12.dp),
-                    shape = RoundedCornerShape(10.dp),
-                    tonalElevation = 2.dp,
-                ) {
-                    Text(
-                        text = debugInfo,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
-                        style = MaterialTheme.typography.labelSmall
-                    )
-                }
-            }
 
             // 完成选择
             AnimatedVisibility(
@@ -874,7 +824,6 @@ private fun BoxScope.MessageJumper(
             Surface(
                 onClick = {
                     scope.launch {
-                    // 对话大小警告对话框
                         state.animateScrollToItem(
                             (state.firstVisibleItemIndex - 1).fastCoerceAtLeast(
                                 0
