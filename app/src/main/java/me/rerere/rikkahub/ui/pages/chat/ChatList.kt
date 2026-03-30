@@ -21,6 +21,7 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -37,7 +38,6 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyListItemInfo
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -55,6 +55,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.surfaceColorAtElevation
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -65,6 +66,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
+import androidx.compose.foundation.relocation.bringIntoViewResponder
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.gestures.scrollBy
@@ -85,7 +88,6 @@ import androidx.compose.ui.zIndex
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import me.rerere.ai.ui.UIMessage
 import me.rerere.rikkahub.R
@@ -102,7 +104,6 @@ import me.rerere.rikkahub.ui.components.ui.Tooltip
 import me.rerere.rikkahub.ui.hooks.ImeLazyListAutoScroller
 import me.rerere.rikkahub.ui.theme.ChatFontProvider
 import me.rerere.rikkahub.utils.plus
-import kotlin.math.roundToInt
 import kotlin.uuid.Uuid
 
 private const val TAG = "ChatList"
@@ -119,6 +120,8 @@ fun ChatList(
     previewMode: Boolean,
     settings: Settings,
     hazeState: HazeState,
+    showJumper: Boolean = false,
+    onDismissJumper: () -> Unit = {},
     errors: List<ChatError> = emptyList(),
     onDismissError: (Uuid) -> Unit = {},
     onClearAllErrors: () -> Unit = {},
@@ -161,6 +164,8 @@ fun ChatList(
                 processingStatus = processingStatus,
                 settings = settings,
                 hazeState = hazeState,
+                showJumper = showJumper,
+                onDismissJumper = onDismissJumper,
                 errors = errors,
                 onDismissError = onDismissError,
                 onClearAllErrors = onClearAllErrors,
@@ -191,6 +196,8 @@ private fun ChatListNormal(
     processingStatus: String? = null,
     settings: Settings,
     hazeState: HazeState,
+    showJumper: Boolean = false,
+    onDismissJumper: () -> Unit = {},
     errors: List<ChatError>,
     onDismissError: (Uuid) -> Unit,
     onClearAllErrors: () -> Unit,
@@ -247,9 +254,6 @@ private fun ChatListNormal(
     var selecting by remember { mutableStateOf(false) }
     var showExportSheet by remember { mutableStateOf(false) }
 
-    // 自动跟随键盘滚动
-    ImeLazyListAutoScroller(lazyListState = state)
-
     // 对话大小警告对话框
     val sizeInfo = rememberConversationSizeInfo(conversation)
     var showSizeWarningDialog by rememberSaveable(conversation.id) { mutableStateOf(true) }
@@ -274,28 +278,53 @@ private fun ChatListNormal(
         modifier = Modifier
             .fillMaxSize(),
     ) {
-        // 自动滚动到底部
+        LaunchedEffect(state) {
+            state.interactionSource.interactions.collect { interaction ->
+                when (interaction) {
+                    is DragInteraction.Start -> isUserDragging = true
+                    is DragInteraction.Stop, is DragInteraction.Cancel -> isUserDragging = false
+                }
+            }
+        }
+
         if (settings.displaySetting.enableAutoScroll) {
-            LaunchedEffect(state) {
-                snapshotFlow { state.layoutInfo.visibleItemsInfo }.collect { visibleItemsInfo ->
-                    if (!state.isScrollInProgress && loadingState) {
-                        if (visibleItemsInfo.isAtBottom()) {
-                            state.requestScrollToItem(conversationUpdated.messageNodes.lastIndex + 10)
-                        }
+            LaunchedEffect(state, isUserDragging) {
+                snapshotFlow {
+                    Pair(isUserDragging, state.canScrollForward)
+                }.collect { (dragging, canScrollForward) ->
+                    if (dragging && canScrollForward) {
+                        shouldAutoFollow = false
+                    } else if (!canScrollForward) {
+                        shouldAutoFollow = true
+                    }
+                }
+            }
+
+            LaunchedEffect(state, isUserDragging, shouldAutoFollow, loadingState, conversation) {
+                snapshotFlow {
+                    Triple(
+                        state.layoutInfo.totalItemsCount,
+                        conversation.messageNodes.lastOrNull()?.currentMessage?.toText()?.length ?: 0,
+                        state.isScrollInProgress,
+                    )
+                }.collect { (totalItems, _, inProgress) ->
+                    if (!isUserDragging && !inProgress && loadingState && shouldAutoFollow && totalItems > 0) {
+                        state.requestScrollToItem(totalItems - 1)
                     }
                 }
             }
         }
 
-        // 判断最近是否滚动
-        LaunchedEffect(state.isScrollInProgress) {
-            if (state.isScrollInProgress) {
-                isRecentScroll = true
-                delay(1500)
-                isRecentScroll = false
-            } else {
-                delay(1500)
-                isRecentScroll = false
+
+        // 拦截 BringIntoView 请求：当 ChatInput 的 TextField 持有焦点时，
+        // Compose 会隐式触发 BringIntoView 试图把焦点组件拉入可视区，
+        // 这会导致 LazyColumn 在用户上滑时突然闪跳到底部。
+        // 通过一个空实现的 BringIntoViewResponder 来吞没这些请求。
+        @Suppress("DEPRECATION")
+        val noopBringIntoViewResponder = remember {
+            object : androidx.compose.foundation.relocation.BringIntoViewResponder {
+                override fun calculateRectForParent(localRect: Rect): Rect = Rect.Zero
+                override suspend fun bringChildIntoView(localRect: () -> Rect?) { /* 吞没 */ }
             }
         }
 
@@ -425,6 +454,7 @@ private fun ChatListNormal(
                     .zIndex(5f)
             )
 
+
             // 完成选择
             AnimatedVisibility(
                 visible = selecting,
@@ -506,13 +536,24 @@ private fun ChatListNormal(
 
             val captureProgress = LocalScrollCaptureInProgress.current
 
-            // 消息快速跳转
-            MessageJumper(
-                show = isRecentScroll && !state.isScrollInProgress && settings.displaySetting.showMessageJumper && !captureProgress,
-                onLeft = settings.displaySetting.messageJumperOnLeft,
-                scope = scope,
-                state = state
-            )
+            // 预先计算所有 USER 消息在列表中的 index（用于按提问跳转）
+            val userMessageIndices = remember(conversation.messageNodes) {
+                conversation.messageNodes.mapIndexedNotNull { index, node ->
+                    if (node.currentMessage.role == me.rerere.ai.core.MessageRole.USER) index else null
+                }
+            }
+
+            // 消息快速跳转（由按钮触发，不再依赖滚动状态）
+            if (!captureProgress) {
+                MessageJumper(
+                    show = showJumper && settings.displaySetting.showMessageJumper,
+                    onLeft = settings.displaySetting.messageJumperOnLeft,
+                    scope = scope,
+                    state = state,
+                    userMessageIndices = userMessageIndices,
+                    onDismissJumper = onDismissJumper,
+                )
+            }
 
             // Suggestion
             if (conversation.chatSuggestions.isNotEmpty() && !captureProgress) {
@@ -786,7 +827,9 @@ private fun BoxScope.MessageJumper(
     show: Boolean,
     onLeft: Boolean,
     scope: CoroutineScope,
-    state: LazyListState
+    state: LazyListState,
+    userMessageIndices: List<Int> = emptyList(),
+    onDismissJumper: () -> Unit = {},
 ) {
     AnimatedVisibility(
         visible = show,
@@ -802,11 +845,13 @@ private fun BoxScope.MessageJumper(
             modifier = Modifier.padding(8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
+            // 去顶部（点击后自动关闭导航栏）
             Surface(
                 onClick = {
                     scope.launch {
                         state.scrollToItem(0)
                     }
+                    onDismissJumper()
                 },
                 shape = CircleShape,
                 tonalElevation = 4.dp,
@@ -821,14 +866,16 @@ private fun BoxScope.MessageJumper(
                         .padding(4.dp)
                 )
             }
+            // 上一个提问（不关闭导航栏）
             Surface(
                 onClick = {
                     scope.launch {
-                        state.animateScrollToItem(
-                            (state.firstVisibleItemIndex - 1).fastCoerceAtLeast(
-                                0
-                            )
-                        )
+                        val current = state.firstVisibleItemIndex
+                        // 找小于当前位置的最大 USER index
+                        val target = userMessageIndices.lastOrNull { it < current }
+                            ?: userMessageIndices.firstOrNull()
+                            ?: (current - 1).fastCoerceAtLeast(0)
+                        state.animateScrollToItem(target)
                     }
                 },
                 shape = CircleShape,
@@ -844,10 +891,16 @@ private fun BoxScope.MessageJumper(
                         .padding(4.dp)
                 )
             }
+            // 下一个提问（不关闭导航栏）
             Surface(
                 onClick = {
                     scope.launch {
-                        state.animateScrollToItem(state.firstVisibleItemIndex + 1)
+                        val current = state.firstVisibleItemIndex
+                        // 找大于当前位置的最小 USER index
+                        val target = userMessageIndices.firstOrNull { it > current }
+                            ?: userMessageIndices.lastOrNull()
+                            ?: (current + 1)
+                        state.animateScrollToItem(target)
                     }
                 },
                 shape = CircleShape,
@@ -862,11 +915,13 @@ private fun BoxScope.MessageJumper(
                         .padding(4.dp)
                 )
             }
+            // 去底部（点击后自动关闭导航栏）
             Surface(
                 onClick = {
                     scope.launch {
                         state.scrollToItem(state.layoutInfo.totalItemsCount - 1)
                     }
+                    onDismissJumper()
                 },
                 shape = CircleShape,
                 color = MaterialTheme.colorScheme.surfaceColorAtElevation(
