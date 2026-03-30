@@ -73,6 +73,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -111,6 +113,7 @@ import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Add01
 import me.rerere.hugeicons.stroke.ArrowUp01
 import me.rerere.hugeicons.stroke.ArrowUp02
+import me.rerere.hugeicons.stroke.ArrowUpDown
 import me.rerere.hugeicons.stroke.Book03
 import me.rerere.hugeicons.stroke.Camera01
 import me.rerere.hugeicons.stroke.Cancel01
@@ -482,7 +485,7 @@ fun ChatInput(
                                     onClick = onToggleMessageJumper
                                 ) {
                                     Icon(
-                                        imageVector = if (messageJumperActive) HugeIcons.Cancel01 else HugeIcons.LeftToRightListBullet,
+                                        imageVector = if (messageJumperActive) HugeIcons.Cancel01 else HugeIcons.ArrowUpDown,
                                         contentDescription = null,
                                         tint = if (messageJumperActive)
                                             MaterialTheme.colorScheme.primary
@@ -676,6 +679,8 @@ private fun TextInputRow(
 
         var isFocused by remember { mutableStateOf(false) }
         var isFullScreen by remember { mutableStateOf(false) }
+        // 使用 FocusRequester 控制焦点，但不主动请求焦点
+        val focusRequester = remember { FocusRequester() }
         val receiveContentListener = remember(
             settings.displaySetting.pasteLongTextAsFile, settings.displaySetting.pasteLongTextThreshold
         ) {
@@ -717,13 +722,11 @@ private fun TextInputRow(
             modifier = Modifier
                 .fillMaxWidth()
                 .contentReceiver(receiveContentListener)
+                .focusRequester(focusRequester)
                 .onFocusChanged {
                     isFocused = it.isFocused
                 },
             shape = MaterialTheme.shapes.largeIncreased,
-            placeholder = {
-                Text(stringResource(R.string.chat_input_placeholder))
-            },
             lineLimits = TextFieldLineLimits.MultiLine(maxHeightInLines = 5),
             keyboardOptions = KeyboardOptions(
                 imeAction = if (settings.displaySetting.sendOnEnter) ImeAction.Send else ImeAction.Default

@@ -151,7 +151,19 @@ fun ChatPage(id: Uuid, text: String?, files: List<Uri>, nodeId: Uuid? = null) {
 
     val chatListState = rememberLazyListState()
     LaunchedEffect(vm, conversation.messageNodes.size) {
-        if (nodeId == null && !vm.chatListInitialized && conversation.messageNodes.isNotEmpty()) {
+        if (conversation.messageNodes.isEmpty()) return@LaunchedEffect
+        if (nodeId != null && !vm.chatListInitialized) {
+            // 从收藏页跳转：找到收藏的回答节点，滚动到其前一个（提问）节点的位置，
+            // 这样用户能看到"提问+回答"的完整上下文
+            val targetIndex = conversation.messageNodes.indexOfFirst { it.id == nodeId }
+            if (targetIndex >= 0) {
+                // 如果前面有提问节点，滚到提问；否则直接滚到目标节点
+                val scrollToIndex = if (targetIndex > 0) targetIndex - 1 else targetIndex
+                chatListState.scrollToItem(scrollToIndex)
+            }
+            vm.chatListInitialized = true
+        } else if (nodeId == null && !vm.chatListInitialized) {
+            // 普通进入：滚动到底部
             chatListState.scrollToItem(chatListState.layoutInfo.totalItemsCount)
             vm.chatListInitialized = true
         }
@@ -196,7 +208,8 @@ fun ChatPage(id: Uuid, text: String?, files: List<Uri>, nodeId: Uuid? = null) {
                         navController = navController,
                         current = conversation,
                         vm = vm,
-                        settings = setting
+                        settings = setting,
+                        drawerState = drawerState,
                     )
                 }
             ) {
