@@ -144,27 +144,10 @@ fun ChatPage(id: Uuid, text: String?, files: List<Uri>, nodeId: Uuid? = null) {
         }
     }
 
-    // 计算初始滚动位置：对话为空时从 0 开始，非空时直接定位到目标节点/底部
-    val initIndex = remember(conversation.messageNodes.size, nodeId) {
-        if (conversation.messageNodes.isEmpty()) {
-            0
-        } else if (nodeId != null) {
-            val idx = conversation.messageNodes.indexOfFirst { it.id == nodeId }
-            if (idx >= 0) idx else conversation.messageNodes.size
-        } else {
-            conversation.messageNodes.size // 定位到底部哨兵
-        }
-    }
-
-    // 对话数据就绪后以正确的初始位置重建 LazyListState，避免先渲染顶部再跳底部
-    val conversationReady = conversation.messageNodes.isNotEmpty()
-    val chatListState = key(conversationReady) {
-        rememberLazyListState(initialFirstVisibleItemIndex = initIndex)
-    }
-
-    // 标记初始化完成
-    LaunchedEffect(conversationReady) {
-        if (conversationReady) {
+    val chatListState = rememberLazyListState()
+    LaunchedEffect(vm, conversation.messageNodes.size) {
+        if (nodeId == null && !vm.chatListInitialized && conversation.messageNodes.isNotEmpty()) {
+            chatListState.scrollToItem(chatListState.layoutInfo.totalItemsCount)
             vm.chatListInitialized = true
         }
     }

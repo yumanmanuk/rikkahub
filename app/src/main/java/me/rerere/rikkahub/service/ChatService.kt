@@ -451,6 +451,13 @@ class ChatService(
         val settings = settingsStore.settingsFlow.first()
         val model = settings.getCurrentChatModel() ?: return
 
+        val assistant = settings.getCurrentAssistant()
+        val senderName = if (assistant.useAssistantAvatar) {
+            assistant.name.ifEmpty { context.getString(R.string.assistant_page_default_assistant) }
+        } else {
+            model.displayName
+        }
+
         runCatching {
             val conversation = getConversationFlow(conversationId).value
 
@@ -537,7 +544,7 @@ class ChatService(
 
                 // Show notification if app is not in foreground
                 if (!isForeground.value && settings.displaySetting.enableNotificationOnMessageGeneration) {
-                    sendGenerationDoneNotification(conversationId)
+                    sendGenerationDoneNotification(conversationId, senderName)
                 }
             }.collect { chunk ->
                 when (chunk) {
@@ -548,7 +555,7 @@ class ChatService(
 
                         // 如果应用不在前台，发送 Live Update 通知
                         if (!isForeground.value && settings.displaySetting.enableNotificationOnMessageGeneration && settings.displaySetting.enableLiveUpdateNotification) {
-                            sendLiveUpdateNotification(conversationId, chunk.messages)
+                            sendLiveUpdateNotification(conversationId, chunk.messages, senderName)
                         }
                     }
                 }
@@ -826,7 +833,7 @@ class ChatService(
 
     // ---- 通知 ----
 
-    private fun sendGenerationDoneNotification(conversationId: Uuid) {
+    private fun sendGenerationDoneNotification(conversationId: Uuid, senderName: String) {
         // 先取消 Live Update 通知
         cancelLiveUpdateNotification(conversationId)
 
@@ -835,8 +842,8 @@ class ChatService(
             channelId = CHAT_COMPLETED_NOTIFICATION_CHANNEL_ID,
             notificationId = 1
         ) {
-            title = context.getString(R.string.notification_chat_done_title)
-            content = conversation.currentMessages.lastOrNull()?.toText()?.take(50) ?: ""
+            title = senderName
+            content = conversation.currentMessages.lastOrNull()?.toText()?.take(50)?.trim() ?: ""
             autoCancel = true
             useDefaults = true
             category = NotificationCompat.CATEGORY_MESSAGE
@@ -850,7 +857,8 @@ class ChatService(
 
     private fun sendLiveUpdateNotification(
         conversationId: Uuid,
-        messages: List<UIMessage>
+        messages: List<UIMessage>,
+        senderName: String
     ) {
         val lastMessage = messages.lastOrNull() ?: return
         val parts = lastMessage.parts
@@ -862,7 +870,7 @@ class ChatService(
             channelId = CHAT_LIVE_UPDATE_NOTIFICATION_CHANNEL_ID,
             notificationId = getLiveUpdateNotificationId(conversationId)
         ) {
-            title = context.getString(R.string.notification_live_update_title)
+            title = senderName
             content = contentText
             subText = statusText
             ongoing = true
