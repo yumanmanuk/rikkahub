@@ -1,5 +1,10 @@
 package me.rerere.rikkahub.ui.components.message
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -44,8 +49,9 @@ import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Copy01
 import me.rerere.hugeicons.stroke.Delete01
 import me.rerere.hugeicons.stroke.Edit01
-import me.rerere.hugeicons.stroke.FavouriteCircle
+import me.rerere.hugeicons.stroke.Favourite
 import me.rerere.hugeicons.stroke.GitFork
+import me.rerere.hugeicons.stroke.InLove
 import me.rerere.hugeicons.stroke.MoreVertical
 import me.rerere.hugeicons.stroke.Refresh03
 import me.rerere.hugeicons.stroke.Share04
@@ -73,6 +79,8 @@ fun ColumnScope.ChatMessageActionButtons(
     onOpenActionSheet: () -> Unit,
     onTranslate: ((UIMessage, Locale) -> Unit)? = null,
     onClearTranslation: (UIMessage) -> Unit = {},
+    isFavorite: Boolean = false,
+    onToggleFavorite: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
     var isPendingDelete by remember { mutableStateOf(false) }
@@ -149,23 +157,32 @@ fun ColumnScope.ChatMessageActionButtons(
                 tint = if (isAvailable) LocalContentColor.current else LocalContentColor.current.copy(alpha = 0.38f)
             )
 
-            // Translation button
-            if (onTranslate != null) {
-                Icon(
-                    imageVector = HugeIcons.Translate,
-                    contentDescription = stringResource(R.string.translate),
-                    modifier = Modifier
-                        .clip(CircleShape)
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = LocalIndication.current,
-                            onClick = {
-                                showTranslateDialog = true
-                            }
-                        )
-                        .padding(8.dp)
-                        .size(16.dp)
-                )
+            // Favorite button
+            if (onToggleFavorite != null) {
+                AnimatedContent(
+                    targetState = isFavorite,
+                    label = "FavoriteButton",
+                    transitionSpec = {
+                        (scaleIn(animationSpec = tween(200)) togetherWith scaleOut(animationSpec = tween(200)))
+                    }
+                ) { favorited ->
+                    Icon(
+                        imageVector = if (favorited) HugeIcons.InLove else HugeIcons.Favourite,
+                        contentDescription = stringResource(if (favorited) R.string.chat_message_remove_favorite else R.string.chat_message_add_favorite),
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = LocalIndication.current,
+                                onClick = {
+                                    onToggleFavorite()
+                                }
+                            )
+                            .padding(8.dp)
+                            .size(16.dp),
+                        tint = if (favorited) MaterialTheme.colorScheme.error else LocalContentColor.current
+                    )
+                }
             }
         }
 
@@ -232,11 +249,15 @@ fun ChatMessageActionsSheet(
     onShare: () -> Unit,
     onFork: () -> Unit,
     onSelectAndCopy: () -> Unit,
+    onTranslate: ((UIMessage, Locale) -> Unit)? = null,
+    onClearTranslation: (UIMessage) -> Unit = {},
     isFavorite: Boolean = false,
     onToggleFavorite: (() -> Unit)? = null,
     onWebViewPreview: () -> Unit,
     onDismissRequest: () -> Unit
 ) {
+    var showTranslateDialog by remember { mutableStateOf(false) }
+
     ModalBottomSheet(
         onDismissRequest = onDismissRequest,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
@@ -272,6 +293,34 @@ fun ChatMessageActionsSheet(
                         text = stringResource(R.string.select_and_copy),
                         style = MaterialTheme.typography.titleMedium,
                     )
+                }
+            }
+
+            // Translation
+            if (onTranslate != null) {
+                Card(
+                    onClick = {
+                        showTranslateDialog = true
+                    },
+                    shape = MaterialTheme.shapes.medium
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        modifier = Modifier
+                            .padding(16.dp)
+                            .fillMaxWidth()
+                    ) {
+                        Icon(
+                            imageVector = HugeIcons.Translate,
+                            contentDescription = null,
+                            modifier = Modifier.padding(4.dp)
+                        )
+                        Text(
+                            text = stringResource(R.string.translate),
+                            style = MaterialTheme.typography.titleMedium,
+                        )
+                    }
                 }
             }
 
@@ -388,36 +437,6 @@ fun ChatMessageActionsSheet(
                 }
             }
 
-            if (onToggleFavorite != null) {
-                Card(
-                    onClick = {
-                        onDismissRequest()
-                        onToggleFavorite()
-                    },
-                    shape = MaterialTheme.shapes.medium,
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(16.dp),
-                        modifier = Modifier
-                            .padding(16.dp)
-                            .fillMaxWidth()
-                    ) {
-                        Icon(
-                            imageVector = HugeIcons.FavouriteCircle,
-                            contentDescription = null,
-                            modifier = Modifier.padding(4.dp)
-                        )
-                        Text(
-                            text = stringResource(
-                                if (isFavorite) R.string.chat_message_remove_favorite
-                                else R.string.chat_message_add_favorite
-                            ),
-                            style = MaterialTheme.typography.titleMedium,
-                        )
-                    }
-                }
-            }
 
             // Delete
             Card(
@@ -457,5 +476,24 @@ fun ChatMessageActionsSheet(
                 }
             }
         }
+    }
+
+    // Translation dialog
+    if (showTranslateDialog && onTranslate != null) {
+        LanguageSelectionDialog(
+            onLanguageSelected = { language ->
+                showTranslateDialog = false
+                onDismissRequest()
+                onTranslate(message, language)
+            },
+            onClearTranslation = {
+                showTranslateDialog = false
+                onDismissRequest()
+                onClearTranslation(message)
+            },
+            onDismissRequest = {
+                showTranslateDialog = false
+            },
+        )
     }
 }
