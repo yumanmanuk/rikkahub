@@ -12,6 +12,13 @@ import me.rerere.rikkahub.data.model.FavoriteType
 import me.rerere.rikkahub.data.repository.FavoriteRepository
 import kotlin.uuid.Uuid
 
+// UUID 格式检测：兼容旧版上游数据（subtitle 字段曾经存储的是 nodeId UUID 字符串）
+private val UUID_REGEX = Regex(
+    "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+)
+private fun String.isUuid(): Boolean = UUID_REGEX.matches(this)
+
+
 data class NodeFavoriteListItem(
     val id: String,
     val refKey: String,
@@ -19,6 +26,7 @@ data class NodeFavoriteListItem(
     val nodeId: Uuid,
     val conversationTitle: String,
     val preview: String,
+    val questionPreview: String?,
     val createdAt: Long,
 )
 
@@ -39,6 +47,8 @@ class FavoriteVM(
                     nodeId = ref.nodeId,
                     conversationTitle = meta?.title.orEmpty(),
                     preview = meta?.previewText ?: "",
+                    // 过滤旧版上游数据：subtitle 曾经存的是 nodeId (UUID)，不是提问文本
+                    questionPreview = meta?.subtitle?.takeUnless { it.isUuid() },
                     createdAt = entity.createdAt,
                 )
             }
