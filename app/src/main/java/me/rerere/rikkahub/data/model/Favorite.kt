@@ -39,6 +39,7 @@ data class NodeFavoriteTarget(
     val conversationTitle: String,
     val nodeId: Uuid,
     val node: MessageNode,
+    val questionPreview: String? = null,
 )
 
 fun UIMessage.buildFavoritePreview(maxLength: Int = 160): String {
