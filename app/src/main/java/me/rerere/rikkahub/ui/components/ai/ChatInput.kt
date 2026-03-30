@@ -120,6 +120,7 @@ import me.rerere.hugeicons.stroke.Image02
 import me.rerere.hugeicons.stroke.MusicNote03
 import me.rerere.hugeicons.stroke.Package
 import me.rerere.hugeicons.stroke.Package01
+import me.rerere.hugeicons.stroke.LeftToRightListBullet
 import me.rerere.hugeicons.stroke.Video01
 import me.rerere.hugeicons.stroke.Zap
 import me.rerere.rikkahub.R
@@ -163,6 +164,9 @@ fun ChatInput(
     enableSearch: Boolean,
     onToggleSearch: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
+    showMessageJumperButton: Boolean = false,
+    messageJumperActive: Boolean = false,
+    onToggleMessageJumper: () -> Unit = {},
     onUpdateChatModel: (Model) -> Unit,
     onUpdateAssistant: (Assistant) -> Unit,
     onUpdateSearchService: (Int) -> Unit,
@@ -421,7 +425,8 @@ fun ChatInput(
                             modifier = Modifier
                                 .weight(1f)
                                 .horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
                         ) {
                             // Model Picker
                             ModelSelector(
@@ -469,6 +474,22 @@ fun ChatInput(
                                     },
                                     onlyIcon = true,
                                 )
+                            }
+
+                            // Message Jumper Button
+                            if (showMessageJumperButton) {
+                                ActionIconButton(
+                                    onClick = onToggleMessageJumper
+                                ) {
+                                    Icon(
+                                        imageVector = if (messageJumperActive) HugeIcons.Cancel01 else HugeIcons.LeftToRightListBullet,
+                                        contentDescription = null,
+                                        tint = if (messageJumperActive)
+                                            MaterialTheme.colorScheme.primary
+                                        else
+                                            MaterialTheme.colorScheme.onSurface,
+                                    )
+                                }
                             }
 
                             // MCP
