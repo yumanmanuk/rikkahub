@@ -202,7 +202,9 @@ fun ChatMessage(
                         showActionsSheet = true
                     },
                     onTranslate = onTranslate,
-                    onClearTranslation = onClearTranslation
+                    onClearTranslation = onClearTranslation,
+                    isFavorite = isFavorite,
+                    onToggleFavorite = onToggleFavorite,
                 )
             }
         }
@@ -228,6 +230,8 @@ fun ChatMessage(
             onSelectAndCopy = {
                 showSelectCopySheet = true
             },
+            onTranslate = onTranslate,
+            onClearTranslation = onClearTranslation,
             isFavorite = isFavorite,
             onToggleFavorite = onToggleFavorite,
             onWebViewPreview = {
