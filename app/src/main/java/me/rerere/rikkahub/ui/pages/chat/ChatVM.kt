@@ -33,6 +33,7 @@ import me.rerere.rikkahub.data.model.Avatar
 import me.rerere.rikkahub.data.model.Conversation
 import me.rerere.rikkahub.data.model.MessageNode
 import me.rerere.rikkahub.data.model.NodeFavoriteTarget
+import me.rerere.rikkahub.data.model.buildFavoritePreview
 import me.rerere.rikkahub.data.repository.ConversationRepository
 import me.rerere.rikkahub.data.repository.FavoriteRepository
 import me.rerere.rikkahub.service.ChatError
@@ -324,12 +325,23 @@ class ChatVM(
             if (currentlyFavorited) {
                 favoriteRepository.removeNodeFavorite(_conversationId, node.id)
             } else {
+                // 查找前一条用户提问
+                val nodes = conversation.value.messageNodes
+                val nodeIndex = nodes.indexOfFirst { it.id == node.id }
+                val questionPreview = if (nodeIndex > 0) {
+                    val prevNode = nodes[nodeIndex - 1]
+                    if (prevNode.currentMessage.role == me.rerere.ai.core.MessageRole.USER) {
+                        prevNode.currentMessage.buildFavoritePreview(maxLength = 200)
+                    } else null
+                } else null
+
                 favoriteRepository.addNodeFavorite(
                     NodeFavoriteTarget(
                         conversationId = _conversationId,
                         conversationTitle = conversation.value.title,
                         nodeId = node.id,
-                        node = node
+                        node = node,
+                        questionPreview = questionPreview,
                     )
                 )
             }

@@ -17,6 +17,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DrawerState
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -91,6 +92,7 @@ fun ChatDrawerContent(
     vm: ChatVM,
     settings: Settings,
     current: Conversation,
+    drawerState: DrawerState? = null,
 ) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -223,8 +225,11 @@ fun ChatDrawerContent(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f),
-                onClick = {
-                    navigateToChatPage(navController, it.id)
+                onClick = { conversation ->
+                    scope.launch {
+                        drawerState?.close()
+                        navigateToChatPage(navController, conversation.id)
+                    }
                 },
                 onRegenerateTitle = {
                     vm.generateTitle(it, true)

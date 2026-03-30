@@ -9,6 +9,8 @@ import me.rerere.hugeicons.stroke.ArrowUpDouble
 import me.rerere.hugeicons.stroke.CursorPointer01
 import me.rerere.hugeicons.stroke.Search01
 import me.rerere.hugeicons.stroke.Cancel01
+import me.rerere.hugeicons.stroke.Filter
+import me.rerere.hugeicons.stroke.Favourite
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.AnimatedVisibilityScope
@@ -38,6 +40,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListItemInfo
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -85,6 +88,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.fastCoerceAtLeast
 import androidx.compose.ui.zIndex
+import kotlin.math.roundToInt
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
 import kotlinx.coroutines.CoroutineScope
@@ -218,6 +222,8 @@ private fun ChatListNormal(
     val scope = rememberCoroutineScope()
     val loadingState by rememberUpdatedState(loading)
     var isRecentScroll by remember { mutableStateOf(false) }
+    var isUserDragging by remember { mutableStateOf(false) }
+    var shouldAutoFollow by remember { mutableStateOf(true) }
     val conversationUpdated by rememberUpdatedState(conversation)
     val density = LocalDensity.current
     val activity = LocalContext.current as? me.rerere.rikkahub.RouteActivity
@@ -642,6 +648,7 @@ private fun ChatListPreview(
     onJumpToMessage: (Int) -> Unit
 ) {
     var searchQuery by remember { mutableStateOf("") }
+    var showOnlyFavorites by remember { mutableStateOf(false) }
 
     // 统计数据：对话轮次、提问总字数、回答总字数
     val conversationStats = remember(conversation.messageNodes) {
@@ -665,13 +672,48 @@ private fun ChatListPreview(
     }
 
     // 过滤消息，同时保留原始 index 避免后续 O(n) indexOf 查找
-    val filteredMessages = remember(conversation.messageNodes, searchQuery) {
-        if (searchQuery.isBlank()) {
-            conversation.messageNodes.mapIndexed { index, node -> index to node }
-        } else {
-            conversation.messageNodes.mapIndexed { index, node -> index to node }
-                .filter { (_, node) -> node.currentMessage.toText().contains(searchQuery, ignoreCase = true) }
+    val filteredMessages = remember(conversation.messageNodes, searchQuery, showOnlyFavorites) {
+        var messages = conversation.messageNodes.mapIndexed { index, node -> index to node }
+        
+        // 先按搜索词过滤
+        if (searchQuery.isNotBlank()) {
+            messages = messages.filter { (_, node) -> node.currentMessage.toText().contains(searchQuery, ignoreCase = true) }
         }
+        
+        // 再按点赞状态过滤
+        if (showOnlyFavorites) {
+            messages = messages.filter { (_, node) ->
+                node.isFavorite || node.currentMessage.role == me.rerere.ai.core.MessageRole.USER
+            }
+            // 当显示点赞消息时，同时显示对应的提问（前一个消息如果是USER）
+            val result = mutableListOf<Pair<Int, MessageNode>>()
+            val addedIndices = mutableSetOf<Int>()
+            messages.forEach { (index, node) ->
+                if (node.isFavorite && node.currentMessage.role == me.rerere.ai.core.MessageRole.ASSISTANT) {
+                    // 添加对应的提问（前一个消息）
+                    if (index > 0 && !addedIndices.contains(index - 1)) {
+                        result.add(index - 1 to conversation.messageNodes[index - 1])
+                        addedIndices.add(index - 1)
+                    }
+                    // 添加当前点赞的回答
+                    if (!addedIndices.contains(index)) {
+                        result.add(index to node)
+                        addedIndices.add(index)
+                    }
+                } else if (node.currentMessage.role == me.rerere.ai.core.MessageRole.USER) {
+                    // 检查下一个消息是否是点赞的回答
+                    if (index + 1 < conversation.messageNodes.size && 
+                        conversation.messageNodes[index + 1].isFavorite &&
+                        !addedIndices.contains(index)) {
+                        result.add(index to node)
+                        addedIndices.add(index)
+                    }
+                }
+            }
+            messages = result
+        }
+        
+        messages
     }
 
     Column(
@@ -691,36 +733,62 @@ private fun ChatListPreview(
                 .padding(top = 4.dp),
             textAlign = androidx.compose.ui.text.style.TextAlign.Center,
         )
-        // 搜索框
-        OutlinedTextField(
-            value = searchQuery,
-            onValueChange = { searchQuery = it },
+        // 搜索框和筛选按钮
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 8.dp),
-            placeholder = { Text(stringResource(R.string.history_page_search)) },
-            leadingIcon = {
-                Icon(
-                    imageVector = HugeIcons.Search01,
-                    contentDescription = null,
-                    modifier = Modifier.size(20.dp)
-                )
-            },
-            trailingIcon = {
-                if (searchQuery.isNotEmpty()) {
-                    IconButton(onClick = { searchQuery = "" }) {
-                        Icon(
-                            imageVector = HugeIcons.Cancel01,
-                            contentDescription = "Clear",
-                            modifier = Modifier.size(20.dp)
-                        )
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                modifier = Modifier.weight(1f),
+                placeholder = { Text(stringResource(R.string.history_page_search)) },
+                leadingIcon = {
+                    Icon(
+                        imageVector = HugeIcons.Search01,
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp)
+                    )
+                },
+                trailingIcon = {
+                    if (searchQuery.isNotEmpty()) {
+                        IconButton(onClick = { searchQuery = "" }) {
+                            Icon(
+                                imageVector = HugeIcons.Cancel01,
+                                contentDescription = "Clear",
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
                     }
+                },
+                singleLine = true,
+                shape = CircleShape,
+                maxLines = 1,
+            )
+            
+            // 筛选按钮
+            Surface(
+                onClick = { showOnlyFavorites = !showOnlyFavorites },
+                shape = CircleShape,
+                color = if (showOnlyFavorites) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
+                modifier = Modifier.size(48.dp)
+            ) {
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    Icon(
+                        imageVector = if (showOnlyFavorites) HugeIcons.Favourite else HugeIcons.Filter,
+                        contentDescription = if (showOnlyFavorites) "Show all messages" else "Show favorites only",
+                        modifier = Modifier.size(20.dp),
+                        tint = if (showOnlyFavorites) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                    )
                 }
-            },
-            singleLine = true,
-            shape = CircleShape,
-            maxLines = 1,
-        )
+            }
+        }
 
         // 消息预览
         LazyColumn(
@@ -736,6 +804,7 @@ private fun ChatListPreview(
             ) { _, (originalIndex, node) ->
                 val message = node.currentMessage
                 val isUser = message.role == me.rerere.ai.core.MessageRole.USER
+                val isFavorite = node.isFavorite
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start,
@@ -762,6 +831,15 @@ private fun ChatListPreview(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
+                            // 点赞标识
+                            if (isFavorite) {
+                                Icon(
+                                    imageVector = HugeIcons.Favourite,
+                                    contentDescription = "Favorite",
+                                    modifier = Modifier.size(16.dp),
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
                             val highlightColor = MaterialTheme.colorScheme.tertiaryContainer
                             val highlightedText = remember(searchQuery, message) {
                                 val fullText = message.toText().trim().ifBlank { "[...]" }
