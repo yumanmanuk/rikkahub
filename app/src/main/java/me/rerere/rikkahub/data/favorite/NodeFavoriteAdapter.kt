@@ -28,7 +28,7 @@ object NodeFavoriteAdapter : FavoriteAdapter<NodeFavoriteTarget> {
         )
         val meta = FavoriteMeta(
             title = target.conversationTitle.ifBlank { null },
-            subtitle = target.nodeId.toString(),
+            subtitle = target.questionPreview,
             previewText = target.node.buildFavoritePreview(),
         )
 
