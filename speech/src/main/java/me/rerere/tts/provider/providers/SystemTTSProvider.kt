@@ -164,7 +164,7 @@ class SystemTTSProvider : TTSProvider<TTSProviderSetting.SystemTTS> {
      * 消除 Android TTS 引擎在 pipeline 初始化阶段产生的 click/pop 噪声。
      * 仅处理 16-bit PCM WAV，其余格式原样返回。
      */
-    private fun applyWavFadeIn(wav: ByteArray, fadeMs: Int = 30): ByteArray {
+    private fun applyWavFadeIn(wav: ByteArray, fadeMs: Int = 50): ByteArray {
         // WAV 头至少 44 字节
         if (wav.size < 44) return wav
 

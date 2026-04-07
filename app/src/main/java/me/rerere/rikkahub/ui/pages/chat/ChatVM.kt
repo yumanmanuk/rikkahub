@@ -182,12 +182,21 @@ class ChatVM(
         chatService.sendMessage(_conversationId, content, answer)
     }
 
-    fun handleMessageEdit(parts: List<UIMessagePart>, messageId: Uuid) {
+    fun handleMessageEdit(parts: List<UIMessagePart>, messageId: Uuid, regenerate: Boolean = true) {
         if (parts.isEmptyInputMessage()) return
         // analytics.logEvent("ai_edit_message", null) // [FORK] Firebase removed
 
         viewModelScope.launch {
             chatService.editMessage(_conversationId, messageId, parts)
+            if (regenerate) {
+                // 找到编辑后的消息（已经是新版本），触发重新生成
+                val editedMessage = conversation.value.messageNodes
+                    .firstOrNull { node -> node.messages.any { it.id == messageId } }
+                    ?.currentMessage
+                if (editedMessage != null) {
+                    chatService.regenerateAtMessage(_conversationId, editedMessage)
+                }
+            }
         }
     }
 

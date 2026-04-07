@@ -78,9 +78,9 @@ class ChatInputState {
                 merged.addAll(remainingAttachments)
                 return merged
             }
-            return if (text.isBlank()) messageContent else listOf(UIMessagePart.Text(text)) + messageContent
+            return if (text.isBlank()) messageContent else messageContent + listOf(UIMessagePart.Text(text))
         }
-        return listOf(UIMessagePart.Text(text)) + messageContent
+        return messageContent + listOf(UIMessagePart.Text(text))
     }
 
     fun isEmpty(): Boolean {

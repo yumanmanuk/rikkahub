@@ -382,6 +382,7 @@ private fun ChatPageContent(
                             vm.handleMessageEdit(
                                 parts = inputState.getContents(),
                                 messageId = inputState.editingMessage!!,
+                                regenerate = false, // 长按：仅保存，不触发重新生成
                             )
                         } else {
                             vm.handleMessageSend(content = inputState.getContents(), answer = false)
