@@ -39,7 +39,7 @@ class TtsController(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     // 组件
-    private val chunker = TextChunker(maxChunkLength = 160)
+    private val chunker = TextChunker(maxChunkLength = 80)
     private val synthesizer = TtsSynthesizer(ttsManager)
     private val audio = AudioPlayer(context)
 

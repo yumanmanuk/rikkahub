@@ -367,10 +367,25 @@ private fun ChatListNormal(
                                 onDelete(node.currentMessage)
                             },
                             onShare = {
-                                selecting = true  // 使用 CoroutineScope 延迟状态更新
+                                selecting = true
                                 selectedItems.clear()
-                                selectedItems.addAll(conversation.messageNodes.map { it.id }
-                                    .subList(0, conversation.messageNodes.indexOf(node) + 1))
+                                val nodeIndex = conversation.messageNodes.indexOf(node)
+                                val role = node.currentMessage.role
+                                if (role == me.rerere.ai.core.MessageRole.USER) {
+                                    // 选中当前 USER 消息 + 紧跟的 ASSISTANT 消息（若有）
+                                    selectedItems.add(node.id)
+                                    val next = conversation.messageNodes.getOrNull(nodeIndex + 1)
+                                    if (next != null && next.currentMessage.role == me.rerere.ai.core.MessageRole.ASSISTANT) {
+                                        selectedItems.add(next.id)
+                                    }
+                                } else {
+                                    // 选中前面的 USER 消息（若有）+ 当前 ASSISTANT 消息
+                                    val prev = conversation.messageNodes.getOrNull(nodeIndex - 1)
+                                    if (prev != null && prev.currentMessage.role == me.rerere.ai.core.MessageRole.USER) {
+                                        selectedItems.add(prev.id)
+                                    }
+                                    selectedItems.add(node.id)
+                                }
                             },
                             onUpdate = {
                                 onUpdateMessage(it)
