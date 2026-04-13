@@ -72,7 +72,6 @@ import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Cancel01
 import me.rerere.hugeicons.stroke.LeftToRightListBullet
 import me.rerere.hugeicons.stroke.Menu03
-import me.rerere.hugeicons.stroke.MessageAdd01
 import me.rerere.hugeicons.stroke.SlidersHorizontal
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.datastore.Settings
@@ -82,6 +81,10 @@ import me.rerere.rikkahub.data.datastore.getCurrentChatModel
 import me.rerere.rikkahub.data.files.FilesManager
 import me.rerere.rikkahub.data.model.Conversation
 import me.rerere.rikkahub.data.model.ConversationParams
+import me.rerere.rikkahub.data.model.SystemPromptMode
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import me.rerere.rikkahub.service.ChatError
 import me.rerere.rikkahub.ui.components.ai.ChatInput
 import me.rerere.rikkahub.ui.context.LocalNavController
@@ -828,6 +831,96 @@ private fun ConversationParamsSheet(
                         ) else stringResource(R.string.assistant_page_context_message_unlimited),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.75f),
+                    )
+                }
+            }
+            HorizontalDivider()
+
+            // System Prompt
+            FormItem(
+                modifier = Modifier.padding(8.dp),
+                label = {
+                    Text("对话专属系统提示词")
+                },
+                description = {
+                    if (params.systemPrompt == null) {
+                        Text(
+                            text = "使用助手设置: ${assistant.systemPrompt.ifBlank { "默认" }.take(40)}${if (assistant.systemPrompt.length > 40) "…" else ""}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    } else {
+                        val modeLabel = when (params.systemPromptMode) {
+                            SystemPromptMode.OVERRIDE -> "覆盖模式：完全替换助手提示词"
+                            SystemPromptMode.APPEND  -> "追加模式：附加在助手提示词末尾"
+                        }
+                        Text(
+                            text = modeLabel,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                },
+                tail = {
+                    Switch(
+                        checked = params.systemPrompt != null,
+                        onCheckedChange = { enabled ->
+                            val newParams = params.copy(
+                                systemPrompt = if (enabled) assistant.systemPrompt else null
+                            )
+                            params = newParams
+                            onUpdate(newParams)
+                        }
+                    )
+                }
+            ) {
+                params.systemPrompt?.let { prompt ->
+                    // 模式选择器
+                    val modes = listOf(
+                        SystemPromptMode.APPEND  to "追加",
+                        SystemPromptMode.OVERRIDE to "覆盖",
+                    )
+                    SingleChoiceSegmentedButtonRow(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 8.dp)
+                    ) {
+                        modes.forEachIndexed { index, (mode, label) ->
+                            SegmentedButton(
+                                shape = SegmentedButtonDefaults.itemShape(
+                                    index = index,
+                                    count = modes.size,
+                                ),
+                                onClick = {
+                                    val newParams = params.copy(systemPromptMode = mode)
+                                    params = newParams
+                                    onUpdate(newParams)
+                                },
+                                selected = params.systemPromptMode == mode,
+                                label = { Text(label) },
+                            )
+                        }
+                    }
+                    OutlinedTextField(
+                        value = prompt,
+                        onValueChange = {
+                            val newParams = params.copy(systemPrompt = it)
+                            params = newParams
+                            onUpdate(newParams)
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 4.dp),
+                        minLines = 4,
+                        maxLines = 12,
+                        placeholder = {
+                            Text(
+                                text = "输入此对话的专属系统提示词…",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        },
+                        textStyle = MaterialTheme.typography.bodySmall,
                     )
                 }
             }

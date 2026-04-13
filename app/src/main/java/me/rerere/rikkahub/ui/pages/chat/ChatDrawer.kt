@@ -350,7 +350,7 @@ fun ChatDrawerContent(
                 )
             }
         }
-        
+
         IconButton(
             onClick = {
                 scope.launch {
