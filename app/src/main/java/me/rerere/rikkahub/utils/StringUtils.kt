@@ -130,3 +130,44 @@ fun String.extractQuotedContentAsText(separator: String = "\n"): String? {
         null
     }
 }
+
+/**
+ * 统计字数：
+ * - 剔除标点符号和空白字符
+ * - 中日韩字符按单字统计
+ * - 其他字母和数字按单词组合统计（例如一个英文单词算作 1 个字）
+ */
+fun String.wordCount(): Int {
+    var count = 0
+    var inWord = false
+
+    var i = 0
+    while (i < this.length) {
+        val codePoint = this.codePointAt(i)
+
+        val isCjk = (codePoint in 0x4E00..0x9FFF) ||
+                (codePoint in 0x3400..0x4DBF) ||
+                (codePoint in 0x20000..0x2A6DF) ||
+                (codePoint in 0x3040..0x309F) ||
+                (codePoint in 0x30A0..0x30FF) ||
+                (codePoint in 0xAC00..0xD7AF) ||
+                (codePoint in 0xF900..0xFAFF)
+
+        if (isCjk) {
+            count++
+            inWord = false
+        } else if (Character.isLetterOrDigit(codePoint)) {
+            if (!inWord) {
+                count++
+                inWord = true
+            }
+        } else if (codePoint == '\''.code || codePoint == '\u2019'.code || codePoint == '-'.code) {
+            // 在单词中间的连字符不打断单词统计
+        } else {
+            inWord = false
+        }
+
+        i += Character.charCount(codePoint)
+    }
+    return count
+}

@@ -490,6 +490,7 @@ class ChatService(
                     }
                 },
                 assistant = settings.getCurrentAssistant(),
+                conversationParams = conversation.conversationParams,
                 memories = if (settings.getCurrentAssistant().useGlobalMemory) {
                     memoryRepository.getGlobalMemories()
                 } else {
@@ -1147,6 +1148,21 @@ class ChatService(
         saveConversation(conversationId, currentConversation.copy(messageNodes = updatedNodes))
     }
 
+    suspend fun deleteMessagesBeforeMessage(
+        conversationId: Uuid,
+        messageId: Uuid,
+    ) {
+        val currentConversation = getConversationFlow(conversationId).value
+        val targetNodeIndex = currentConversation.messageNodes.indexOfFirst { node ->
+            node.messages.any { it.id == messageId }
+        }
+        if (targetNodeIndex == -1) return
+        if (targetNodeIndex == 0) return // 没有之前的消息，无需操作
+
+        val updatedNodes = currentConversation.messageNodes.subList(targetNodeIndex, currentConversation.messageNodes.size)
+        saveConversation(conversationId, currentConversation.copy(messageNodes = updatedNodes))
+    }
+
     suspend fun deleteMessage(
         conversationId: Uuid,
         messageId: Uuid,
@@ -1169,6 +1185,35 @@ class ChatService(
         conversationId: Uuid,
         message: UIMessage,
     ) {
+        val currentConversation = getConversationFlow(conversationId).value
+
+        // 如果删除的是 USER 消息，连带删除其后紧跟的 ASSISTANT 节点（如果有）
+        if (message.role == me.rerere.ai.core.MessageRole.USER) {
+            val nodeIndex = currentConversation.messageNodes.indexOfFirst { node ->
+                node.messages.any { it.id == message.id }
+            }
+            val nextNode = currentConversation.messageNodes.getOrNull(nodeIndex + 1)
+            if (nodeIndex != -1 && nextNode != null &&
+                nextNode.currentMessage.role == me.rerere.ai.core.MessageRole.ASSISTANT
+            ) {
+                // 先删除当前 USER 节点，再删除紧跟的 ASSISTANT 节点
+                val afterDeleteUser = buildConversationAfterMessageDelete(currentConversation, message.id)
+                    ?: return
+                // 删除 USER 节点后，原来的 nextNode 在新列表中仍在相同 nodeIndex 位置
+                val assistantNodeInNew = afterDeleteUser.messageNodes.getOrNull(nodeIndex)
+                if (assistantNodeInNew != null &&
+                    assistantNodeInNew.id == nextNode.id
+                ) {
+                    // 删除对应的 ASSISTANT 节点（整个节点）
+                    val finalNodes = afterDeleteUser.messageNodes.filterIndexed { idx, _ -> idx != nodeIndex }
+                    saveConversation(conversationId, afterDeleteUser.copy(messageNodes = finalNodes))
+                } else {
+                    saveConversation(conversationId, afterDeleteUser)
+                }
+                return
+            }
+        }
+
         deleteMessage(conversationId, message.id, failIfMissing = false)
     }
 

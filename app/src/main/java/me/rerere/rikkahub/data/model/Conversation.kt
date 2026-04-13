@@ -12,6 +12,17 @@ import me.rerere.rikkahub.data.datastore.DEFAULT_ASSISTANT_ID
 import java.time.Instant
 import kotlin.uuid.Uuid
 
+/**
+ * 对话专属参数，优先级高于助手设置。
+ * null 表示使用助手的设置。
+ */
+@Serializable
+data class ConversationParams(
+    val temperature: Float? = null,
+    val topP: Float? = null,
+    val contextMessageSize: Int? = null,
+)
+
 @Serializable
 data class Conversation(
     val id: Uuid = Uuid.random(),
@@ -24,6 +35,7 @@ data class Conversation(
     val createAt: Instant = Instant.now(),
     @Serializable(with = InstantSerializer::class)
     val updateAt: Instant = Instant.now(),
+    val conversationParams: ConversationParams = ConversationParams(),
     @Transient
     val newConversation: Boolean = false
 ) {

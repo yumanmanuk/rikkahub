@@ -40,6 +40,7 @@ import me.rerere.rikkahub.data.datastore.findModelById
 import me.rerere.rikkahub.data.datastore.findProvider
 import me.rerere.rikkahub.data.model.Assistant
 import me.rerere.rikkahub.data.model.AssistantMemory
+import me.rerere.rikkahub.data.model.ConversationParams
 import me.rerere.rikkahub.data.repository.ConversationRepository
 import me.rerere.rikkahub.data.repository.MemoryRepository
 import me.rerere.rikkahub.utils.applyPlaceholders
@@ -70,6 +71,7 @@ class GenerationHandler(
         inputTransformers: List<InputMessageTransformer> = emptyList(),
         outputTransformers: List<OutputMessageTransformer> = emptyList(),
         assistant: Assistant,
+        conversationParams: ConversationParams = ConversationParams(),
         memories: List<AssistantMemory>? = null,
         tools: List<Tool> = emptyList(),
         maxSteps: Int = 256,
@@ -117,6 +119,7 @@ class GenerationHandler(
             if (pendingTools.isEmpty()) {
                 generateInternal(
                     assistant = assistant,
+                    conversationParams = conversationParams,
                     settings = settings,
                     messages = messages,
                     onUpdateMessages = {
@@ -322,6 +325,7 @@ class GenerationHandler(
 
     private suspend fun generateInternal(
         assistant: Assistant,
+        conversationParams: ConversationParams = ConversationParams(),
         settings: Settings,
         messages: List<UIMessage>,
         onUpdateMessages: suspend (List<UIMessage>) -> Unit,
@@ -333,6 +337,11 @@ class GenerationHandler(
         memories: List<AssistantMemory>,
         stream: Boolean
     ) {
+        // 对话参数优先于助手参数，null 则回退到助手参数
+        val effectiveTemperature = conversationParams.temperature ?: assistant.temperature
+        val effectiveTopP = conversationParams.topP ?: assistant.topP
+        val effectiveContextMessageSize = conversationParams.contextMessageSize ?: assistant.contextMessageSize
+
         val internalMessages = buildList {
             val system = buildString {
                 // 如果助手有系统提示，则添加到消息中
@@ -357,7 +366,7 @@ class GenerationHandler(
                 }
             }
             if (system.isNotBlank()) add(UIMessage.system(prompt = system))
-            addAll(messages.limitContext(assistant.contextMessageSize))
+            addAll(messages.limitContext(effectiveContextMessageSize))
         }.transforms(
             transformers = transformers,
             context = context,
@@ -369,8 +378,8 @@ class GenerationHandler(
         var messages: List<UIMessage> = messages
         val params = TextGenerationParams(
             model = model,
-            temperature = assistant.temperature,
-            topP = assistant.topP,
+            temperature = effectiveTemperature,
+            topP = effectiveTopP,
             maxTokens = assistant.maxTokens,
             tools = tools,
             thinkingBudget = assistant.thinkingBudget,

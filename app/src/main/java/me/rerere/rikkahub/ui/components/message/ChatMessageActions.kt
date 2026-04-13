@@ -248,6 +248,7 @@ fun ChatMessageActionsSheet(
     onEdit: () -> Unit,
     onShare: () -> Unit,
     onFork: () -> Unit,
+    onDeleteBefore: () -> Unit,
     onSelectAndCopy: () -> Unit,
     onTranslate: ((UIMessage, Locale) -> Unit)? = null,
     onClearTranslation: (UIMessage) -> Unit = {},
@@ -257,6 +258,7 @@ fun ChatMessageActionsSheet(
     onDismissRequest: () -> Unit
 ) {
     var showTranslateDialog by remember { mutableStateOf(false) }
+    var showDeleteBeforeConfirm by remember { mutableStateOf(false) }
 
     ModalBottomSheet(
         onDismissRequest = onDismissRequest,
@@ -437,6 +439,35 @@ fun ChatMessageActionsSheet(
                 }
             }
 
+            // Delete messages before this one
+            Card(
+                onClick = {
+                    showDeleteBeforeConfirm = true
+                },
+                shape = MaterialTheme.shapes.medium,
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f)
+                )
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    modifier = Modifier
+                        .padding(16.dp)
+                        .fillMaxWidth()
+                ) {
+                    Icon(
+                        imageVector = HugeIcons.Delete01,
+                        contentDescription = null,
+                        modifier = Modifier.padding(4.dp)
+                    )
+                    Text(
+                        text = stringResource(R.string.delete_messages_before),
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                }
+            }
+
 
             // Delete
             Card(
@@ -477,6 +508,21 @@ fun ChatMessageActionsSheet(
             }
         }
     }
+
+    // Delete before confirmation dialog
+    RikkaConfirmDialog(
+        show = showDeleteBeforeConfirm,
+        title = stringResource(R.string.delete_messages_before),
+        confirmText = stringResource(R.string.confirm),
+        dismissText = stringResource(R.string.cancel),
+        onConfirm = {
+            showDeleteBeforeConfirm = false
+            onDismissRequest()
+            onDeleteBefore()
+        },
+        onDismiss = { showDeleteBeforeConfirm = false },
+        text = { Text(stringResource(R.string.delete_messages_before_confirm)) }
+    )
 
     // Translation dialog
     if (showTranslateDialog && onTranslate != null) {

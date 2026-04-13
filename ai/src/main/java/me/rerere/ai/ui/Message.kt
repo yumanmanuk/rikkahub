@@ -2,6 +2,7 @@ package me.rerere.ai.ui
 
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
+import kotlinx.datetime.toInstant
 import kotlinx.datetime.toLocalDateTime
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -89,8 +90,13 @@ data class UIMessage(
                                     }
                                 }
                             } else {
-                                // Create new Reasoning part
-                                acc + deltaPart
+                                // Create new Reasoning part, anchoring createdAt to the
+                                // message's own creation time so that non-streaming responses
+                                // (where parseMessage sets createdAt = Clock.System.now() right
+                                // before finishReasoning is called) don't show "0.0 s" duration.
+                                acc + deltaPart.copy(
+                                    createdAt = this.createdAt.toInstant(TimeZone.currentSystemDefault())
+                                )
                             }
                         }
                     }

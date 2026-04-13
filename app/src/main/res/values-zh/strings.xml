@@ -302,6 +302,8 @@
   <string name="copy">复制</string>
   <string name="copy_all">复制全部</string>
   <string name="create_fork">创建分支</string>
+  <string name="delete_messages_before">删除之前的问答</string>
+  <string name="delete_messages_before_confirm">确定要删除此消息之前的所有问答吗？此操作不可撤销。</string>
   <string name="db_migrating">正在迁移数据库…</string>
   <string name="deep_thinking">深度思考</string>
   <string name="deep_thinking_seconds">思考了 %1$.1f 秒</string>
@@ -696,6 +698,7 @@
   <string name="setting_page_color_mode_dark">深色</string>
   <string name="setting_page_color_mode_light">浅色</string>
   <string name="setting_page_color_mode_system">跟随系统</string>
+  <string name="setting_page_color_mode_eye_care">护眼</string>
   <string name="setting_page_config">配置</string>
   <string name="setting_page_config_api_desc">你还没有配置API和模型，请先配置</string>
   <string name="setting_page_config_api_title">请配置API和模型</string>
