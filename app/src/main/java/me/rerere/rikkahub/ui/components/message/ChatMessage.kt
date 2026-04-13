@@ -110,6 +110,7 @@ fun ChatMessage(
     onEdit: () -> Unit,
     onShare: () -> Unit,
     onDelete: () -> Unit,
+    onDeleteBefore: () -> Unit,
     onUpdate: (MessageNode) -> Unit,
     isFavorite: Boolean = false,
     onToggleFavorite: (() -> Unit)? = null,
@@ -226,6 +227,7 @@ fun ChatMessage(
             onDelete = onDelete,
             onShare = onShare,
             onFork = onFork,
+            onDeleteBefore = onDeleteBefore,
             model = model,
             onSelectAndCopy = {
                 showSelectCopySheet = true

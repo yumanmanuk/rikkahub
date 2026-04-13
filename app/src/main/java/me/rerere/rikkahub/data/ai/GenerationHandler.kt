@@ -75,6 +75,7 @@ class GenerationHandler(
         inputTransformers: List<InputMessageTransformer> = emptyList(),
         outputTransformers: List<OutputMessageTransformer> = emptyList(),
         assistant: Assistant,
+        conversationParams: ConversationParams = ConversationParams(),
         memories: List<AssistantMemory>? = null,
         tools: List<Tool> = emptyList(),
         maxSteps: Int = 256,
@@ -127,6 +128,7 @@ class GenerationHandler(
             if (pendingTools.isEmpty()) {
                 generateInternal(
                     assistant = assistant,
+                    conversationParams = conversationParams,
                     settings = settings,
                     messages = messages,
                     onUpdateMessages = {
@@ -345,6 +347,7 @@ class GenerationHandler(
 
     private suspend fun generateInternal(
         assistant: Assistant,
+        conversationParams: ConversationParams = ConversationParams(),
         settings: Settings,
         messages: List<UIMessage>,
         onUpdateMessages: suspend (List<UIMessage>) -> Unit,
@@ -361,6 +364,11 @@ class GenerationHandler(
         conversationLorebookIds: Set<Uuid> = emptySet(),
         workspaceCwd: String? = null,
     ) {
+        // 对话参数优先于助手参数，null 则回退到助手参数
+        val effectiveTemperature = conversationParams.temperature ?: assistant.temperature
+        val effectiveTopP = conversationParams.topP ?: assistant.topP
+        val effectiveContextMessageSize = conversationParams.contextMessageSize ?: assistant.contextMessageSize
+
         val internalMessages = buildList {
             val system = buildString {
                 val effectiveSystemPrompt =
@@ -385,7 +393,7 @@ class GenerationHandler(
                 }
             }
             if (system.isNotBlank()) add(UIMessage.system(prompt = system))
-            addAll(messages.limitContext(assistant.contextMessageSize))
+            addAll(messages.limitContext(effectiveContextMessageSize))
         }.transforms(
             transformers = transformers,
             context = context,
@@ -401,8 +409,8 @@ class GenerationHandler(
         var messages: List<UIMessage> = messages
         val params = TextGenerationParams(
             model = model,
-            temperature = assistant.temperature,
-            topP = assistant.topP,
+            temperature = effectiveTemperature,
+            topP = effectiveTopP,
             maxTokens = assistant.maxTokens,
             tools = tools,
             reasoningLevel = assistant.reasoningLevel,

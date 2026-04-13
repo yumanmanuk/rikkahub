@@ -6,15 +6,24 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.relocation.bringIntoViewResponder
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DrawerState
 import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalContentColor
@@ -26,6 +35,7 @@ import androidx.compose.material3.PermanentNavigationDrawer
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -33,15 +43,17 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.adaptive.currentWindowDpSize
 import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.material3.rememberDrawerState
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.snapshotFlow
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
@@ -68,6 +80,7 @@ import me.rerere.hugeicons.stroke.Cancel01
 import me.rerere.hugeicons.stroke.LeftToRightListBullet
 import me.rerere.hugeicons.stroke.Menu03
 import me.rerere.hugeicons.stroke.MessageAdd01
+import me.rerere.hugeicons.stroke.SlidersHorizontal
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.findProvider
@@ -94,6 +107,11 @@ import me.rerere.rikkahub.ui.hooks.useEditState
 import me.rerere.rikkahub.utils.base64Decode
 import me.rerere.rikkahub.utils.isAllowedFileType
 import me.rerere.rikkahub.utils.navigateToChatPage
+import me.rerere.rikkahub.ui.components.ui.FormItem
+import me.rerere.rikkahub.ui.components.ui.Tag
+import me.rerere.rikkahub.ui.components.ui.TagType
+import me.rerere.rikkahub.utils.toFixed
+import kotlin.math.roundToInt
 import org.koin.androidx.compose.koinViewModel
 import org.koin.compose.koinInject
 import org.koin.core.parameter.parametersOf
@@ -332,14 +350,14 @@ private fun ChatPageContent(
                     bigScreen = bigScreen,
                     drawerState = drawerState,
                     previewMode = previewMode,
-                    onNewChat = {
-                        navigateToChatPage(navController)
-                    },
                     onClickMenu = {
                         previewMode = !previewMode
                     },
                     onUpdateTitle = {
                         vm.updateTitle(it)
+                    },
+                    onUpdateConversationParams = {
+                        vm.updateConversationParams(it)
                     }
                 )
             },
@@ -452,6 +470,13 @@ private fun ChatPageContent(
                         vm.showDeleteBlockedWhileGeneratingError()
                     } else {
                         vm.deleteMessage(it)
+                    }
+                },
+                onDeleteBeforeMessage = {
+                    if (loadingJob != null) {
+                        vm.showDeleteBlockedWhileGeneratingError()
+                    } else {
+                        vm.deleteMessagesBeforeMessage(it)
                     }
                 },
                 onUpdateMessage = { newNode ->
@@ -719,8 +744,8 @@ private fun TopBar(
     bigScreen: Boolean,
     previewMode: Boolean,
     onClickMenu: () -> Unit,
-    onNewChat: () -> Unit,
-    onUpdateTitle: (String) -> Unit
+    onUpdateTitle: (String) -> Unit,
+    onUpdateConversationParams: (ConversationParams) -> Unit,
 ) {
     val scope = rememberCoroutineScope()
     val toaster = LocalToaster.current
@@ -778,6 +803,14 @@ private fun TopBar(
             }
         },
         actions = {
+            var showParamsSheet by remember { mutableStateOf(false) }
+
+            IconButton(
+                onClick = { showParamsSheet = true }
+            ) {
+                Icon(HugeIcons.SlidersHorizontal, "Conversation Params")
+            }
+
             IconButton(
                 onClick = {
                     onClickMenu()
@@ -786,12 +819,13 @@ private fun TopBar(
                 Icon(if (previewMode) HugeIcons.Cancel01 else HugeIcons.LeftToRightListBullet, "Chat Options")
             }
 
-            IconButton(
-                onClick = {
-                    onNewChat()
-                }
-            ) {
-                Icon(HugeIcons.MessageAdd01, "New Message")
+            if (showParamsSheet) {
+                ConversationParamsSheet(
+                    conversation = conversation,
+                    settings = settings,
+                    onDismiss = { showParamsSheet = false },
+                    onUpdate = onUpdateConversationParams
+                )
             }
         },
     )
@@ -830,5 +864,231 @@ private fun TopBar(
                 }
             }
         )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ConversationParamsSheet(
+    conversation: Conversation,
+    settings: Settings,
+    onDismiss: () -> Unit,
+    onUpdate: (ConversationParams) -> Unit,
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val assistant = settings.getCurrentAssistant()
+    var params by remember { mutableStateOf(conversation.conversationParams) }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        contentWindowInsets = { WindowInsets(0) },
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(WindowInsets.navigationBars.asPaddingValues())
+                .padding(bottom = 16.dp)
+                .imePadding(),
+            verticalArrangement = Arrangement.spacedBy(0.dp)
+        ) {
+            Text(
+                text = "对话专属参数",
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+            )
+            Text(
+                text = "覆盖助手设置，仅对此对话生效。关闭开关则使用助手默认值。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 16.dp).padding(bottom = 8.dp)
+            )
+            HorizontalDivider()
+
+            // Temperature
+            FormItem(
+                modifier = Modifier.padding(8.dp),
+                label = {
+                    Text(stringResource(R.string.assistant_page_temperature))
+                },
+                description = {
+                    if (params.temperature == null) {
+                        Text(
+                            text = "使用助手设置: ${assistant.temperature ?: "默认"}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                },
+                tail = {
+                    Switch(
+                        checked = params.temperature != null,
+                        onCheckedChange = { enabled ->
+                            val newParams = params.copy(
+                                temperature = if (enabled) (assistant.temperature ?: 1.0f) else null
+                            )
+                            params = newParams
+                            onUpdate(newParams)
+                        }
+                    )
+                }
+            ) {
+                if (params.temperature != null) {
+                    Slider(
+                        value = params.temperature!!,
+                        onValueChange = {
+                            val newParams = params.copy(
+                                temperature = it.toFixed(2).toFloatOrNull() ?: 0.6f
+                            )
+                            params = newParams
+                            onUpdate(newParams)
+                        },
+                        valueRange = 0f..2f,
+                        steps = 19,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        val currentTemperature = params.temperature!!
+                        val tagType = when (currentTemperature) {
+                            in 0.0f..0.3f -> TagType.INFO
+                            in 0.3f..1.0f -> TagType.SUCCESS
+                            in 1.0f..1.5f -> TagType.WARNING
+                            in 1.5f..2.0f -> TagType.ERROR
+                            else -> TagType.ERROR
+                        }
+                        Tag(type = TagType.INFO) {
+                            Text(text = "$currentTemperature")
+                        }
+                        Tag(type = tagType) {
+                            Text(
+                                text = when (currentTemperature) {
+                                    in 0.0f..0.3f -> stringResource(R.string.assistant_page_strict)
+                                    in 0.3f..1.0f -> stringResource(R.string.assistant_page_balanced)
+                                    in 1.0f..1.5f -> stringResource(R.string.assistant_page_creative)
+                                    in 1.5f..2.0f -> stringResource(R.string.assistant_page_chaotic)
+                                    else -> "?"
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+            HorizontalDivider()
+
+            // Top P
+            FormItem(
+                modifier = Modifier.padding(8.dp),
+                label = {
+                    Text(stringResource(R.string.assistant_page_top_p))
+                },
+                description = {
+                    if (params.topP == null) {
+                        Text(
+                            text = "使用助手设置: ${assistant.topP ?: "默认"}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    } else {
+                        Text(text = stringResource(R.string.assistant_page_top_p_warning))
+                    }
+                },
+                tail = {
+                    Switch(
+                        checked = params.topP != null,
+                        onCheckedChange = { enabled ->
+                            val newParams = params.copy(
+                                topP = if (enabled) (assistant.topP ?: 1.0f) else null
+                            )
+                            params = newParams
+                            onUpdate(newParams)
+                        }
+                    )
+                }
+            ) {
+                params.topP?.let { topP ->
+                    Slider(
+                        value = topP,
+                        onValueChange = {
+                            val newParams = params.copy(
+                                topP = it.toFixed(2).toFloatOrNull() ?: 1.0f
+                            )
+                            params = newParams
+                            onUpdate(newParams)
+                        },
+                        valueRange = 0f..1f,
+                        steps = 0,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Text(
+                        text = stringResource(R.string.assistant_page_top_p_value, topP.toString()),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.75f),
+                    )
+                }
+            }
+            HorizontalDivider()
+
+            // Context Message Size
+            FormItem(
+                modifier = Modifier.padding(8.dp),
+                label = {
+                    Text(stringResource(R.string.assistant_page_context_message_size))
+                },
+                description = {
+                    if (params.contextMessageSize == null) {
+                        Text(
+                            text = "使用助手设置: ${
+                                if (assistant.contextMessageSize > 0)
+                                    stringResource(R.string.assistant_page_context_message_count, assistant.contextMessageSize)
+                                else stringResource(R.string.assistant_page_context_message_unlimited)
+                            }",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    } else {
+                        Text(text = stringResource(R.string.assistant_page_context_message_desc))
+                    }
+                },
+                tail = {
+                    Switch(
+                        checked = params.contextMessageSize != null,
+                        onCheckedChange = { enabled ->
+                            val newParams = params.copy(
+                                contextMessageSize = if (enabled) assistant.contextMessageSize else null
+                            )
+                            params = newParams
+                            onUpdate(newParams)
+                        }
+                    )
+                }
+            ) {
+                params.contextMessageSize?.let { size ->
+                    Slider(
+                        value = size.toFloat(),
+                        onValueChange = {
+                            val newParams = params.copy(contextMessageSize = it.roundToInt())
+                            params = newParams
+                            onUpdate(newParams)
+                        },
+                        valueRange = 0f..512f,
+                        steps = 0,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Text(
+                        text = if (size > 0) stringResource(
+                            R.string.assistant_page_context_message_count, size
+                        ) else stringResource(R.string.assistant_page_context_message_unlimited),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.75f),
+                    )
+                }
+            }
+            HorizontalDivider()
+        }
     }
 }

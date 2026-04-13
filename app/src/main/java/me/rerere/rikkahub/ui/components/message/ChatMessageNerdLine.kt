@@ -27,6 +27,7 @@ import me.rerere.hugeicons.stroke.Zap
 import me.rerere.rikkahub.ui.context.LocalSettings
 import me.rerere.rikkahub.utils.formatNumber
 import me.rerere.rikkahub.utils.toFixed
+import me.rerere.rikkahub.utils.wordCount
 import java.time.Duration
 
 /**
@@ -83,7 +84,7 @@ fun ChatMessageNerdLine(
                         }
                     )
                     // 字数
-                    val charCount = message.toText().length
+                    val charCount = message.toText().wordCount()
                     if (charCount > 0) {
                         StatsItem(
                             icon = {

@@ -224,6 +224,12 @@ class ChatVM(
         }
     }
 
+    fun deleteMessagesBeforeMessage(message: UIMessage) {
+        viewModelScope.launch {
+            chatService.deleteMessagesBeforeMessage(_conversationId, message.id)
+        }
+    }
+
     fun showDeleteBlockedWhileGeneratingError() {
         chatService.addError(
             error = IllegalStateException("请先停止生成再删除消息"),
@@ -325,6 +331,13 @@ class ChatVM(
     fun updateConversation(newConversation: Conversation) {
         chatService.updateConversationState(_conversationId) {
             newConversation
+        }
+    }
+
+    fun updateConversationParams(params: me.rerere.rikkahub.data.model.ConversationParams) {
+        viewModelScope.launch {
+            val updatedConversation = conversation.value.copy(conversationParams = params)
+            chatService.saveConversation(_conversationId, updatedConversation)
         }
     }
 

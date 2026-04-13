@@ -21,6 +21,7 @@ import androidx.compose.material3.DrawerState
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -57,6 +58,7 @@ import me.rerere.hugeicons.stroke.Image02
 import me.rerere.hugeicons.stroke.InLove
 import me.rerere.hugeicons.stroke.LanguageCircle
 import me.rerere.hugeicons.stroke.LookTop
+import me.rerere.hugeicons.stroke.MessageAdd01
 import me.rerere.hugeicons.stroke.PencilEdit01
 import me.rerere.hugeicons.stroke.Search01
 import me.rerere.hugeicons.stroke.Settings03
@@ -145,10 +147,11 @@ fun ChatDrawerContent(
     ModalDrawerSheet(
         modifier = Modifier.width(300.dp)
     ) {
-        Column(
-            modifier = Modifier.padding(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
+        Box {
+            Column(
+                modifier = Modifier.padding(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
             if (settings.displaySetting.showUpdates && !isPlayStore) {
                 UpdateCard(vm)
             }
@@ -371,7 +374,25 @@ fun ChatDrawerContent(
                 )
             }
         }
+        
+        IconButton(
+            onClick = {
+                scope.launch {
+                    drawerState?.close()
+                    navigateToChatPage(navController)
+                }
+            },
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(8.dp)
+        ) {
+            Icon(
+                imageVector = HugeIcons.MessageAdd01,
+                contentDescription = stringResource(R.string.chat_page_new_chat)
+            )
+        }
     }
+}
 
     // 昵称编辑对话框
     nicknameEditState.EditStateContent { nickname, onUpdate ->
