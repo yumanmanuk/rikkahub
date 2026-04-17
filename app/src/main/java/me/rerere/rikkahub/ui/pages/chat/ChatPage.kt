@@ -19,6 +19,7 @@ import androidx.compose.foundation.relocation.bringIntoViewResponder
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+
 import androidx.compose.material3.DrawerState
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -318,7 +319,7 @@ private fun ChatPageContent(
                     },
                     onUpdateConversationParams = {
                         vm.updateConversationParams(it)
-                    }
+                    },
                 )
             },
             bottomBar = {
@@ -570,7 +571,7 @@ private fun TopBar(
                     conversation = conversation,
                     settings = settings,
                     onDismiss = { showParamsSheet = false },
-                    onUpdate = onUpdateConversationParams
+                    onUpdate = onUpdateConversationParams,
                 )
             }
         },
@@ -623,7 +624,10 @@ private fun ConversationParamsSheet(
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val assistant = settings.getCurrentAssistant()
-    var params by remember { mutableStateOf(conversation.conversationParams) }
+    // 当前编辑的参数，初始值来自对话的持久化参数
+    var params by remember {
+        mutableStateOf(conversation.conversationParams)
+    }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -650,6 +654,7 @@ private fun ConversationParamsSheet(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 16.dp).padding(bottom = 8.dp)
             )
+
             HorizontalDivider()
 
             // Temperature
@@ -925,6 +930,8 @@ private fun ConversationParamsSheet(
                 }
             }
             HorizontalDivider()
+
+
         }
     }
 }

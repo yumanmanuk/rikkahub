@@ -41,6 +41,7 @@ import me.rerere.rikkahub.data.datastore.findProvider
 import me.rerere.rikkahub.data.model.Assistant
 import me.rerere.rikkahub.data.model.AssistantMemory
 import me.rerere.rikkahub.data.model.ConversationParams
+import me.rerere.rikkahub.data.model.SystemPromptMode
 import me.rerere.rikkahub.data.repository.ConversationRepository
 import me.rerere.rikkahub.data.repository.MemoryRepository
 import me.rerere.rikkahub.utils.applyPlaceholders
@@ -341,12 +342,24 @@ class GenerationHandler(
         val effectiveTemperature = conversationParams.temperature ?: assistant.temperature
         val effectiveTopP = conversationParams.topP ?: assistant.topP
         val effectiveContextMessageSize = conversationParams.contextMessageSize ?: assistant.contextMessageSize
+        // 根据模式合并系统提示词
+        val effectiveSystemPrompt: String = when {
+            conversationParams.systemPrompt == null -> assistant.systemPrompt
+            conversationParams.systemPromptMode == SystemPromptMode.OVERRIDE -> conversationParams.systemPrompt
+            else -> buildString {
+                if (assistant.systemPrompt.isNotBlank()) {
+                    append(assistant.systemPrompt)
+                    append("\n\n")
+                }
+                append(conversationParams.systemPrompt)
+            }
+        }
 
         val internalMessages = buildList {
             val system = buildString {
-                // 如果助手有系统提示，则添加到消息中
-                if (assistant.systemPrompt.isNotBlank()) {
-                    append(assistant.systemPrompt)
+                // 如果有有效系统提示，则添加到消息中
+                if (effectiveSystemPrompt.isNotBlank()) {
+                    append(effectiveSystemPrompt)
                 }
 
                 // 记忆
