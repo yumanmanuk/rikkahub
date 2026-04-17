@@ -836,6 +836,7 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="setting_provider_page_title">제공업체</string>
   <string name="setting_provider_page_tool">도구</string>
   <string name="setting_provider_page_vertex_ai">Vertex AI</string>
+  <string name="setting_provider_page_use_service_account">서비스 계정 사용</string>
   <string name="setting_tts_page_add">추가</string>
   <string name="setting_tts_page_add_provider">TTS 제공업체 추가</string>
   <string name="setting_tts_page_add_provider_content_description">TTS 제공업체 추가</string>
@@ -972,4 +973,6 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="video">동영상</string>
   <string name="web_search_disabled">웹 검색 비활성화됨</string>
   <string name="web_search_enabled">웹 검색 활성화됨</string>
+  <string name="setting_provider_page_import_service_account_json">서비스 계정 JSON 가져오기</string>
 </resources>
+

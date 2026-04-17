@@ -176,9 +176,18 @@ fun ChatPage(id: Uuid, text: String?, files: List<Uri>, nodeId: Uuid? = null) {
     }
 
     val chatListState = rememberLazyListState()
-    LaunchedEffect(vm, conversation.messageNodes.size) {
-        if (conversation.messageNodes.isEmpty()) return@LaunchedEffect
-        if (nodeId != null && !vm.chatListInitialized) {
+
+    // 初始化滚动：普通进入时滚动到底部
+    LaunchedEffect(vm) {
+        if (nodeId == null && !vm.chatListInitialized && chatListState.layoutInfo.totalItemsCount > 0) {
+            chatListState.scrollToItem(chatListState.layoutInfo.totalItemsCount)
+            vm.chatListInitialized = true
+        }
+    }
+
+    // 处理从收藏页跳转的滚动逻辑
+    LaunchedEffect(nodeId, conversation.messageNodes.size) {
+        if (nodeId != null && conversation.messageNodes.isNotEmpty() && !vm.chatListInitialized) {
             // 从收藏页跳转：找到收藏的回答节点，滚动到其前一个（提问）节点的位置，
             // 这样用户能看到"提问+回答"的完整上下文
             val targetIndex = conversation.messageNodes.indexOfFirst { it.id == nodeId }
