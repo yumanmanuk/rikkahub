@@ -1,5 +1,8 @@
 package me.rerere.common.android
 
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.serialization.Serializable
 import kotlin.uuid.Uuid
 
@@ -36,7 +39,8 @@ sealed class LogEntry {
 }
 
 object Logging {
-    private val recentLogs = arrayListOf<LogEntry>()
+    private val _logsFlow = MutableStateFlow<List<LogEntry>>(emptyList())
+    val logsFlow: StateFlow<List<LogEntry>> = _logsFlow.asStateFlow()
 
     fun log(tag: String, message: String) {
         addLog(LogEntry.TextLog(tag = tag, message = message))
@@ -47,35 +51,23 @@ object Logging {
     }
 
     private fun addLog(entry: LogEntry) {
-        synchronized(recentLogs) {
-            recentLogs.add(0, entry)
-            if (recentLogs.size > MAX_RECENT_LOGS) {
-                recentLogs.removeLastOrNull()
-            }
+        val current = _logsFlow.value.toMutableList()
+        current.add(0, entry)
+        if (current.size > MAX_RECENT_LOGS) {
+            current.removeLastOrNull()
         }
+        _logsFlow.value = current
     }
 
-    fun getRecentLogs(): List<LogEntry> {
-        synchronized(recentLogs) {
-            return recentLogs.toList()
-        }
-    }
+    fun getRecentLogs(): List<LogEntry> = _logsFlow.value
 
-    fun getTextLogs(): List<LogEntry.TextLog> {
-        synchronized(recentLogs) {
-            return recentLogs.filterIsInstance<LogEntry.TextLog>()
-        }
-    }
+    fun getTextLogs(): List<LogEntry.TextLog> =
+        _logsFlow.value.filterIsInstance<LogEntry.TextLog>()
 
-    fun getRequestLogs(): List<LogEntry.RequestLog> {
-        synchronized(recentLogs) {
-            return recentLogs.filterIsInstance<LogEntry.RequestLog>()
-        }
-    }
+    fun getRequestLogs(): List<LogEntry.RequestLog> =
+        _logsFlow.value.filterIsInstance<LogEntry.RequestLog>()
 
     fun clear() {
-        synchronized(recentLogs) {
-            recentLogs.clear()
-        }
+        _logsFlow.value = emptyList()
     }
 }

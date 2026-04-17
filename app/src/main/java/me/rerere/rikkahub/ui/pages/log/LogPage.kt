@@ -24,6 +24,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -47,7 +48,7 @@ import java.util.Locale
 
 @Composable
 fun LogPage() {
-    var logs by remember { mutableStateOf(Logging.getRecentLogs()) }
+    val logs by Logging.logsFlow.collectAsState()
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
 
     Scaffold(
@@ -59,7 +60,6 @@ fun LogPage() {
                     IconButton(
                         onClick = {
                             Logging.clear()
-                            logs = Logging.getRecentLogs()
                         }
                     ) {
                         Icon(HugeIcons.Delete01, null)
