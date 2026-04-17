@@ -31,6 +31,7 @@ import me.rerere.rikkahub.data.files.FilesManager
 import me.rerere.rikkahub.data.model.Assistant
 import me.rerere.rikkahub.data.model.Avatar
 import me.rerere.rikkahub.data.model.Conversation
+import me.rerere.rikkahub.data.model.ConversationParams
 import me.rerere.rikkahub.data.model.MessageNode
 import me.rerere.rikkahub.data.model.NodeFavoriteTarget
 import me.rerere.rikkahub.data.model.buildFavoritePreview
@@ -65,6 +66,8 @@ class ChatVM(
 
     // 聊天输入状态 - 保存在 ViewModel 中避免 TransactionTooLargeException
     val inputState = ChatInputState()
+
+
 
     // 异步任务 (从ChatService获取，响应式)
     val conversationJob: StateFlow<Job?> =
@@ -334,12 +337,14 @@ class ChatVM(
         }
     }
 
-    fun updateConversationParams(params: me.rerere.rikkahub.data.model.ConversationParams) {
+    fun updateConversationParams(params: ConversationParams) {
         viewModelScope.launch {
             val updatedConversation = conversation.value.copy(conversationParams = params)
             chatService.saveConversation(_conversationId, updatedConversation)
         }
     }
+
+
 
     fun toggleMessageFavorite(node: MessageNode) {
         viewModelScope.launch {

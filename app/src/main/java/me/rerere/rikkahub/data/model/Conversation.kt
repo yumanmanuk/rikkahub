@@ -13,6 +13,17 @@ import java.time.Instant
 import kotlin.uuid.Uuid
 
 /**
+ * 对话专属系统提示词与助手提示词的合并模式。
+ */
+@Serializable
+enum class SystemPromptMode {
+    /** 完全替换助手提示词 */
+    OVERRIDE,
+    /** 追加到助手提示词末尾 */
+    APPEND,
+}
+
+/**
  * 对话专属参数，优先级高于助手设置。
  * null 表示使用助手的设置。
  */
@@ -21,6 +32,8 @@ data class ConversationParams(
     val temperature: Float? = null,
     val topP: Float? = null,
     val contextMessageSize: Int? = null,
+    val systemPrompt: String? = null,
+    val systemPromptMode: SystemPromptMode = SystemPromptMode.APPEND,
 )
 
 @Serializable

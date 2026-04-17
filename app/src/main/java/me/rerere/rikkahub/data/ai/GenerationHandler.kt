@@ -368,6 +368,18 @@ class GenerationHandler(
         val effectiveTemperature = conversationParams.temperature ?: assistant.temperature
         val effectiveTopP = conversationParams.topP ?: assistant.topP
         val effectiveContextMessageSize = conversationParams.contextMessageSize ?: assistant.contextMessageSize
+        // 根据模式合并系统提示词
+        val effectiveSystemPrompt: String = when {
+            conversationParams.systemPrompt == null -> assistant.systemPrompt
+            conversationParams.systemPromptMode == SystemPromptMode.OVERRIDE -> conversationParams.systemPrompt
+            else -> buildString {
+                if (assistant.systemPrompt.isNotBlank()) {
+                    append(assistant.systemPrompt)
+                    append("\n\n")
+                }
+                append(conversationParams.systemPrompt)
+            }
+        }
 
         val internalMessages = buildList {
             val system = buildString {
