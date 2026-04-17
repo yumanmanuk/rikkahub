@@ -107,6 +107,7 @@ import me.rerere.rikkahub.ui.components.ui.ListSelectableItem
 import me.rerere.rikkahub.ui.components.ui.RabbitLoadingIndicator
 import me.rerere.rikkahub.ui.components.ui.Tooltip
 import me.rerere.rikkahub.utils.plus
+import me.rerere.rikkahub.utils.wordCount
 import kotlin.uuid.Uuid
 
 private const val TAG = "ChatList"
@@ -645,10 +646,10 @@ private fun ChatListPreview(
             when (msg.role) {
                 me.rerere.ai.core.MessageRole.USER -> {
                     rounds++
-                    questionChars += msg.toText().length
+                    questionChars += msg.toText().wordCount()
                 }
                 me.rerere.ai.core.MessageRole.ASSISTANT -> {
-                    answerChars += msg.toText().length
+                    answerChars += msg.toText().wordCount()
                 }
                 else -> {}
             }
