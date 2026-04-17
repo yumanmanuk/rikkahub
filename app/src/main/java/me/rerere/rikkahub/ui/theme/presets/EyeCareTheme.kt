@@ -4,28 +4,28 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.ui.graphics.Color
 
 // ─── Eye Care (Sepia) Theme ────────────────────────────────────────────────
-// 护眼模式：仿 Kindle Sepia 纸张质感
-// 背景近似 #F5EDD8（暖米黄），正文色 #3B2F1E（深暖棕）
-// 对比度约 9.6:1，满足 WCAG AAA（7:1）
+// 护眼模式：Kindle Sepia 纸张质感，明显区别于普通白底主题
+// 背景 #E8D9B5（深暖黄），正文色 #2C1F0E（深棕）
+// 对比度 > 9:1，满足 WCAG AAA（7:1）
 // ──────────────────────────────────────────────────────────────────────────
 
-// Primary — 暖棕，用于按钮、开关、强调
-private val primaryEyeCare = Color(0xFF7D5A3C)
+// Primary — 琥珀棕，饱和度更高，按钮/开关/强调更明显
+private val primaryEyeCare = Color(0xFF8B5E34)
 private val onPrimaryEyeCare = Color(0xFFFFFFFF)
-private val primaryContainerEyeCare = Color(0xFFFFDCC1)
+private val primaryContainerEyeCare = Color(0xFFFFD9AD)
 private val onPrimaryContainerEyeCare = Color(0xFF2D1200)
 
-// Secondary — 淡棕，用于次要操作
-private val secondaryEyeCare = Color(0xFF9B7B62)
+// Secondary — 暖橄榄棕，次要操作
+private val secondaryEyeCare = Color(0xFF7A6245)
 private val onSecondaryEyeCare = Color(0xFFFFFFFF)
-private val secondaryContainerEyeCare = Color(0xFFFFDCC1)
-private val onSecondaryContainerEyeCare = Color(0xFF341100)
+private val secondaryContainerEyeCare = Color(0xFFEFCFA0)
+private val onSecondaryContainerEyeCare = Color(0xFF2A1700)
 
-// Tertiary — 墨绿点缀，用于第三强调色
-private val tertiaryEyeCare = Color(0xFF5A6E4A)
+// Tertiary — 深橄榄绿，第三强调色
+private val tertiaryEyeCare = Color(0xFF4A6040)
 private val onTertiaryEyeCare = Color(0xFFFFFFFF)
-private val tertiaryContainerEyeCare = Color(0xFFDCF0C8)
-private val onTertiaryContainerEyeCare = Color(0xFF192D0C)
+private val tertiaryContainerEyeCare = Color(0xFFCAE6B0)
+private val onTertiaryContainerEyeCare = Color(0xFF102408)
 
 // Error
 private val errorEyeCare = Color(0xFFBA1A1A)
@@ -33,33 +33,33 @@ private val onErrorEyeCare = Color(0xFFFFFFFF)
 private val errorContainerEyeCare = Color(0xFFFFDAD6)
 private val onErrorContainerEyeCare = Color(0xFF93000A)
 
-// Background / Surface — 米黄主色调
-private val backgroundEyeCare = Color(0xFFF5EDD8)       // 主背景，暖米黄
-private val onBackgroundEyeCare = Color(0xFF3B2F1E)      // 主文字，深暖棕
+// Background / Surface — 深暖黄，与普通白底形成明显视觉差距
+private val backgroundEyeCare = Color(0xFFECDFBE)       // 主背景，深暖黄（仿羊皮纸/老书页）
+private val onBackgroundEyeCare = Color(0xFF2C1F0E)      // 主文字，近墨棕，对比更强
 
-private val surfaceEyeCare = Color(0xFFF5EDD8)
-private val onSurfaceEyeCare = Color(0xFF3B2F1E)
+private val surfaceEyeCare = Color(0xFFECDFBE)
+private val onSurfaceEyeCare = Color(0xFF2C1F0E)
 
-private val surfaceVariantEyeCare = Color(0xFFEADFC8)
-private val onSurfaceVariantEyeCare = Color(0xFF5A4A38)
+private val surfaceVariantEyeCare = Color(0xFFDFCEAD)
+private val onSurfaceVariantEyeCare = Color(0xFF4A3A28)
 
-private val outlineEyeCare = Color(0xFF9C8672)
-private val outlineVariantEyeCare = Color(0xFFD4C4AE)
+private val outlineEyeCare = Color(0xFF8C7356)
+private val outlineVariantEyeCare = Color(0xFFC4AD8A)
 
 private val scrimEyeCare = Color(0xFF000000)
 
-private val inverseSurfaceEyeCare = Color(0xFF3B2F1E)
-private val inverseOnSurfaceEyeCare = Color(0xFFF5EDD8)
-private val inversePrimaryEyeCare = Color(0xFFFFB77C)
+private val inverseSurfaceEyeCare = Color(0xFF2C1F0E)
+private val inverseOnSurfaceEyeCare = Color(0xFFECDFBE)
+private val inversePrimaryEyeCare = Color(0xFFFFB870)
 
-// Surface 层级（从暗到亮）
-private val surfaceDimEyeCare = Color(0xFFDDD3BC)             // 最暗层，分割线/阴影区
-private val surfaceBrightEyeCare = Color(0xFFF8F3E5)          // 最亮层，输入框/高亮卡片
-private val surfaceContainerLowestEyeCare = Color(0xFFFFFBF2) // 最浅容器
-private val surfaceContainerLowEyeCare = Color(0xFFF2E9D3)    // 较浅容器
-private val surfaceContainerEyeCare = Color(0xFFEDE3CD)       // 标准容器（CardGroup 等）
-private val surfaceContainerHighEyeCare = Color(0xFFE7DCCA)   // 较深容器
-private val surfaceContainerHighestEyeCare = Color(0xFFE0D5C0) // 最深容器
+// Surface 层级（从暗到亮，整体在暖黄色调内变化）
+private val surfaceDimEyeCare = Color(0xFFCFC0A0)             // 最暗层，分割线/阴影区
+private val surfaceBrightEyeCare = Color(0xFFF5EBCF)          // 最亮层，输入框/高亮卡片
+private val surfaceContainerLowestEyeCare = Color(0xFFFAF3DA) // 最浅容器
+private val surfaceContainerLowEyeCare = Color(0xFFEFE3C4)    // 较浅容器
+private val surfaceContainerEyeCare = Color(0xFFE5D7B6)       // 标准容器（CardGroup 等）
+private val surfaceContainerHighEyeCare = Color(0xFFDAC9A8)   // 较深容器
+private val surfaceContainerHighestEyeCare = Color(0xFFCFBC9A) // 最深容器
 
 val eyeCareColorScheme = lightColorScheme(
     primary = primaryEyeCare,
