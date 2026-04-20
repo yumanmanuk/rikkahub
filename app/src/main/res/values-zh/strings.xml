@@ -517,11 +517,11 @@
   <string name="reasoning_auto">自动</string>
   <string name="reasoning_auto_desc">让模型自动决定推理级别。</string>
   <string name="reasoning_custom">自定义推理预算</string>
-  <string name="reasoning_heavy">重度推理</string>
+  <string name="reasoning_heavy">高</string>
   <string name="reasoning_heavy_desc">模型将使用大量推理来回答问题。</string>
-  <string name="reasoning_light">轻度推理</string>
+  <string name="reasoning_light">低</string>
   <string name="reasoning_light_desc">模型将使用少量推理来回答问题。</string>
-  <string name="reasoning_medium">中度推理</string>
+  <string name="reasoning_medium">中等</string>
   <string name="reasoning_medium_desc">模型将使用更多推理来回答问题。</string>
   <string name="reasoning_off">关闭</string>
   <string name="reasoning_off_desc">关闭推理功能，模型将直接回答问题。</string>
@@ -976,5 +976,8 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="web_search_disabled">已禁用网页搜索</string>
   <string name="web_search_enabled">已启用网页搜索</string>
   <string name="setting_provider_page_import_service_account_json">导入服务账号 JSON</string>
+  <string name="reasoning_xhigh">超高</string>
+  <string name="reasoning_picker_title">调整模型思考深度</string>
+  <string name="reasoning_picker_hint">并非所有模型都支持深度调整。请参考模型和提供商文档。</string>
 </resources>
 

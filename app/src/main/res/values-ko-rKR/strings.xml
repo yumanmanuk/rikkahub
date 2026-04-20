@@ -515,11 +515,11 @@
   <string name="reasoning_auto">자동</string>
   <string name="reasoning_auto_desc">모델이 자동으로 사고 수준을 결정하도록 합니다</string>
   <string name="reasoning_custom">사용자 정의 사고 예산</string>
-  <string name="reasoning_heavy">중량 사고</string>
+  <string name="reasoning_heavy">높음</string>
   <string name="reasoning_heavy_desc">모델이 대량의 사고를 사용하여 답변합니다</string>
-  <string name="reasoning_light">경량 사고</string>
+  <string name="reasoning_light">낮음</string>
   <string name="reasoning_light_desc">모델이 소량의 사고를 사용하여 답변합니다</string>
-  <string name="reasoning_medium">중간 사고</string>
+  <string name="reasoning_medium">중간</string>
   <string name="reasoning_medium_desc">모델이 더 많은 사고를 사용하여 답변합니다</string>
   <string name="reasoning_off">꺼짐</string>
   <string name="reasoning_off_desc">사고 기능 끄기, 모델이 질문에 직접 응답합니다</string>
@@ -974,5 +974,8 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="web_search_disabled">웹 검색 비활성화됨</string>
   <string name="web_search_enabled">웹 검색 활성화됨</string>
   <string name="setting_provider_page_import_service_account_json">서비스 계정 JSON 가져오기</string>
+  <string name="reasoning_xhigh">XHigh</string>
+  <string name="reasoning_picker_title">모델 사고 깊이 조정</string>
+  <string name="reasoning_picker_hint">모든 모델이 깊이 조정을 지원하는 것은 아닙니다. 모델 및 제공자 문서를 참조하세요.</string>
 </resources>
 

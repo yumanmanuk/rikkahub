@@ -14,6 +14,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import me.rerere.ai.core.MessageRole
+import me.rerere.ai.core.ReasoningLevel
 import me.rerere.ai.core.Tool
 import me.rerere.ai.core.merge
 import me.rerere.ai.provider.CustomBody
@@ -395,7 +396,7 @@ class GenerationHandler(
             topP = effectiveTopP,
             maxTokens = assistant.maxTokens,
             tools = tools,
-            thinkingBudget = assistant.thinkingBudget,
+            reasoningLevel = assistant.reasoningLevel,
             customHeaders = buildList {
                 addAll(assistant.customHeaders)
                 addAll(model.customHeaders)
@@ -489,7 +490,7 @@ class GenerationHandler(
                 messages = messages,
                 params = TextGenerationParams(
                     model = model,
-                    thinkingBudget = settings.translateThinkingBudget,
+                    reasoningLevel = ReasoningLevel.fromBudgetTokens(settings.translateThinkingBudget),
                 ),
             ).collect { chunk ->
                 messages = messages.handleMessageChunk(chunk)
