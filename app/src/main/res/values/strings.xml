@@ -261,6 +261,7 @@
   <string name="chat_page_compress_warning">⚠️ Compressing context will reset all messages in the current conversation</string>
   <string name="chat_page_compressing">Compressing...</string>
   <string name="chat_page_delete">Delete</string>
+    <string name="chat_page_delete_conversation_confirm">确认删除对话:%s吗</string>
   <string name="chat_page_dismiss_error">Dismiss error</string>
   <string name="chat_page_edit_nickname">Edit Nickname</string>
   <string name="chat_page_edit_title">Edit title</string>
