@@ -406,6 +406,10 @@ private fun ChatListNormal(
                             onToolApproval = onToolApproval,
                             onToolAnswer = onToolAnswer,
                             lastMessage = index == conversation.messageNodes.lastIndex,
+                            onScrollToQuestion = if (node.currentMessage.role == me.rerere.ai.core.MessageRole.ASSISTANT && index > 0) {
+                                val targetIndex = index - 1
+                                { scope.launch { state.animateScrollToItem(targetIndex) } }
+                            } else null,
                         )
                     }
                 }

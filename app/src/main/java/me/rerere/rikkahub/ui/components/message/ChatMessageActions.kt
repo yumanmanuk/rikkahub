@@ -46,6 +46,7 @@ import me.rerere.ai.provider.Model
 import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.hugeicons.HugeIcons
+import me.rerere.hugeicons.stroke.ArrowUp03
 import me.rerere.hugeicons.stroke.Copy01
 import me.rerere.hugeicons.stroke.Delete01
 import me.rerere.hugeicons.stroke.Edit01
@@ -81,6 +82,7 @@ fun ColumnScope.ChatMessageActionButtons(
     onClearTranslation: (UIMessage) -> Unit = {},
     isFavorite: Boolean = false,
     onToggleFavorite: (() -> Unit)? = null,
+    onScrollToQuestion: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
     var isPendingDelete by remember { mutableStateOf(false) }
@@ -98,6 +100,19 @@ fun ColumnScope.ChatMessageActionButtons(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         itemVerticalAlignment = Alignment.CenterVertically,
     ) {
+        // 仅对 ASSISTANT 消息显示"回到提问处"图标
+        if (message.role == MessageRole.ASSISTANT && onScrollToQuestion != null) {
+            Icon(
+                imageVector = HugeIcons.ArrowUp03,
+                contentDescription = "Scroll to question",
+                modifier = Modifier
+                    .clip(CircleShape)
+                    .clickable { onScrollToQuestion() }
+                    .padding(8.dp)
+                    .size(16.dp)
+            )
+        }
+
         Icon(
             imageVector = HugeIcons.Copy01,
             contentDescription = stringResource(R.string.copy),

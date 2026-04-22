@@ -116,6 +116,7 @@ fun ChatMessage(
     onClearTranslation: (UIMessage) -> Unit = {},
     onToolApproval: ((toolCallId: String, approved: Boolean, reason: String) -> Unit)? = null,
     onToolAnswer: ((toolCallId: String, answer: String) -> Unit)? = null,
+    onScrollToQuestion: (() -> Unit)? = null,
 ) {
     val message = node.messages[node.selectIndex]
     val settings = LocalSettings.current.displaySetting
@@ -207,6 +208,7 @@ fun ChatMessage(
                     onClearTranslation = onClearTranslation,
                     isFavorite = isFavorite,
                     onToggleFavorite = onToggleFavorite,
+                    onScrollToQuestion = onScrollToQuestion,
                 )
             }
         }
