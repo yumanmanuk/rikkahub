@@ -52,7 +52,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -80,7 +79,7 @@ import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Cancel01
 import me.rerere.hugeicons.stroke.LeftToRightListBullet
 import me.rerere.hugeicons.stroke.Menu03
-import me.rerere.hugeicons.stroke.SlidersHorizontal
+import me.rerere.hugeicons.stroke.Crane
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.findProvider
@@ -808,7 +807,7 @@ private fun TopBar(
             IconButton(
                 onClick = { showParamsSheet = true }
             ) {
-                Icon(HugeIcons.SlidersHorizontal, "Conversation Params")
+                Icon(HugeIcons.Crane, "Conversation Params")
             }
 
             IconButton(
@@ -901,13 +900,6 @@ private fun ConversationParamsSheet(
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
             )
-            Text(
-                text = "覆盖助手设置，仅对此对话生效。关闭开关则使用助手默认值。",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 16.dp).padding(bottom = 8.dp)
-            )
-
             HorizontalDivider()
 
             // Temperature
@@ -997,8 +989,6 @@ private fun ConversationParamsSheet(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                    } else {
-                        Text(text = stringResource(R.string.assistant_page_top_p_warning))
                     }
                 },
                 tail = {
@@ -1054,8 +1044,6 @@ private fun ConversationParamsSheet(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                    } else {
-                        Text(text = stringResource(R.string.assistant_page_context_message_desc))
                     }
                 },
                 tail = {
@@ -1104,16 +1092,6 @@ private fun ConversationParamsSheet(
                     if (params.systemPrompt == null) {
                         Text(
                             text = "使用助手设置: ${assistant.systemPrompt.ifBlank { "默认" }.take(40)}${if (assistant.systemPrompt.length > 40) "…" else ""}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    } else {
-                        val modeLabel = when (params.systemPromptMode) {
-                            SystemPromptMode.OVERRIDE -> "覆盖模式：完全替换助手提示词"
-                            SystemPromptMode.APPEND  -> "追加模式：附加在助手提示词末尾"
-                        }
-                        Text(
-                            text = modeLabel,
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
