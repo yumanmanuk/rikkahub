@@ -64,8 +64,13 @@ fun HistoryPage(vm: HistoryVM = koinViewModel()) {
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
     var showDeleteAllDialog by remember { mutableStateOf(false) }
+    var showDeleteConfirmDialog by remember { mutableStateOf(false) }
+    var conversationToDelete by remember { mutableStateOf<Conversation?>(null) }
 
     val conversations by vm.conversations.collectAsStateWithLifecycle()
+
+    val snackMessageDeleted = stringResource(R.string.history_page_conversation_deleted)
+    val snackMessageUndo = stringResource(R.string.history_page_undo)
 
     Scaffold(
         topBar = {
@@ -101,8 +106,6 @@ fun HistoryPage(vm: HistoryVM = koinViewModel()) {
             SnackbarHost(hostState = snackbarHostState)
         }
     ) { contentPadding ->
-        val snackMessageDeleted = stringResource(R.string.history_page_conversation_deleted)
-        val snackMessageUndo = stringResource(R.string.history_page_undo)
         LazyColumn(
             contentPadding = contentPadding + PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -114,19 +117,8 @@ fun HistoryPage(vm: HistoryVM = koinViewModel()) {
                         navigateToChatPage(navController, conversation.id)
                     },
                     onDelete = {
-                        scope.launch {
-                            // 先获取完整的对话数据（包含 messageNodes），用于撤销恢复
-                            val fullConversation = vm.getFullConversation(conversation.id) ?: conversation
-                            vm.deleteConversation(conversation)
-                            val result = snackbarHostState.showSnackbar(
-                                message = snackMessageDeleted,
-                                actionLabel = snackMessageUndo,
-                                withDismissAction = true,
-                            )
-                            if (result == SnackbarResult.ActionPerformed) {
-                                vm.restoreConversation(fullConversation)
-                            }
-                        }
+                        conversationToDelete = conversation
+                        showDeleteConfirmDialog = true
                     },
                     onTogglePin = { vm.togglePinStatus(conversation.id) },
                     modifier = Modifier
@@ -155,6 +147,52 @@ fun HistoryPage(vm: HistoryVM = koinViewModel()) {
             dismissButton = {
                 TextButton(
                     onClick = { showDeleteAllDialog = false }
+                ) {
+                    Text(stringResource(R.string.history_page_cancel))
+                }
+            }
+        )
+    }
+
+    if (showDeleteConfirmDialog && conversationToDelete != null) {
+        val conversationTitle = conversationToDelete!!.title.ifBlank { stringResource(R.string.history_page_new_conversation) }
+        AlertDialog(
+            onDismissRequest = {
+                showDeleteConfirmDialog = false
+                conversationToDelete = null
+            },
+            title = { Text(stringResource(R.string.chat_page_delete)) },
+            text = { Text(stringResource(R.string.chat_page_delete_conversation_confirm, conversationTitle.trim())) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val conversation = conversationToDelete!!
+                        scope.launch {
+                            // 先获取完整的对话数据（包含 messageNodes），用于撤销恢复
+                            val fullConversation = vm.getFullConversation(conversation.id) ?: conversation
+                            vm.deleteConversation(conversation)
+                            val result = snackbarHostState.showSnackbar(
+                                message = snackMessageDeleted,
+                                actionLabel = snackMessageUndo,
+                                withDismissAction = true,
+                            )
+                            if (result == SnackbarResult.ActionPerformed) {
+                                vm.restoreConversation(fullConversation)
+                            }
+                        }
+                        showDeleteConfirmDialog = false
+                        conversationToDelete = null
+                    }
+                ) {
+                    Text(stringResource(R.string.history_page_delete))
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showDeleteConfirmDialog = false
+                        conversationToDelete = null
+                    }
                 ) {
                     Text(stringResource(R.string.history_page_cancel))
                 }

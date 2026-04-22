@@ -29,6 +29,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.surfaceColorAtElevation
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -238,6 +240,9 @@ private fun ConversationItem(
     var showDropdownMenu by remember {
         mutableStateOf(false)
     }
+    var showDeleteConfirmDialog by remember {
+        mutableStateOf(false)
+    }
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(50f))
@@ -337,7 +342,7 @@ private fun ConversationItem(
                         Text(stringResource(id = R.string.chat_page_delete))
                     },
                     onClick = {
-                        onDelete(conversation)
+                        showDeleteConfirmDialog = true
                         showDropdownMenu = false
                     },
                     leadingIcon = {
@@ -346,5 +351,35 @@ private fun ConversationItem(
                 )
             }
         }
+    }
+
+    if (showDeleteConfirmDialog) {
+        val conversationTitle = conversation.title.ifBlank { stringResource(id = R.string.chat_page_new_message) }
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirmDialog = false },
+            title = {
+                Text(stringResource(id = R.string.chat_page_delete))
+            },
+            text = {
+                Text(stringResource(id = R.string.chat_page_delete_conversation_confirm, conversationTitle))
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onDelete(conversation)
+                        showDeleteConfirmDialog = false
+                    }
+                ) {
+                    Text(stringResource(id = R.string.chat_page_delete))
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showDeleteConfirmDialog = false }
+                ) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        )
     }
 }
