@@ -2,7 +2,6 @@ package me.rerere.rikkahub.ui.pages.chat
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -123,11 +122,10 @@ fun ChatDrawerContent(
     ModalDrawerSheet(
         modifier = Modifier.width(300.dp)
     ) {
-        Box {
-            Column(
-                modifier = Modifier.padding(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
+        Column(
+            modifier = Modifier.padding(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
             if (settings.displaySetting.showUpdates && !isPlayStore) {
                 UpdateCard(vm)
             }
@@ -190,6 +188,20 @@ fun ChatDrawerContent(
                     }
                     Greeting(
                         style = MaterialTheme.typography.labelMedium,
+                    )
+                }
+
+                IconButton(
+                    onClick = {
+                        scope.launch {
+                            drawerState?.close()
+                            navigateToChatPage(navController)
+                        }
+                    }
+                ) {
+                    Icon(
+                        imageVector = HugeIcons.MessageAdd01,
+                        contentDescription = stringResource(R.string.chat_page_new_chat)
                     )
                 }
             }
@@ -349,23 +361,6 @@ fun ChatDrawerContent(
                     },
                 )
             }
-        }
-
-        IconButton(
-            onClick = {
-                scope.launch {
-                    drawerState?.close()
-                    navigateToChatPage(navController)
-                }
-            },
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(8.dp)
-        ) {
-            Icon(
-                imageVector = HugeIcons.MessageAdd01,
-                contentDescription = stringResource(R.string.chat_page_new_chat)
-            )
         }
     }
 }
