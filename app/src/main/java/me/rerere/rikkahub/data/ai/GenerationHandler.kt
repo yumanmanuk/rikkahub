@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.datetime.TimeZone
@@ -77,6 +78,7 @@ class GenerationHandler(
         memories: List<AssistantMemory>? = null,
         tools: List<Tool> = emptyList(),
         maxSteps: Int = 256,
+        processingStatus: MutableStateFlow<String?> = MutableStateFlow(null),
     ): Flow<GenerationChunk> = flow {
         val provider = model.findProvider(settings.providers) ?: error("Provider not found")
         val providerImpl = providerManager.getProviderByType(provider)
@@ -150,7 +152,8 @@ class GenerationHandler(
                     provider = provider,
                     tools = toolsInternal,
                     memories = memories ?: emptyList(),
-                    stream = assistant.streamOutput
+                    stream = assistant.streamOutput,
+                    processingStatus = processingStatus,
                 )
                 messages = messages.visualTransforms(
                     transformers = outputTransformers,
@@ -335,7 +338,8 @@ class GenerationHandler(
         provider: ProviderSetting,
         tools: List<Tool>,
         memories: List<AssistantMemory>,
-        stream: Boolean
+        stream: Boolean,
+        processingStatus: MutableStateFlow<String?> = MutableStateFlow(null),
     ) {
         // 对话参数优先于助手参数，null 则回退到助手参数
         val effectiveTemperature = conversationParams.temperature ?: assistant.temperature
@@ -384,7 +388,8 @@ class GenerationHandler(
             context = context,
             model = model,
             assistant = assistant,
-            settings = settings
+            settings = settings,
+            processingStatus = processingStatus,
         )
 
         var messages: List<UIMessage> = messages
