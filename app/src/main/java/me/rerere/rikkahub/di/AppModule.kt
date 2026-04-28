@@ -10,6 +10,7 @@ import me.rerere.highlight.Highlighter
 import me.rerere.rikkahub.AppScope
 import me.rerere.rikkahub.data.ai.tools.local.LocalTools
 import me.rerere.rikkahub.data.event.AppEventBus
+import me.rerere.rikkahub.service.BattleService
 import me.rerere.rikkahub.service.ChatService
 import me.rerere.rikkahub.utils.EmojiData
 import me.rerere.rikkahub.utils.EmojiUtils
@@ -58,6 +59,19 @@ val appModule = module {
 
     single {
         SoundEffectPlayer(get())
+    }
+
+    // [FORK] Battle Mode
+    single {
+        BattleService(
+            settingsStore = get(),
+            memoryRepository = get(),
+            generationHandler = get(),
+            templateTransformer = get(),
+            localTools = get(),
+            skillManager = get(),
+            mcpManager = get(),
+        )
     }
 
     single {

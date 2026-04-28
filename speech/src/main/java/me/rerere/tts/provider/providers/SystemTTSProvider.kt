@@ -173,10 +173,11 @@ class SystemTTSProvider : TTSProvider<TTSProviderSetting.SystemTTS> {
         if (audioFormat != 1) return wav // 非 PCM，不处理
 
         val channels   = ((wav[23].toInt() and 0xFF) shl 8) or (wav[22].toInt() and 0xFF)
-        val sampleRate = (wav[27].toInt() and 0xFF shl 24) or
-                         (wav[26].toInt() and 0xFF shl 16) or
-                         (wav[25].toInt() and 0xFF shl 8)  or
-                         (wav[24].toInt() and 0xFF)
+        // WAV 是 little-endian，低字节在前
+        val sampleRate = (wav[24].toInt() and 0xFF) or
+                         ((wav[25].toInt() and 0xFF) shl 8) or
+                         ((wav[26].toInt() and 0xFF) shl 16) or
+                         ((wav[27].toInt() and 0xFF) shl 24)
         val bitsPerSample = ((wav[35].toInt() and 0xFF) shl 8) or (wav[34].toInt() and 0xFF)
         if (bitsPerSample != 16) return wav // 仅处理 16-bit
 

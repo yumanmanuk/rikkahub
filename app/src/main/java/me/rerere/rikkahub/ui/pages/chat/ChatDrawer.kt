@@ -3,6 +3,7 @@ package me.rerere.rikkahub.ui.pages.chat
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -387,7 +388,6 @@ fun ChatDrawerContent(
             }
         }
     }
-}
 
     // 昵称编辑对话框
     nicknameEditState.EditStateContent { nickname, onUpdate ->

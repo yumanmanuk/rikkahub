@@ -34,6 +34,9 @@ data class ConversationParams(
     val contextMessageSize: Int? = null,
     val systemPrompt: String? = null,
     val systemPromptMode: SystemPromptMode = SystemPromptMode.APPEND,
+    // [FORK] Battle Mode: 开启后发消息时用所有选中模型各并发回答一次
+    val battleModeEnabled: Boolean = false,
+    val battleModelIds: List<Uuid> = emptyList(),
 )
 
 @Serializable
@@ -132,6 +135,8 @@ data class MessageNode(
     val id: Uuid = Uuid.random(),
     val messages: List<UIMessage>,
     val selectIndex: Int = 0,
+    // [FORK] Battle Mode: 标记该节点是否由 BattleService 创建（多模型并发生成）
+    val isBattleNode: Boolean = false,
     @Transient
     val isFavorite: Boolean = false,
 ) {
