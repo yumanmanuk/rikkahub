@@ -979,5 +979,7 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="reasoning_xhigh">超高</string>
   <string name="reasoning_picker_title">调整模型思考深度</string>
   <string name="reasoning_picker_hint">并非所有模型都支持深度调整。请参考模型和提供商文档。</string>
+  <string name="setting_page_built_in_tools_image_generation">图像生成</string>
+  <string name="setting_page_built_in_tools_image_generation_desc">启用图像生成功能</string>
 </resources>
 
