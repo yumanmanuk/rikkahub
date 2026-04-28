@@ -360,7 +360,8 @@ private fun ChatListNormal(
                             node = node,
                             model = node.currentMessage.modelId?.let { settings.findModelById(it) },
                             assistant = settings.getAssistantById(conversation.assistantId),
-                            loading = loading && index == conversation.messageNodes.lastIndex,
+                            // [FORK] Battle Mode: 已完成的 slot 不显示 loading，使用 finishedAt 判断
+                            loading = loading && index == conversation.messageNodes.lastIndex && node.currentMessage.finishedAt == null,
                             onRegenerate = {
                                 onRegenerate(node.currentMessage)
                             },
@@ -680,12 +681,12 @@ private fun ChatListPreview(
     // 过滤消息，同时保留原始 index 避免后续 O(n) indexOf 查找
     val filteredMessages = remember(conversation.messageNodes, searchQuery, showOnlyFavorites) {
         var messages = conversation.messageNodes.mapIndexed { index, node -> index to node }
-        
+
         // 先按搜索词过滤
         if (searchQuery.isNotBlank()) {
             messages = messages.filter { (_, node) -> node.currentMessage.toText().contains(searchQuery, ignoreCase = true) }
         }
-        
+
         // 再按点赞状态过滤
         if (showOnlyFavorites) {
             messages = messages.filter { (_, node) ->
@@ -708,7 +709,7 @@ private fun ChatListPreview(
                     }
                 } else if (node.currentMessage.role == me.rerere.ai.core.MessageRole.USER) {
                     // 检查下一个消息是否是点赞的回答
-                    if (index + 1 < conversation.messageNodes.size && 
+                    if (index + 1 < conversation.messageNodes.size &&
                         conversation.messageNodes[index + 1].isFavorite &&
                         !addedIndices.contains(index)) {
                         result.add(index to node)
@@ -718,7 +719,7 @@ private fun ChatListPreview(
             }
             messages = result
         }
-        
+
         messages
     }
 
@@ -773,7 +774,7 @@ private fun ChatListPreview(
                 shape = CircleShape,
                 maxLines = 1,
             )
-            
+
             // 筛选按钮
             Surface(
                 onClick = { showOnlyFavorites = !showOnlyFavorites },

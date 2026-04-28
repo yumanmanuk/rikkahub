@@ -343,6 +343,9 @@ class ChatVM(
     }
 
     fun updateConversationParams(params: ConversationParams) {
+        // 先强制更新内存状态，确保发消息时能读到最新参数
+        // saveConversation 在对话为空时会提前返回，不更新内存，导致参数丢失
+        chatService.updateConversationState(_conversationId) { it.copy(conversationParams = params) }
         viewModelScope.launch {
             val updatedConversation = conversation.value.copy(conversationParams = params)
             chatService.saveConversation(_conversationId, updatedConversation)

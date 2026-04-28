@@ -182,8 +182,9 @@ fun ChatMessage(
             }
         }
 
+        // [FORK] Battle Mode: battle 节点在 loading 时也显示操作区，以便随时切换分支
         val showActions = if (lastMessage) {
-            !loading
+            !loading || node.isBattleNode
         } else {
             message.parts.isEmptyUIMessage().not()
         }

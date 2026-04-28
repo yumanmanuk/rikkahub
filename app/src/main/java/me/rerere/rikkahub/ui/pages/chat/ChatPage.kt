@@ -914,6 +914,16 @@ private fun ConversationParamsSheet(
             }
             HorizontalDivider()
 
+            // [FORK] Battle Mode
+            BattleModeSection(
+                params = params,
+                settings = settings,
+                onUpdate = { newParams ->
+                    params = newParams
+                    onUpdate(newParams)
+                }
+            )
+            HorizontalDivider()
 
         }
     }

@@ -131,6 +131,8 @@ class ChatService(
     val mcpManager: McpManager,
     private val filesManager: FilesManager,
     private val skillManager: SkillManager,
+    // [FORK] Battle Mode
+    private val battleService: BattleService,
 ) {
     // 统一会话管理
     private val sessions = ConcurrentHashMap<Uuid, ConversationSession>()
@@ -311,7 +313,21 @@ class ChatService(
 
                 // 开始补全
                 if (answer) {
-                    handleMessageComplete(conversationId)
+                    // [FORK] Battle Mode: 若开启则委托 BattleService 并发生成
+                    val battleParams = newConversation.conversationParams
+                    if (battleParams.battleModeEnabled && battleParams.battleModelIds.isNotEmpty()) {
+                        battleService.runBattle(
+                            conversationId = conversationId,
+                            contextMessages = newConversation.currentMessages,
+                            battleModelIds = battleParams.battleModelIds,
+                            getConversation = { getConversationFlow(conversationId).value },
+                            updateConversationState = ::updateConversationState,
+                            saveConversation = ::saveConversation,
+                            processingStatus = session.processingStatus,
+                        )
+                    } else {
+                        handleMessageComplete(conversationId)
+                    }
                 }
 
                 _generationDoneFlow.emit(conversationId)
@@ -355,6 +371,9 @@ class ChatService(
         val job = appScope.launch {
             try {
                 val conversation = session.state.value
+                // [FORK] Battle Mode: 提前读取参数，以便在各分支判断
+                val battleParams = conversation.conversationParams
+                val isBattle = battleParams.battleModeEnabled && battleParams.battleModelIds.isNotEmpty()
 
                 if (message.role == MessageRole.USER) {
                     // 如果是用户消息，则截止到当前消息
@@ -364,12 +383,42 @@ class ChatService(
                         messageNodes = conversation.messageNodes.subList(0, indexAt + 1)
                     )
                     saveConversation(conversationId, newConversation)
-                    handleMessageComplete(conversationId)
+                    // [FORK] Battle Mode
+                    if (isBattle) {
+                        battleService.runBattle(
+                            conversationId = conversationId,
+                            contextMessages = newConversation.currentMessages,
+                            battleModelIds = battleParams.battleModelIds,
+                            getConversation = { getConversationFlow(conversationId).value },
+                            updateConversationState = ::updateConversationState,
+                            saveConversation = ::saveConversation,
+                            processingStatus = session.processingStatus,
+                        )
+                    } else {
+                        handleMessageComplete(conversationId)
+                    }
                 } else {
                     if (regenerateAssistantMsg) {
                         val node = conversation.getMessageNodeByMessage(message)
                         val nodeIndex = conversation.messageNodes.indexOf(node)
-                        handleMessageComplete(conversationId, messageRange = 0..<nodeIndex)
+                        // [FORK] Battle Mode: 截断到用户消息结尾，然后并发生成
+                        if (isBattle) {
+                            val contextConversation = conversation.copy(
+                                messageNodes = conversation.messageNodes.subList(0, nodeIndex)
+                            )
+                            saveConversation(conversationId, contextConversation)
+                            battleService.runBattle(
+                                conversationId = conversationId,
+                                contextMessages = contextConversation.currentMessages,
+                                battleModelIds = battleParams.battleModelIds,
+                                getConversation = { getConversationFlow(conversationId).value },
+                                updateConversationState = ::updateConversationState,
+                                saveConversation = ::saveConversation,
+                                processingStatus = session.processingStatus,
+                            )
+                        } else {
+                            handleMessageComplete(conversationId, messageRange = 0..<nodeIndex)
+                        }
                     } else {
                         saveConversation(conversationId, conversation)
                     }
