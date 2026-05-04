@@ -158,6 +158,9 @@ class BattleService(
             deferreds.forEach { it.await() }
         }
 
+        // 全部完成后重置进度文案，避免下次普通提问时残留 Battle loading 文案
+        processingStatus.value = null
+
         // 全部完成后更新时间戳并保存
         val finalConversation = getConversation().copy(updateAt = Instant.now())
         saveConversation(conversationId, finalConversation)

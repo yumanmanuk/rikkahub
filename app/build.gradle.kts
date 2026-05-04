@@ -22,8 +22,8 @@ android {
         applicationId = "me.enzo.rikkahub"
         minSdk = 26
         targetSdk = 37
-        versionCode = 154
-        versionName = "2.1.11"
+        versionCode = 155
+        versionName = "2.1.12"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
