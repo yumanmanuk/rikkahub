@@ -45,8 +45,9 @@ class SystemTTSProvider : TTSProvider<TTSProviderSetting.SystemTTS> {
             engine.setSpeechRate(providerSetting.speechRate)
             engine.setPitch(providerSetting.pitch)
 
-            // 合成到临时文件，并对音频头部做淡入以消除 TTS 引擎初始化噪声
-            applyWavFadeIn(synthesizeToBytes(context, engine, request.text))
+            // 合成到临时文件，并对音频头尾做淡入/淡出以消除引擎噪声和切换爆音
+            val raw = synthesizeToBytes(context, engine, request.text)
+            applyWavFadeOut(applyWavFadeIn(raw))
         }
 
         emit(
@@ -164,7 +165,7 @@ class SystemTTSProvider : TTSProvider<TTSProviderSetting.SystemTTS> {
      * 消除 Android TTS 引擎在 pipeline 初始化阶段产生的 click/pop 噪声。
      * 仅处理 16-bit PCM WAV，其余格式原样返回。
      */
-    private fun applyWavFadeIn(wav: ByteArray, fadeMs: Int = 50): ByteArray {
+    private fun applyWavFadeIn(wav: ByteArray, fadeMs: Int = 100): ByteArray {
         // WAV 头至少 44 字节
         if (wav.size < 44) return wav
 
@@ -197,6 +198,51 @@ class SystemTTSProvider : TTSProvider<TTSProviderSetting.SystemTTS> {
                 val byteIdx = frameOffset + ch * 2
                 if (byteIdx + 1 >= result.size) break
                 // 读取 little-endian int16
+                val raw = (result[byteIdx].toInt() and 0xFF) or
+                          (result[byteIdx + 1].toInt() shl 8)
+                val sample = raw.toShort()
+                val faded  = (sample * gain).toInt().coerceIn(-32768, 32767).toShort()
+                result[byteIdx]     = (faded.toInt() and 0xFF).toByte()
+                result[byteIdx + 1] = ((faded.toInt() shr 8) and 0xFF).toByte()
+            }
+        }
+        return result
+    }
+
+    /**
+     * 对 WAV 数据的结尾做短暂淡出（默认 20ms），
+     * 消除 ExoPlayer 切换音频源或播放结束时的爆音。
+     * 仅处理 16-bit PCM WAV，其余格式原样返回。
+     */
+    private fun applyWavFadeOut(wav: ByteArray, fadeMs: Int = 20): ByteArray {
+        if (wav.size < 44) return wav
+
+        val audioFormat = ((wav[21].toInt() and 0xFF) shl 8) or (wav[20].toInt() and 0xFF)
+        if (audioFormat != 1) return wav
+
+        val channels   = ((wav[23].toInt() and 0xFF) shl 8) or (wav[22].toInt() and 0xFF)
+        val sampleRate = (wav[24].toInt() and 0xFF) or
+                         ((wav[25].toInt() and 0xFF) shl 8) or
+                         ((wav[26].toInt() and 0xFF) shl 16) or
+                         ((wav[27].toInt() and 0xFF) shl 24)
+        val bitsPerSample = ((wav[35].toInt() and 0xFF) shl 8) or (wav[34].toInt() and 0xFF)
+        if (bitsPerSample != 16) return wav
+
+        val bytesPerFrame = channels * (bitsPerSample / 8)
+        val dataBytes     = wav.size - 44
+        val fadeSamples   = ((sampleRate.toLong() * fadeMs / 1000).toInt())
+            .coerceAtMost(dataBytes / bytesPerFrame)
+
+        if (fadeSamples <= 0) return wav
+
+        val result = wav.copyOf()
+        val totalFrames = dataBytes / bytesPerFrame
+        for (i in 0 until fadeSamples) {
+            val gain = (fadeSamples - 1 - i).toFloat() / fadeSamples
+            val frameOffset = 44 + (totalFrames - fadeSamples + i) * bytesPerFrame
+            for (ch in 0 until channels) {
+                val byteIdx = frameOffset + ch * 2
+                if (byteIdx + 1 >= result.size) break
                 val raw = (result[byteIdx].toInt() and 0xFF) or
                           (result[byteIdx + 1].toInt() shl 8)
                 val sample = raw.toShort()

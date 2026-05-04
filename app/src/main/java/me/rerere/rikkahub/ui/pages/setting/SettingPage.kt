@@ -157,7 +157,6 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
                     ColorMode.SYSTEM -> stringResource(R.string.setting_page_color_mode_system)
                     ColorMode.LIGHT -> stringResource(R.string.setting_page_color_mode_light)
                     ColorMode.DARK -> stringResource(R.string.setting_page_color_mode_dark)
-                    ColorMode.EYE_CARE -> stringResource(R.string.setting_page_color_mode_eye_care)
                 }
                 CardGroup(
                     modifier = Modifier.padding(horizontal = 8.dp),
@@ -182,7 +181,6 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
                                         ColorMode.SYSTEM -> stringResource(R.string.setting_page_color_mode_system)
                                         ColorMode.LIGHT -> stringResource(R.string.setting_page_color_mode_light)
                                         ColorMode.DARK -> stringResource(R.string.setting_page_color_mode_dark)
-                                        ColorMode.EYE_CARE -> stringResource(R.string.setting_page_color_mode_eye_care)
                                     }
                                 },
                                 modifier = Modifier.width(150.dp)

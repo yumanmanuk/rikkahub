@@ -24,7 +24,7 @@ import kotlinx.serialization.Serializable
 import me.rerere.rikkahub.ui.hooks.rememberAmoledDarkMode
 import me.rerere.rikkahub.ui.hooks.rememberColorMode
 import me.rerere.rikkahub.ui.hooks.rememberUserSettingsState
-import me.rerere.rikkahub.ui.theme.presets.eyeCareColorScheme
+
 
 private val ExtendLightColors = lightExtendColors()
 private val ExtendDarkColors = darkExtendColors()
@@ -39,7 +39,6 @@ enum class ColorMode {
     SYSTEM,
     LIGHT,
     DARK,
-    EYE_CARE,
 }
 
 @Composable
@@ -53,12 +52,10 @@ fun RikkahubTheme(
         ColorMode.SYSTEM -> isSystemInDarkTheme()
         ColorMode.LIGHT -> false
         ColorMode.DARK -> true
-        ColorMode.EYE_CARE -> false
     }
     val amoledDarkMode by rememberAmoledDarkMode()
 
     val colorScheme = when {
-        colorMode == ColorMode.EYE_CARE -> eyeCareColorScheme
         settings.dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
             val context = LocalContext.current
             if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
