@@ -819,7 +819,7 @@
   <string name="setting_page_color_mode_dark">Dark</string>
   <string name="setting_page_color_mode_light">Light</string>
   <string name="setting_page_color_mode_system">System</string>
-  <string name="setting_page_color_mode_eye_care">Eye Care</string>
+
   <string name="setting_page_config">Configure</string>
   <string name="setting_page_config_api_desc">You haven\'t configured API and model yet, please configure first</string>
   <string name="setting_page_config_api_title">Please configure API and model</string>

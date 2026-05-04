@@ -39,7 +39,6 @@ class TtsController(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     // 组件
-    private val chunker = TextChunker(maxChunkLength = 80)
     private val synthesizer = TtsSynthesizer(ttsManager)
     private val audio = AudioPlayer(context)
 
@@ -113,7 +112,7 @@ class TtsController(
             return
         }
 
-        val newChunks = chunker.split(text)
+        val newChunks = createChunker(provider).split(text)
         if (newChunks.isEmpty()) return
 
         if (flush) {
@@ -308,6 +307,20 @@ class TtsController(
             deferred.await()
         } finally {
             // 可按需保留缓存（此处保留，便于重播/重试）
+        }
+    }
+
+    /**
+     * 根据 Provider 类型创建合适的 TextChunker:
+     * - SystemTTS: 大 chunk (500字) + 跨段落归并，减少 engine.stop()/synthesize 次数
+     * - 云端 TTS: 小 chunk (80字)，支持流式预取播放
+     */
+    private fun createChunker(provider: TTSProviderSetting): TextChunker {
+        return if (provider is TTSProviderSetting.SystemTTS) {
+            // SystemTTS 串行合成（Mutex），chunk 过大则首句等太久，过小则 stop/restart 噪声多
+            TextChunker(maxChunkLength = 200, crossParagraph = true)
+        } else {
+            TextChunker(maxChunkLength = 80)
         }
     }
     // endregion

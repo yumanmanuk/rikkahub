@@ -809,7 +809,7 @@
   <string name="setting_page_color_mode_dark">深色</string>
   <string name="setting_page_color_mode_light">浅色</string>
   <string name="setting_page_color_mode_system">跟随系统</string>
-  <string name="setting_page_color_mode_eye_care">护眼</string>
+
   <string name="setting_page_config">配置</string>
   <string name="setting_page_config_api_desc">你还没有配置API和模型，请先配置</string>
   <string name="setting_page_config_api_title">请配置API和模型</string>
