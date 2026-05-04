@@ -371,11 +371,15 @@ class ChatCompletionsAPI(
                     }
 
                     "api.deepseek.com" -> {
-                        put("thinking", buildJsonObject {
-                            put("type", if (!level.isEnabled) "disabled" else "enabled")
-                        })
+                        // 现有 DeepSeek 模型（V4 系列）reasoning_effort 仅支持 high 和 max
+                        // low/medium -> high, xhigh -> max, OFF/AUTO -> 不发送
                         if (level.isEnabled && level != ReasoningLevel.AUTO) {
-                            put("reasoning_effort", level.effort)
+                            val deepseekEffort = when (level) {
+                                ReasoningLevel.LOW, ReasoningLevel.MEDIUM -> "high"
+                                ReasoningLevel.XHIGH -> "max"
+                                else -> level.effort // HIGH -> "high"
+                            }
+                            put("reasoning_effort", deepseekEffort)
                         }
                     }
 
