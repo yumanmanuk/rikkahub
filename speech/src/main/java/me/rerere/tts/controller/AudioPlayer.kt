@@ -57,6 +57,10 @@ class AudioPlayer(context: Context) {
             pcmToWav(response.audioData, response.sampleRate ?: 24000)
         } else response.audioData
 
+        // 播放新音频前先停止并清空旧的 media items，确保旧 pipeline 立即失效
+        player.stop()
+        player.clearMediaItems()
+
         val dataSourceFactory = DataSource.Factory { ByteArrayDataSource(bytes) }
         val mediaSource = ProgressiveMediaSource.Factory(dataSourceFactory)
             .createMediaSource(MediaItem.fromUri(Uri.EMPTY))
@@ -127,7 +131,10 @@ class AudioPlayer(context: Context) {
         player.addListener(listener)
         cont.invokeOnCancellation {
             player.removeListener(listener)
+            // stop() 是异步的，必须同时 clearMediaItems() 才能立即使旧 pipeline 失效，
+            // 避免下一次播放前旧音频残留，导致杂音要很久才消除
             player.stop()
+            player.clearMediaItems()
             stopPositionUpdates()
         }
     }

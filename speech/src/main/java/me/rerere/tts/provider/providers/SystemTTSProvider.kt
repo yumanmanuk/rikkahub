@@ -161,8 +161,10 @@ class SystemTTSProvider : TTSProvider<TTSProviderSetting.SystemTTS> {
     }
 
     /**
-     * 对 WAV 数据的开头做短暂淡入（默认 30ms），
+     * 对 WAV 数据的开头做淡入（默认 100ms），
      * 消除 Android TTS 引擎在 pipeline 初始化阶段产生的 click/pop 噪声。
+     * 增益曲线使用二次方（t*t）而非线性：前 50ms 增益仅 0.25，前 30ms 仅 0.09，
+     * 对爆音/噪声的压制效果远强于线性淡入。
      * 仅处理 16-bit PCM WAV，其余格式原样返回。
      */
     private fun applyWavFadeIn(wav: ByteArray, fadeMs: Int = 100): ByteArray {
@@ -192,7 +194,9 @@ class SystemTTSProvider : TTSProvider<TTSProviderSetting.SystemTTS> {
 
         val result = wav.copyOf()
         for (i in 0 until fadeSamples) {
-            val gain = i.toFloat() / fadeSamples
+            // 二次方曲线：t^2，前期增益极低，对 TTS 引擎启动噪声的压制效果远强于线性
+            val t = i.toFloat() / fadeSamples
+            val gain = t * t
             val frameOffset = 44 + i * bytesPerFrame
             for (ch in 0 until channels) {
                 val byteIdx = frameOffset + ch * 2
@@ -210,11 +214,12 @@ class SystemTTSProvider : TTSProvider<TTSProviderSetting.SystemTTS> {
     }
 
     /**
-     * 对 WAV 数据的结尾做短暂淡出（默认 20ms），
-     * 消除 ExoPlayer 切换音频源或播放结束时的爆音。
+     * 对 WAV 数据的结尾做淡出（默认 50ms），
+     * 消除 ExoPlayer 切换音频源或播放结束时的爆音，
+     * 更长的淡出确保 chunk 结尾足够干净，不把尾部噪音带入下一段。
      * 仅处理 16-bit PCM WAV，其余格式原样返回。
      */
-    private fun applyWavFadeOut(wav: ByteArray, fadeMs: Int = 20): ByteArray {
+    private fun applyWavFadeOut(wav: ByteArray, fadeMs: Int = 50): ByteArray {
         if (wav.size < 44) return wav
 
         val audioFormat = ((wav[21].toInt() and 0xFF) shl 8) or (wav[20].toInt() and 0xFF)

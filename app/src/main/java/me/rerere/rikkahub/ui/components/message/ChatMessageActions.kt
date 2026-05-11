@@ -51,6 +51,7 @@ import me.rerere.hugeicons.stroke.Copy01
 import me.rerere.hugeicons.stroke.Delete01
 import me.rerere.hugeicons.stroke.Edit01
 import me.rerere.hugeicons.stroke.Favourite
+import me.rerere.hugeicons.stroke.Sword02
 import me.rerere.hugeicons.stroke.GitFork
 import me.rerere.hugeicons.stroke.InLove
 import me.rerere.hugeicons.stroke.MoreVertical
@@ -84,6 +85,7 @@ fun ColumnScope.ChatMessageActionButtons(
     isFavorite: Boolean = false,
     onToggleFavorite: (() -> Unit)? = null,
     onScrollToQuestion: (() -> Unit)? = null,
+    onCopy: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val settings = LocalSettings.current
@@ -183,6 +185,34 @@ fun ColumnScope.ChatMessageActionButtons(
                     tint = actionIconColor
                 )
             }
+
+            // Battle Mode 标识图标：多条来自不同模型的回答可切换时显示，点击打开排序面板
+            val isBattleMode = node.messages.size > 1 &&
+                node.messages.mapNotNull { it.modelId }.toSet().size > 1
+            if (isBattleMode) {
+                var showBattleSortSheet by remember { mutableStateOf(false) }
+                Icon(
+                    imageVector = HugeIcons.Sword02,
+                    contentDescription = "Battle Mode",
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = LocalIndication.current,
+                            onClick = { showBattleSortSheet = true }
+                        )
+                        .padding(8.dp)
+                        .size(16.dp),
+                    tint = MaterialTheme.colorScheme.primary
+                )
+                if (showBattleSortSheet) {
+                    BattleSortSheet(
+                        node = node,
+                        onDismissRequest = { showBattleSortSheet = false },
+                        onUpdate = onUpdate
+                    )
+                }
+            }
         }
 
         Icon(
@@ -258,6 +288,7 @@ fun ChatMessageActionsSheet(
     onShare: () -> Unit,
     onFork: () -> Unit,
     onDeleteBefore: () -> Unit,
+    onCopy: () -> Unit,
     onSelectAndCopy: () -> Unit,
     onTranslate: ((UIMessage, Locale) -> Unit)? = null,
     onClearTranslation: (UIMessage) -> Unit = {},
@@ -280,6 +311,33 @@ fun ChatMessageActionsSheet(
             verticalArrangement = Arrangement.spacedBy(8.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
+            // 一键复制
+            Card(
+                onClick = {
+                    onDismissRequest()
+                    onCopy()
+                },
+                shape = MaterialTheme.shapes.medium
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    modifier = Modifier
+                        .padding(16.dp)
+                        .fillMaxWidth()
+                ) {
+                    Icon(
+                        imageVector = HugeIcons.Copy01,
+                        contentDescription = null,
+                        modifier = Modifier.padding(4.dp)
+                    )
+                    Text(
+                        text = stringResource(R.string.copy),
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                }
+            }
+
             // Select and Copy
             Card(
                 onClick = {
@@ -550,5 +608,131 @@ fun ChatMessageActionsSheet(
                 showTranslateDialog = false
             },
         )
+    }
+}
+
+/**
+ * Battle Mode 排序面板：展示所有模型的回答，支持长按拖拽调整顺序
+ */
+@Composable
+fun BattleSortSheet(
+    node: MessageNode,
+    onDismissRequest: () -> Unit,
+    onUpdate: (MessageNode) -> Unit,
+) {
+    val settings = LocalSettings.current
+    // 记录当前正在显示的消息 id，排序后 selectIndex 跟随它
+    val currentMsgId = node.messages.getOrNull(node.selectIndex)?.id
+
+    var messages by remember(node.messages) { mutableStateOf(node.messages) }
+    val lazyListState = rememberLazyListState()
+    val reorderState = rememberReorderableLazyListState(lazyListState) { from, to ->
+        messages = messages.toMutableList().apply {
+            add(to.index, removeAt(from.index))
+        }
+        val newSelectIndex = messages.indexOfFirst { it.id == currentMsgId }.coerceAtLeast(0)
+        onUpdate(node.copy(messages = messages, selectIndex = newSelectIndex))
+    }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismissRequest,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+    ) {
+        Column(
+            modifier = androidx.compose.ui.Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
+                .padding(bottom = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            // 标题行
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = androidx.compose.ui.Modifier.padding(bottom = 4.dp),
+            ) {
+                Icon(
+                    imageVector = HugeIcons.Sword02,
+                    contentDescription = null,
+                    modifier = androidx.compose.ui.Modifier.size(20.dp),
+                    tint = MaterialTheme.colorScheme.primary
+                )
+                Text(
+                    text = "Battle 排序",
+                    style = MaterialTheme.typography.titleMedium
+                )
+            }
+
+            Text(
+                text = "长按拖拽可调整回答顺序，排在前面的将优先显示",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+
+            LazyColumn(
+                state = lazyListState,
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                contentPadding = PaddingValues(vertical = 4.dp),
+            ) {
+                items(messages, key = { it.id }) { msg ->
+                    ReorderableItem(
+                        state = reorderState,
+                        key = msg.id,
+                    ) { isDragging ->
+                        val model: me.rerere.ai.provider.Model? = msg.modelId?.let {
+                            settings.findModelById(it)
+                        }
+                        val isSelected = msg.id == currentMsgId
+                        Card(
+                            modifier = androidx.compose.ui.Modifier
+                                .fillMaxWidth()
+                                .graphicsLayer {
+                                    scaleX = if (isDragging) 1.03f else 1f
+                                    scaleY = if (isDragging) 1.03f else 1f
+                                },
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (isSelected)
+                                    MaterialTheme.colorScheme.primaryContainer
+                                else
+                                    MaterialTheme.colorScheme.surfaceVariant
+                            ),
+                        ) {
+                            Row(
+                                modifier = androidx.compose.ui.Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            ) {
+                                // 模型图标
+                                AutoAIIcon(
+                                    name = model?.displayName ?: "",
+                                    modifier = androidx.compose.ui.Modifier.size(28.dp),
+                                )
+                                // 模型名称
+                                Text(
+                                    text = model?.displayName ?: "Unknown",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    modifier = androidx.compose.ui.Modifier.weight(1f),
+                                    color = if (isSelected)
+                                        MaterialTheme.colorScheme.onPrimaryContainer
+                                    else
+                                        MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                // 拖拽把手（长按触发）
+                                Icon(
+                                    imageVector = HugeIcons.DragDropVertical,
+                                    contentDescription = "拖拽排序",
+                                    modifier = androidx.compose.ui.Modifier
+                                        .size(20.dp)
+                                        .longPressDraggableHandle(),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }

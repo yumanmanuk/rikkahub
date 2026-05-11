@@ -23,7 +23,6 @@ import me.rerere.hugeicons.stroke.Clock02
 import me.rerere.hugeicons.stroke.Download04
 import me.rerere.hugeicons.stroke.Upload02
 import me.rerere.hugeicons.stroke.Text
-import me.rerere.hugeicons.stroke.Zap
 import me.rerere.rikkahub.ui.context.LocalSettings
 import me.rerere.rikkahub.utils.formatNumber
 import me.rerere.rikkahub.utils.toFixed
@@ -100,27 +99,13 @@ fun ChatMessageNerdLine(
                             }
                         )
                     }
-                    // TPS
+                    // 耗时
                     if (message.finishedAt != null) {
                         val duration = Duration.between(
                             message.createdAt.toJavaLocalDateTime(),
                             message.finishedAt!!.toJavaLocalDateTime()
                         )
-                        val tps = usage.completionTokens.toFloat() / duration.toMillis() * 1000
                         val seconds = (duration.toMillis() / 1000f).toFixed(1)
-                        StatsItem(
-                            icon = {
-                                Icon(
-                                    imageVector = HugeIcons.Zap,
-                                    contentDescription = "Speed",
-                                    modifier = Modifier.size(12.dp)
-                                )
-                            },
-                            content = {
-                                Text(text = "${tps.toFixed(1)} tok/s")
-                            }
-                        )
-
                         StatsItem(
                             icon = {
                                 Icon(

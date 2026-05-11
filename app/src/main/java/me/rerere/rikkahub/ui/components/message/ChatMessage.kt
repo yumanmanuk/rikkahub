@@ -92,6 +92,7 @@ import me.rerere.rikkahub.ui.theme.rememberChatFontFamily
 import me.rerere.rikkahub.ui.theme.extendColors
 import me.rerere.rikkahub.utils.JsonInstant
 import me.rerere.rikkahub.utils.base64Encode
+import me.rerere.rikkahub.utils.copyMessageToClipboard
 import me.rerere.rikkahub.utils.openUrl
 import me.rerere.rikkahub.utils.urlDecode
 import java.util.Locale
@@ -209,6 +210,9 @@ fun ChatMessage(
                     isFavorite = isFavorite,
                     onToggleFavorite = onToggleFavorite,
                     onScrollToQuestion = onScrollToQuestion,
+                    onCopy = {
+                        context.copyMessageToClipboard(message)
+                    },
                 )
             }
         }
@@ -232,6 +236,9 @@ fun ChatMessage(
             onFork = onFork,
             onDeleteBefore = onDeleteBefore,
             model = model,
+            onCopy = {
+                context.copyMessageToClipboard(message)
+            },
             onSelectAndCopy = {
                 showSelectCopySheet = true
             },

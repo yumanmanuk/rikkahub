@@ -1,6 +1,8 @@
 package me.rerere.rikkahub.ui.pages.chat
 
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -12,7 +14,22 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.dp
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Cancel01
@@ -28,8 +45,9 @@ import me.rerere.rikkahub.ui.components.ui.FormItem
  *
  * Rendered at the bottom of ConversationParamsSheet.
  * Provides a toggle switch plus a multi-model picker:
- *   - Selected models shown as FilterChips (tap to remove)
- *   - "Select model" button (ModelSelector with modelId=null) appends new models to the list
+ *   - Selected models shown as FilterChips in a wrapping FlowRow layout.
+ *     Long-press a chip to drag-reorder; tap to remove.
+ *   - "Select model" button (ModelSelector with modelId=null) appends new models to the list.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -63,39 +81,118 @@ fun BattleModeSection(
         }
     ) {
         if (params.battleModeEnabled) {
-            FlowRow(
+            val haptic = LocalHapticFeedback.current
+
+            // 每个 chip 的窗口坐标（用于拖拽命中检测）
+            val itemBounds = remember { mutableStateMapOf<Int, Rect>() }
+            // 正在拖拽的 index，-1 表示未拖拽
+            var draggingIndex by remember { mutableIntStateOf(-1) }
+            // 当前悬停的目标 index
+            var hoverIndex by remember { mutableIntStateOf(-1) }
+            // 拖拽起始的窗口坐标
+            var startWindowPos by remember { mutableStateOf(Offset.Zero) }
+            // 从拖拽开始累计的位移
+            var cumulativeDrag by remember { mutableStateOf(Offset.Zero) }
+
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(top = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                // 已选模型 —— 点击 chip 移除
-                params.battleModelIds.forEach { modelId ->
-                    val model = settings.providers.findModelById(modelId)
-                    FilterChip(
-                        selected = true,
-                        onClick = {
-                            onUpdate(
-                                params.copy(
-                                    battleModelIds = params.battleModelIds.filter { it != modelId }
+                // 已选模型 chip 列表 —— 自动换行，长按拖动排序，点击移除
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    params.battleModelIds.forEachIndexed { index, modelId ->
+                        val model = settings.providers.findModelById(modelId)
+                        val isDragging = draggingIndex == index
+                        val isHover = hoverIndex == index && !isDragging
+
+                        FilterChip(
+                            selected = true,
+                            onClick = {
+                                // 未拖拽时点击移除该模型
+                                if (draggingIndex == -1) {
+                                    onUpdate(
+                                        params.copy(
+                                            battleModelIds = params.battleModelIds.filter { it != modelId }
+                                        )
+                                    )
+                                }
+                            },
+                            label = {
+                                Text(
+                                    text = model?.displayName ?: modelId.toString().take(8),
+                                    style = MaterialTheme.typography.labelSmall,
                                 )
-                            )
-                        },
-                        label = {
-                            Text(
-                                text = model?.displayName ?: modelId.toString().take(8),
-                                style = MaterialTheme.typography.labelSmall,
-                            )
-                        },
-                        trailingIcon = {
-                            Icon(
-                                imageVector = HugeIcons.Cancel01,
-                                contentDescription = "remove",
-                                modifier = Modifier.size(14.dp),
-                            )
-                        }
-                    )
+                            },
+                            trailingIcon = {
+                                Icon(
+                                    imageVector = HugeIcons.Cancel01,
+                                    contentDescription = "remove",
+                                    modifier = Modifier.size(14.dp),
+                                )
+                            },
+                            modifier = Modifier
+                                // 拖拽中半透明；悬停目标略微放大
+                                .alpha(if (isDragging) 0.4f else 1f)
+                                .scale(if (isHover) 1.08f else 1f)
+                                // 记录每个 chip 在窗口中的位置
+                                .onGloballyPositioned { coords ->
+                                    itemBounds[index] = coords.boundsInWindow()
+                                }
+                                .pointerInput(modelId) {
+                                    detectDragGesturesAfterLongPress(
+                                        onDragStart = { localOffset ->
+                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                            draggingIndex = index
+                                            hoverIndex = index
+                                            cumulativeDrag = Offset.Zero
+                                            // 拖拽起始窗口坐标 = chip 左上角 + 手指在 chip 内的局部偏移
+                                            val bounds = itemBounds[index]
+                                            startWindowPos = if (bounds != null) {
+                                                Offset(
+                                                    bounds.left + localOffset.x,
+                                                    bounds.top + localOffset.y,
+                                                )
+                                            } else Offset.Zero
+                                        },
+                                        onDrag = { change, dragAmount ->
+                                            change.consume()
+                                            cumulativeDrag += dragAmount
+                                            // 当前手指的近似窗口坐标
+                                            val currentPos = startWindowPos + cumulativeDrag
+                                            // 找中心点距手指最近的 chip 作为悬停目标
+                                            val nearest = itemBounds.entries.minByOrNull { (_, bounds) ->
+                                                (bounds.center - currentPos).getDistance()
+                                            }
+                                            if (nearest != null) {
+                                                hoverIndex = nearest.key
+                                            }
+                                        },
+                                        onDragEnd = {
+                                            val from = draggingIndex
+                                            val to = hoverIndex
+                                            draggingIndex = -1
+                                            hoverIndex = -1
+                                            haptic.performHapticFeedback(HapticFeedbackType.GestureEnd)
+                                            if (from != -1 && to != -1 && from != to) {
+                                                val newList = params.battleModelIds.toMutableList()
+                                                newList.add(to, newList.removeAt(from))
+                                                onUpdate(params.copy(battleModelIds = newList))
+                                            }
+                                        },
+                                        onDragCancel = {
+                                            draggingIndex = -1
+                                            hoverIndex = -1
+                                        },
+                                    )
+                                }
+                        )
+                    }
                 }
 
                 // 使用 ModelSelector(modelId=null) 作为"添加模型"入口。
