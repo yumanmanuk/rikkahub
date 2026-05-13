@@ -297,20 +297,32 @@ private fun MessagePartsBlock(
     val settings = LocalSettings.current
     val partsState by rememberUpdatedState(parts)
 
+    val annotationsState by rememberUpdatedState(annotations)
+
     val handleClickCitation: (String) -> Unit = remember {
         handler@{ citationId ->
-            partsState.forEach { part ->
-                if (part is UIMessagePart.Tool && part.toolName == "search_web" && part.isExecuted) {
-                    val outputText = part.output.filterIsInstance<UIMessagePart.Text>().joinToString("\n") { it.text }
-                    val items =
-                        runCatching { JsonInstant.parseToJsonElement(outputText).jsonObject["items"]?.jsonArray }.getOrNull()
-                            ?: return@forEach
-                    items.forEach { item ->
-                        val id = item.jsonObject["id"]?.jsonPrimitive?.content ?: return@forEach
-                        val url = item.jsonObject["url"]?.jsonPrimitive?.content ?: return@forEach
-                        if (citationId == id) {
-                            context.openUrl(url)
-                            return@handler
+            // 支持 Gemini grounding 的数字格式角标 [N]，从 annotations 按 1-based 索引取 URL
+            val numericIndex = citationId.toIntOrNull()
+            val numericAnnotation = if (numericIndex != null) {
+                annotationsState.getOrNull(numericIndex - 1) as? UIMessageAnnotation.UrlCitation
+            } else null
+            if (numericAnnotation != null) {
+                context.openUrl(numericAnnotation.url)
+            } else {
+                // 原有的 search_web tool 引用逻辑
+                partsState.forEach { part ->
+                    if (part is UIMessagePart.Tool && part.toolName == "search_web" && part.isExecuted) {
+                        val outputText = part.output.filterIsInstance<UIMessagePart.Text>().joinToString("\n") { it.text }
+                        val items =
+                            runCatching { JsonInstant.parseToJsonElement(outputText).jsonObject["items"]?.jsonArray }.getOrNull()
+                                ?: return@forEach
+                        items.forEach { item ->
+                            val id = item.jsonObject["id"]?.jsonPrimitive?.content ?: return@forEach
+                            val url = item.jsonObject["url"]?.jsonPrimitive?.content ?: return@forEach
+                            if (citationId == id) {
+                                context.openUrl(url)
+                                return@handler
+                            }
                         }
                     }
                 }

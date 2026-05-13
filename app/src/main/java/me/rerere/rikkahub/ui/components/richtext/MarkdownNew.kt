@@ -903,7 +903,7 @@ private fun AnnotatedString.Builder.appendHtmlInlineElement(
                     // Citation link: [citation,domain](id)
                     val domain = text.substringAfter("citation,")
                     val id = href
-                    if (id.length == 6) {
+                    if (id.isNotEmpty()) {
                         inlineContents.putIfAbsent(
                             "citation:$id",
                             InlineTextContent(

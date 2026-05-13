@@ -270,14 +270,24 @@ class GoogleProvider(private val client: OkHttpClient, context: Context? = null)
                             val finishReason =
                                 candidateObj["finishReason"]?.jsonPrimitive?.contentOrNull
 
-                            val message = content?.let {
+                            val message = if (content != null) {
                                 parseMessage(buildJsonObject {
                                     put("role", JsonPrimitive("model"))
-                                    put("content", it)
-                                    groundingMetadata?.let { groundingMetadata ->
-                                        put("groundingMetadata", groundingMetadata)
+                                    put("content", content)
+                                    groundingMetadata?.let { gm ->
+                                        put("groundingMetadata", gm)
                                     }
                                 })
+                            } else if (groundingMetadata != null) {
+                                // Gemini streaming 的最后一帧可能只有 groundingMetadata 而没有 content，
+                                // 仍需解析引用信息写入 annotations，否则底部引用面板不显示
+                                UIMessage(
+                                    role = MessageRole.ASSISTANT,
+                                    parts = emptyList(),
+                                    annotations = parseSearchGroundingMetadata(groundingMetadata)
+                                )
+                            } else {
+                                null
                             }
 
                             UIMessageChoice(

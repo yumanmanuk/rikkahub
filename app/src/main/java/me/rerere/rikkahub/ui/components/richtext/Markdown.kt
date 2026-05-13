@@ -127,6 +127,10 @@ private val CODE_BLOCK_REGEX = Regex("```[\\s\\S]*?```|`[^`\n]*`", RegexOption.D
 private val BREAK_LINE_REGEX = Regex("(?i)<br\\s*/?>")
 private val LATEX_BLOCK_LINE_BREAK_REGEX = Regex("""[ \t]*\r?\n[ \t]*""")
 
+// 匹配 Gemini grounding 插入的数字角标，如 [1]、[2]（1-99 范围）
+// 要求 [ 前不是 ! (排除图片)，] 后不是 ( (排除普通链接)
+private val GROUNDING_INDEX_REGEX = Regex("(?<!!)\\[(\\d{1,2})](?!\\()")
+
 // 预处理markdown内容
 private fun preProcess(content: String): String {
     // 先找出所有代码块的位置
@@ -158,6 +162,16 @@ private fun preProcess(content: String): String {
                 .trim()
                 .replace(LATEX_BLOCK_LINE_BREAK_REGEX, " ")
             "$$" + formula + "$$"
+        }
+    }
+
+    // 将 Gemini grounding 插入的 [N] 数字角标替换为 citation badge 格式
+    result = GROUNDING_INDEX_REGEX.replace(result) { matchResult ->
+        if (isInCodeBlock(matchResult.range.first)) {
+            matchResult.value // 保持原样
+        } else {
+            val n = matchResult.groupValues[1]
+            "[citation,$n]($n)"
         }
     }
 
@@ -1089,7 +1103,7 @@ private fun AnnotatedString.Builder.appendMarkdownNodeContent(
                 // 如果是引用，则特殊处理
                 val domain = linkText.substringAfter("citation,")
                 val id = linkDest
-                if (id.length == 6) {
+                if (id.isNotEmpty()) {
                     inlineContents.putIfAbsent(
                         "citation:$linkDest", InlineTextContent(
                             placeholder = Placeholder(
