@@ -166,9 +166,87 @@ class BattleService(
         saveConversation(conversationId, finalConversation)
     }
 
+    // --- Battle 节点单 Slot 重试 ---
+
+    /**
+     * 对已有 Battle 节点中的某个 slot（message）重新生成，不影响其他模型的回答。
+     *
+     * @param conversationId 对话 ID
+     * @param battleNodeId 目标 battle 节点 ID
+     * @param messageId 需要重新生成的 message ID（即当前显示的那条）
+     * @param modelId 对应的模型 ID
+     * @param contextMessages 上下文消息列表（不含待生成的助手消息）
+     * @param getConversation 获取当前对话的回调
+     * @param updateConversationState 更新对话状态的回调
+     * @param saveConversation 持久化对话的回调
+     * @param processingStatus 进度状态 flow
+     */
+    suspend fun rerunSlot(
+        conversationId: Uuid,
+        battleNodeId: Uuid,
+        messageId: Uuid,
+        modelId: Uuid,
+        contextMessages: List<UIMessage>,
+        getConversation: () -> Conversation,
+        updateConversationState: (Uuid, (Conversation) -> Conversation) -> Unit,
+        saveConversation: suspend (Uuid, Conversation) -> Unit,
+        processingStatus: MutableStateFlow<String?>,
+    ) {
+        val settings = settingsStore.settingsFlow.first()
+        val model = settings.providers.findModelById(modelId)
+        if (model == null) {
+            Log.w(BATTLE_TAG, "rerunSlot: model not found for id=$modelId")
+            return
+        }
+
+        val assistant = settings.getCurrentAssistant()
+        val memories: List<AssistantMemory> = if (assistant.useGlobalMemory) {
+            memoryRepository.getGlobalMemories()
+        } else {
+            memoryRepository.getMemoriesOfAssistant(settings.assistantId.toString())
+        }
+        val tools = buildTools(settings)
+
+        // 清空当前 slot 内容，给用户即时反馈
+        updateConversationState(conversationId) { conv ->
+            updateMessageInBattleNode(conv, battleNodeId, messageId) { msg ->
+                msg.copy(parts = emptyList())
+            }
+        }
+
+        processingStatus.value = "⚔️ 重试中..."
+
+        runCatching {
+            generateForModel(
+                model = model,
+                contextMessages = contextMessages,
+                conversationId = conversationId,
+                battleNodeId = battleNodeId,
+                placeholderMsgId = messageId,
+                memories = memories,
+                tools = tools,
+                getConversation = getConversation,
+                updateConversationState = updateConversationState,
+                processingStatus = processingStatus,
+            )
+        }.onFailure { e ->
+            if (e is CancellationException) throw e
+            Log.e(BATTLE_TAG, "rerunSlot '${model.displayName}' failed: ${e.message}", e)
+            updateConversationState(conversationId) { conv ->
+                updateMessageInBattleNode(conv, battleNodeId, messageId) {
+                    it.copy(parts = listOf(UIMessagePart.Text("❌ ${model.displayName} 重试失败：${e.message}")))
+                }
+            }
+        }
+
+        processingStatus.value = null
+        val finalConversation = getConversation().copy(updateAt = Instant.now())
+        saveConversation(conversationId, finalConversation)
+    }
+
     // --- 单模型生成 ---
 
-    private suspend fun generateForModel(
+    internal suspend fun generateForModel(
         model: Model,
         contextMessages: List<UIMessage>,
         conversationId: Uuid,
@@ -272,14 +350,14 @@ class BattleService(
                 )
             )
         }
-        mcpManager.getAllAvailableTools().forEach { tool ->
+        mcpManager.getAllAvailableTools().forEach { (serverId, mcpTool) ->
             add(
                 Tool(
-                    name = "mcp__" + tool.name,
-                    description = tool.description ?: "",
-                    parameters = { tool.inputSchema },
-                    needsApproval = tool.needsApproval,
-                    execute = { mcpManager.callTool(tool.name, it.jsonObject) },
+                    name = "mcp__" + mcpTool.name,
+                    description = mcpTool.description ?: "",
+                    parameters = { mcpTool.inputSchema },
+                    needsApproval = mcpTool.needsApproval,
+                    execute = { mcpManager.callTool(serverId, mcpTool.name, it.jsonObject) },
                 )
             )
         }
