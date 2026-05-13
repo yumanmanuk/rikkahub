@@ -1,5 +1,6 @@
 import {
   copyFileSync,
+  existsSync,
   mkdirSync,
   readdirSync,
   rmSync,
@@ -12,7 +13,9 @@ const TARGET_DIR = "../web/src/main/resources/static";
 
 function copyDirectory(src: string, dest: string) {
   // 确保目标目录存在
-  mkdirSync(dest, { recursive: true });
+  if (!existsSync(dest)) {
+    mkdirSync(dest, { recursive: true });
+  }
 
   const entries = readdirSync(src, { withFileTypes: true });
 
@@ -24,7 +27,10 @@ function copyDirectory(src: string, dest: string) {
       copyDirectory(srcPath, destPath);
     } else {
       // 确保父目录存在
-      mkdirSync(dirname(destPath), { recursive: true });
+      const parentDir = dirname(destPath);
+      if (!existsSync(parentDir)) {
+        mkdirSync(parentDir, { recursive: true });
+      }
       copyFileSync(srcPath, destPath);
     }
   }
