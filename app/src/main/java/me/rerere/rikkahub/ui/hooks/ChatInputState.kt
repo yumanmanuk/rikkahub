@@ -6,6 +6,7 @@ import androidx.compose.foundation.text.input.setTextAndPlaceCursorAtEnd
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import me.rerere.ai.core.MessageRole
 import me.rerere.ai.ui.UIMessagePart
 import kotlin.uuid.Uuid
 
@@ -13,6 +14,7 @@ class ChatInputState {
     val textContent = TextFieldState()
     var messageContent by mutableStateOf(listOf<UIMessagePart>())
     var editingMessage by mutableStateOf<Uuid?>(null)
+    var editingMessageRole by mutableStateOf<MessageRole?>(null)
     private var editingParts: List<UIMessagePart>? = null
     private var editingAttachmentUrls: Set<String> = emptySet()
 
@@ -20,11 +22,14 @@ class ChatInputState {
         textContent.setTextAndPlaceCursorAtEnd("")
         messageContent = emptyList()
         editingMessage = null
+        editingMessageRole = null
         editingParts = null
         editingAttachmentUrls = emptySet()
     }
 
     fun isEditing() = editingMessage != null
+
+    fun isEditingAssistant() = editingMessageRole == MessageRole.ASSISTANT
 
     fun setMessageText(text: String) {
         textContent.setTextAndPlaceCursorAtEnd(text)
@@ -80,7 +85,7 @@ class ChatInputState {
             }
             return if (text.isBlank()) messageContent else messageContent + listOf(UIMessagePart.Text(text))
         }
-        return messageContent + listOf(UIMessagePart.Text(text))
+        return if (text.isBlank()) messageContent else messageContent + listOf(UIMessagePart.Text(text))
     }
 
     fun isEmpty(): Boolean {

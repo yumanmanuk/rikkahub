@@ -388,6 +388,7 @@ private fun ChatPageContent(
                             vm.handleMessageEdit(
                                 parts = inputState.getContents(),
                                 messageId = inputState.editingMessage!!,
+                                regenerate = !inputState.isEditingAssistant(),
                             )
                         } else {
                             vm.handleMessageSend(inputState.getContents())
@@ -399,7 +400,7 @@ private fun ChatPageContent(
                             vm.handleMessageEdit(
                                 parts = inputState.getContents(),
                                 messageId = inputState.editingMessage!!,
-                                regenerate = false, // 长按：仅保存，不触发重新生成
+                                regenerate = inputState.isEditingAssistant(), // 编辑AI回答时长按触发重新生成
                             )
                         } else {
                             vm.handleMessageSend(content = inputState.getContents(), answer = false)
@@ -456,6 +457,7 @@ private fun ChatPageContent(
                 },
                 onEdit = {
                     inputState.editingMessage = it.id
+                    inputState.editingMessageRole = it.role
                     inputState.setContents(it.parts)
                 },
                 onForkMessage = {
@@ -493,6 +495,7 @@ private fun ChatPageContent(
                 },
                 onClickSuggestion = { suggestion ->
                     inputState.editingMessage = null
+                    inputState.editingMessageRole = null
                     inputState.setMessageText(suggestion)
                 },
                 onTranslate = { message, locale ->
