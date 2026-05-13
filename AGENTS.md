@@ -93,3 +93,43 @@
 - If the user does not explicitly request localization, prioritize implementing functionality without considering
   localization. (e.g `Text("Hello world")`)
 - For `locale-tui` operations, use the `locale-tui-localization` skill.
+
+## Database Migration
+
+数据库迁移使用 Room 的 `AutoMigration` 或手动 `Migration`，相关文件：
+
+- 数据库定义：`app/src/main/java/me/rerere/rikkahub/data/db/AppDatabase.kt`
+- 手动迁移：`app/src/main/java/me/rerere/rikkahub/data/db/migrations/`
+- 备份/恢复：`app/src/main/java/me/rerere/rikkahub/data/sync/webdav/WebDavSync.kt`
+
+### 每次新增 schema 变更时必须做
+
+1. **递增 `version`**（`@Database` 注解）
+2. **同步更新 `AppDatabase.VERSION` 常量**（`companion object` 中），供备份恢复逻辑动态引用
+3. **添加对应 migration**：简单增删列用 `AutoMigration`，需要 schema 约束修复的用手动 `Migration`
+
+```kotlin
+// AppDatabase.kt 示例
+@Database(version = 20, autoMigrations = [
+    ...
+    AutoMigration(from = 19, to = 20),
+])
+abstract class AppDatabase : RoomDatabase() {
+    companion object {
+        const val VERSION = 20  // 必须与 @Database.version 保持一致
+    }
+}
+```
+
+### 手动 Migration 编写规范
+
+- **新增列**：使用 `ALTER TABLE ... ADD COLUMN`，用 `try-catch` 忽略 duplicate 错误（兼容旧备份恢复场景）
+- **修改列约束**（如 nullable → NOT NULL）：必须用**重建表**方式，不能只用 `ALTER TABLE`
+  - `CREATE TABLE new_table`（含正确约束）→ `INSERT ... SELECT` → `DROP TABLE old` → `RENAME`
+  - 用 `COALESCE(col, default)` 处理旧数据中可能的 NULL 值
+
+### 备份/恢复注意事项
+
+- **备份时**：在复制 `.db` 文件前执行 `PRAGMA wal_checkpoint(FULL)`，确保 WAL 数据写入主文件、`user_version` 准确
+- **恢复时**：`fixRestoredDbSchema` 会自动将备份 DB 的版本设为 `AppDatabase.VERSION - 1`，触发最后一个 Migration 做 schema 修复，**无需手动维护版本号**
+- 不要在 `fixRestoredDbSchema` 中手动预添加列，应由 Migration 统一处理
