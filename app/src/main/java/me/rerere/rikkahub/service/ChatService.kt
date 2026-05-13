@@ -439,8 +439,25 @@ class ChatService(
                     if (regenerateAssistantMsg) {
                         val node = conversation.getMessageNodeByMessage(message)
                         val nodeIndex = conversation.messageNodes.indexOf(node)
-                        // [FORK] Battle Mode: 截断到用户消息结尾，然后并发生成
-                        if (isBattle) {
+                        // [FORK] Battle Mode: 若消息属于 battle 节点，只重试当前显示的模型
+                        if (node != null && node.isBattleNode && message.modelId != null) {
+                            // 取 battle 节点之前的所有消息作为上下文
+                            val contextConversation = conversation.copy(
+                                messageNodes = conversation.messageNodes.subList(0, nodeIndex)
+                            )
+                            battleService.rerunSlot(
+                                conversationId = conversationId,
+                                battleNodeId = node.id,
+                                messageId = message.id,
+                                modelId = message.modelId!!,
+                                contextMessages = contextConversation.currentMessages,
+                                getConversation = { getConversationFlow(conversationId).value },
+                                updateConversationState = ::updateConversationState,
+                                saveConversation = ::saveConversation,
+                                processingStatus = session.processingStatus,
+                            )
+                        } else if (isBattle) {
+                            // [FORK] Battle Mode: 非 battle 节点但开启了 battle 模式，截断并全量并发生成
                             val contextConversation = conversation.copy(
                                 messageNodes = conversation.messageNodes.subList(0, nodeIndex)
                             )
