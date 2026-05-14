@@ -202,7 +202,7 @@ private fun buildMermaidHtml(
         </head>
         <body>
             <pre class="mermaid">
-                ${code.escapeHtml()}
+                ${sanitizeMermaidCode(preprocessMermaidCode(code)).escapeHtml()}
             </pre>
             <script>
               mermaid.initialize({
