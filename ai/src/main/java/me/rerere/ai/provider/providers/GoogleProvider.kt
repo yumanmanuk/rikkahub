@@ -386,34 +386,39 @@ class GoogleProvider(private val client: OkHttpClient, context: Context? = null)
                     add(JsonPrimitive("IMAGE"))
                 })
             }
-            if (params.model.abilities.contains(ModelAbility.REASONING)) {
+            if (params.model.abilities.contains(ModelAbility.REASONING) && params.reasoningLevel != null) {
                 put("thinkingConfig", buildJsonObject {
                     put("includeThoughts", true)
 
                     val isGeminiPro =
                         params.model.modelId.contains(Regex("2\\.5.*pro", RegexOption.IGNORE_CASE))
+                    val isGemini3ProSeries =
+                        ModelRegistry.GEMINI_3_PRO_SERIES.match(modelId = params.model.modelId)
+                    val isGemini3FlashSeries =
+                        ModelRegistry.GEMINI_3_FLASH_SERIES.match(modelId = params.model.modelId)
 
                     when (params.reasoningLevel) {
                         ReasoningLevel.AUTO -> {} // 自动模式，不设置参数
 
                         ReasoningLevel.OFF -> {
-                            if (ModelRegistry.GEMINI_3_SERIES.match(modelId = params.model.modelId)) {
-                                put("thinkingLevel", "minimal")
-                            } else if (!isGeminiPro) {
-                                put("thinkingBudget", 0)
-                                put("includeThoughts", false)
+                            when {
+                                isGemini3FlashSeries -> put("thinkingLevel", "minimal")
+                                isGemini3ProSeries -> put("thinkingLevel", "low")
+                                !isGeminiPro -> {
+                                    put("thinkingBudget", 0)
+                                    put("includeThoughts", false)
+                                }
                             }
                         }
 
                         else -> {
-                            if (ModelRegistry.GEMINI_3_SERIES.match(modelId = params.model.modelId)) {
-                                when (params.reasoningLevel) {
+                            when {
+                                isGemini3ProSeries || isGemini3FlashSeries -> when (params.reasoningLevel) {
                                     ReasoningLevel.LOW -> put("thinkingLevel", "low")
                                     ReasoningLevel.MEDIUM -> put("thinkingLevel", "medium")
                                     else -> put("thinkingLevel", "high") // HIGH, XHIGH
                                 }
-                            } else {
-                                put("thinkingBudget", params.reasoningLevel.budgetTokens)
+                                else -> put("thinkingBudget", params.reasoningLevel.budgetTokens)
                             }
                         }
                     }

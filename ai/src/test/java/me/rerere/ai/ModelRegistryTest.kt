@@ -103,4 +103,20 @@ class ModelRegistryTest {
             ModelRegistry.MODEL_ABILITIES.getData("deepseek-v4-pro")
         )
     }
+
+    @Test
+    fun testGemini3SubGroups() {
+        // Pro series
+        assertTrue(ModelRegistry.GEMINI_3_PRO_SERIES.match("gemini-3-pro"))
+        assertTrue(ModelRegistry.GEMINI_3_PRO_SERIES.match("gemini-3.1-pro-preview"))
+        assertTrue(ModelRegistry.GEMINI_3_PRO_SERIES.match("gemini-3.1-pro-preview-customtools"))
+        assertFalse(ModelRegistry.GEMINI_3_PRO_SERIES.match("gemini-3-flash"))
+        assertFalse(ModelRegistry.GEMINI_3_PRO_SERIES.match("gemini-3.1-flash-image"))
+
+        // Flash series
+        assertTrue(ModelRegistry.GEMINI_3_FLASH_SERIES.match("gemini-3-flash"))
+        assertTrue(ModelRegistry.GEMINI_3_FLASH_SERIES.match("gemini-3.1-flash-image"))
+        assertFalse(ModelRegistry.GEMINI_3_FLASH_SERIES.match("gemini-3-pro"))
+        assertFalse(ModelRegistry.GEMINI_3_FLASH_SERIES.match("gemini-3.1-pro-preview"))
+    }
 }
