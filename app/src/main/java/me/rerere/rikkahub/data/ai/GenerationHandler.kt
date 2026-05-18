@@ -47,6 +47,8 @@ import me.rerere.rikkahub.data.model.Assistant
 import me.rerere.rikkahub.data.model.AssistantMemory
 import me.rerere.rikkahub.data.repository.MemoryRepository
 import me.rerere.rikkahub.utils.applyPlaceholders
+// [FORK] ConversationParams 解析器
+import me.rerere.rikkahub.data.ai.resolveWith
 import java.util.Locale
 import kotlin.time.Clock
 import kotlin.uuid.Uuid
@@ -364,22 +366,12 @@ class GenerationHandler(
         conversationLorebookIds: Set<Uuid> = emptySet(),
         workspaceCwd: String? = null,
     ) {
-        // 对话参数优先于助手参数，null 则回退到助手参数
-        val effectiveTemperature = conversationParams.temperature ?: assistant.temperature
-        val effectiveTopP = conversationParams.topP ?: assistant.topP
-        val effectiveContextMessageSize = conversationParams.contextMessageSize ?: assistant.contextMessageSize
-        // 根据模式合并系统提示词
-        val effectiveSystemPrompt: String = when {
-            conversationParams.systemPrompt == null -> assistant.systemPrompt
-            conversationParams.systemPromptMode == SystemPromptMode.OVERRIDE -> conversationParams.systemPrompt
-            else -> buildString {
-                if (assistant.systemPrompt.isNotBlank()) {
-                    append(assistant.systemPrompt)
-                    append("\n\n")
-                }
-                append(conversationParams.systemPrompt)
-            }
-        }
+        // [FORK] 使用 ConversationParamsResolver 合并对话专属参数与助手默认参数
+        val resolved = conversationParams.resolveWith(assistant)
+        val effectiveTemperature = resolved.temperature
+        val effectiveTopP = resolved.topP
+        val effectiveContextMessageSize = resolved.contextMessageSize
+        val effectiveSystemPrompt = resolved.systemPrompt
 
         val internalMessages = buildList {
             val system = buildString {

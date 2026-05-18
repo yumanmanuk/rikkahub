@@ -351,21 +351,11 @@ class ChatService(
 
                 // 开始补全
                 if (answer) {
-                    // [FORK] Battle Mode: 若开启则委托 BattleService 并发生成
-                    val battleParams = newConversation.conversationParams
-                    if (battleParams.battleModeEnabled && battleParams.battleModelIds.isNotEmpty()) {
-                        battleService.runBattle(
-                            conversationId = conversationId,
-                            contextMessages = newConversation.currentMessages,
-                            battleModelIds = battleParams.battleModelIds,
-                            getConversation = { getConversationFlow(conversationId).value },
-                            updateConversationState = ::updateConversationState,
-                            saveConversation = ::saveConversation,
-                            processingStatus = session.processingStatus,
-                        )
-                    } else {
-                        handleMessageComplete(conversationId)
-                    }
+                    dispatchGeneration(
+                        conversationId = conversationId,
+                        conversation = newConversation,
+                        session = session,
+                    )
                 }
 
                 _generationDoneFlow.emit(conversationId)
@@ -420,20 +410,11 @@ class ChatService(
                         messageNodes = conversation.messageNodes.subList(0, indexAt + 1)
                     )
                     saveConversation(conversationId, newConversation)
-                    // [FORK] Battle Mode
-                    if (isBattle) {
-                        battleService.runBattle(
-                            conversationId = conversationId,
-                            contextMessages = newConversation.currentMessages,
-                            battleModelIds = battleParams.battleModelIds,
-                            getConversation = { getConversationFlow(conversationId).value },
-                            updateConversationState = ::updateConversationState,
-                            saveConversation = ::saveConversation,
-                            processingStatus = session.processingStatus,
-                        )
-                    } else {
-                        handleMessageComplete(conversationId)
-                    }
+                    dispatchGeneration(
+                        conversationId = conversationId,
+                        conversation = newConversation,
+                        session = session,
+                    )
                 } else {
                     if (regenerateAssistantMsg) {
                         val node = conversation.getMessageNodeByMessage(message)
@@ -455,23 +436,18 @@ class ChatService(
                                 saveConversation = ::saveConversation,
                                 processingStatus = session.processingStatus,
                             )
-                        } else if (isBattle) {
-                            // [FORK] Battle Mode: 非 battle 节点但开启了 battle 模式，截断并全量并发生成
+                        } else {
+                            // [FORK] Battle Mode: 非 battle 节点或普通模式，统一走 dispatchGeneration
                             val contextConversation = conversation.copy(
                                 messageNodes = conversation.messageNodes.subList(0, nodeIndex)
                             )
-                            saveConversation(conversationId, contextConversation)
-                            battleService.runBattle(
+                            if (isBattle) saveConversation(conversationId, contextConversation)
+                            dispatchGeneration(
                                 conversationId = conversationId,
-                                contextMessages = contextConversation.currentMessages,
-                                battleModelIds = battleParams.battleModelIds,
-                                getConversation = { getConversationFlow(conversationId).value },
-                                updateConversationState = ::updateConversationState,
-                                saveConversation = ::saveConversation,
-                                processingStatus = session.processingStatus,
+                                conversation = contextConversation,
+                                session = session,
+                                messageRange = if (isBattle) null else 0..<nodeIndex,
                             )
-                        } else {
-                            handleMessageComplete(conversationId, messageRange = 0..<nodeIndex)
                         }
                     } else {
                         saveConversation(conversationId, conversation)
@@ -548,6 +524,35 @@ class ChatService(
         }
 
         session.setJob(job)
+    }
+
+    // ---- [FORK] Battle Mode 生成路由 ----
+
+    /**
+     * [FORK] Battle Mode 路由入口。
+     * 根据 ConversationParams 决定走 BattleService 并发生成，还是走普通的 handleMessageComplete。
+     * 将 Battle Mode 分支收拢到此处，避免在 sendMessage/regenerateAtMessage 里散落 if/else。
+     */
+    private suspend fun dispatchGeneration(
+        conversationId: Uuid,
+        conversation: Conversation,
+        session: ConversationSession,
+        messageRange: ClosedRange<Int>? = null,
+    ) {
+        val battleParams = conversation.conversationParams
+        if (battleParams.battleModeEnabled && battleParams.battleModelIds.isNotEmpty()) {
+            battleService.runBattle(
+                conversationId = conversationId,
+                contextMessages = conversation.currentMessages,
+                battleModelIds = battleParams.battleModelIds,
+                getConversation = { getConversationFlow(conversationId).value },
+                updateConversationState = ::updateConversationState,
+                saveConversation = ::saveConversation,
+                processingStatus = session.processingStatus,
+            )
+        } else {
+            handleMessageComplete(conversationId, messageRange)
+        }
     }
 
     // ---- 处理消息补全 ----
