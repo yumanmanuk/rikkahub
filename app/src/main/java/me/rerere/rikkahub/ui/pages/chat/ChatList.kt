@@ -11,6 +11,7 @@ import me.rerere.hugeicons.stroke.Search01
 import me.rerere.hugeicons.stroke.Cancel01
 import me.rerere.hugeicons.stroke.Filter
 import me.rerere.hugeicons.stroke.Favourite
+import me.rerere.hugeicons.stroke.InLove
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.AnimatedVisibilityScope
@@ -857,10 +858,10 @@ private fun ChatListPreview(
                             // 点赞标识
                             if (isFavorite) {
                                 Icon(
-                                    imageVector = HugeIcons.Favourite,
+                                    imageVector = HugeIcons.InLove,
                                     contentDescription = "Favorite",
                                     modifier = Modifier.size(16.dp),
-                                    tint = MaterialTheme.colorScheme.primary
+                                    tint = MaterialTheme.colorScheme.error
                                 )
                             }
                             val highlightColor = MaterialTheme.colorScheme.tertiaryContainer
