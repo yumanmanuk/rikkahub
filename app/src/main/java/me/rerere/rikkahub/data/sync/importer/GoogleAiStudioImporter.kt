@@ -4,6 +4,7 @@ import kotlinx.datetime.LocalDateTime
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import me.rerere.ai.core.MessageRole
+import me.rerere.ai.core.TokenUsage
 import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.rikkahub.data.datastore.DEFAULT_ASSISTANT_ID
@@ -45,7 +46,8 @@ data class GoogleChunk(
     val driveImage: GoogleDriveImage? = null,
     // 思考过程 chunk（isThought=true），导入时跳过
     val isThought: Boolean = false,
-    // tokenCount / finishReason / parts / grounding 等字段均丢弃
+    // 输出 token 数，model role 的 chunk 有效，用于在消息尾部显示
+    val tokenCount: Int? = null,
 )
 
 @Serializable
@@ -131,11 +133,19 @@ object GoogleAiStudioImporter {
             // 仅对 ASSISTANT 消息写入模型显示名
             val resolvedModelName = if (messageRole == MessageRole.ASSISTANT) modelName else null
 
+            // 对 ASSISTANT 消息：将 group 中所有 chunk 的 tokenCount 求和，填入 usage.completionTokens
+            // 这样 ChatMessageNerdLine 就能显示输出 token 数和字数
+            val resolvedUsage = if (messageRole == MessageRole.ASSISTANT) {
+                val outputTokens = group.sumOf { it.tokenCount ?: 0 }
+                if (outputTokens > 0) TokenUsage(completionTokens = outputTokens) else null
+            } else null
+
             val uiMessage = UIMessage(
                 role = messageRole,
                 parts = parts,
                 createdAt = createdAt,
                 modelName = resolvedModelName,
+                usage = resolvedUsage,
             )
             messageNodes.add(MessageNode.of(uiMessage))
         }
