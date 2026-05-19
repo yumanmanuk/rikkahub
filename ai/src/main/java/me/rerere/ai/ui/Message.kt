@@ -27,6 +27,8 @@ data class UIMessage(
         .toLocalDateTime(TimeZone.currentSystemDefault()),
     val finishedAt: LocalDateTime? = null,
     val modelId: Uuid? = null,
+    // modelId 在 settings 中找不到对应 Model 时的 fallback 显示名（如导入历史对话时使用）
+    val modelName: String? = null,
     val usage: TokenUsage? = null,
     val translation: String? = null
 ) {

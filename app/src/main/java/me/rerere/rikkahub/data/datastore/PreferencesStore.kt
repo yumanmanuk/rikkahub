@@ -108,6 +108,10 @@ class SettingsStore(
         val ASSISTANTS = stringPreferencesKey("assistants")
         val ASSISTANT_TAGS = stringPreferencesKey("assistant_tags")
 
+        // [FORK] 对话标签和历史视图模式
+        val CONVERSATION_TAGS = stringPreferencesKey("conversation_tags")
+        val HISTORY_VIEW_MODE = stringPreferencesKey("history_view_mode")
+
         // 搜索
         val SEARCH_SERVICES = stringPreferencesKey("search_services")
         val SEARCH_COMMON = stringPreferencesKey("search_common")
@@ -190,6 +194,13 @@ class SettingsStore(
                 assistantTags = preferences[ASSISTANT_TAGS]?.let {
                     JsonInstant.decodeFromString(it)
                 } ?: emptyList(),
+                // [FORK] 对话标签和历史视图模式
+                conversationTags = preferences[CONVERSATION_TAGS]?.let {
+                    JsonInstant.decodeFromString(it)
+                } ?: emptyList(),
+                historyViewMode = preferences[HISTORY_VIEW_MODE]?.let {
+                    runCatching { HistoryViewMode.valueOf(it) }.getOrDefault(HistoryViewMode.TIMELINE)
+                } ?: HistoryViewMode.TIMELINE,
                 providers = JsonInstant.decodeFromString(preferences[PROVIDERS] ?: "[]"),
                 assistants = JsonInstant.decodeFromString(preferences[ASSISTANTS] ?: "[]"),
                 dynamicColor = preferences[DYNAMIC_COLOR] != false,
@@ -384,6 +395,9 @@ class SettingsStore(
             preferences[ASSISTANTS] = JsonInstant.encodeToString(settings.assistants)
             preferences[SELECT_ASSISTANT] = settings.assistantId.toString()
             preferences[ASSISTANT_TAGS] = JsonInstant.encodeToString(settings.assistantTags)
+            // [FORK] 对话标签和历史视图模式
+            preferences[CONVERSATION_TAGS] = JsonInstant.encodeToString(settings.conversationTags)
+            preferences[HISTORY_VIEW_MODE] = settings.historyViewMode.name
 
             preferences[SEARCH_SERVICES] = JsonInstant.encodeToString(settings.searchServices)
             preferences[SEARCH_COMMON] = JsonInstant.encodeToString(settings.searchCommonOptions)
@@ -520,6 +534,10 @@ data class Settings(
     val providers: List<ProviderSetting> = DEFAULT_PROVIDERS,
     val assistants: List<Assistant> = DEFAULT_ASSISTANTS,
     val assistantTags: List<Tag> = emptyList(),
+    // [FORK] 对话标签（列表顺序即标签视图显示顺序）
+    val conversationTags: List<Tag> = emptyList(),
+    // [FORK] 历史页视图模式
+    val historyViewMode: HistoryViewMode = HistoryViewMode.TIMELINE,
     val searchServices: List<SearchServiceOptions> = listOf(SearchServiceOptions.DEFAULT),
     val searchCommonOptions: SearchCommonOptions = SearchCommonOptions(),
     val searchServiceSelected: Int = 0,

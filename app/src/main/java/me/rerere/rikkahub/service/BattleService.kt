@@ -72,7 +72,7 @@ class BattleService(
      */
     suspend fun runBattle(
         conversationId: Uuid,
-        contextMessages: List<UIMessage>,
+        conversation: Conversation,
         battleModelIds: List<Uuid>,
         getConversation: () -> Conversation,
         updateConversationState: (Uuid, (Conversation) -> Conversation) -> Unit,
@@ -119,6 +119,9 @@ class BattleService(
         )
         saveConversation(conversationId, conversationWithBattle)
 
+        val independentContext = conversation.conversationParams.battleIndependentContext
+        Log.d(BATTLE_TAG, "runBattle: independentContext=$independentContext, models=${battleModels.map { it.displayName }}")
+
         // 并发为每个模型生成回答
         val totalCount = battleModels.size
         val completedCount = java.util.concurrent.atomic.AtomicInteger(0)
@@ -128,10 +131,20 @@ class BattleService(
             val deferreds = battleModels.mapIndexed { index, model ->
                 async {
                     val placeholderMsgId = placeholderMessages[index].id
+                    // [FORK] Battle Mode: 根据开关决定上下文取法
+                    val modelContextMessages = if (independentContext) {
+                        conversation.getMessagesForModel(model.id).also {
+                            Log.d(BATTLE_TAG, "runBattle [${model.displayName}]: independentContext, msgs=${it.size}")
+                        }
+                    } else {
+                        conversation.currentMessages.also {
+                            Log.d(BATTLE_TAG, "runBattle [${model.displayName}]: sharedContext, msgs=${it.size}")
+                        }
+                    }
                     runCatching {
                         generateForModel(
                             model = model,
-                            contextMessages = contextMessages,
+                            contextMessages = modelContextMessages,
                             conversationId = conversationId,
                             battleNodeId = battleNode.id,
                             placeholderMsgId = placeholderMsgId,
@@ -175,7 +188,7 @@ class BattleService(
      * @param battleNodeId 目标 battle 节点 ID
      * @param messageId 需要重新生成的 message ID（即当前显示的那条）
      * @param modelId 对应的模型 ID
-     * @param contextMessages 上下文消息列表（不含待生成的助手消息）
+     * @param conversation battle 节点之前的对话（不含待生成的助手节点），用于按模型取上下文
      * @param getConversation 获取当前对话的回调
      * @param updateConversationState 更新对话状态的回调
      * @param saveConversation 持久化对话的回调
@@ -186,7 +199,7 @@ class BattleService(
         battleNodeId: Uuid,
         messageId: Uuid,
         modelId: Uuid,
-        contextMessages: List<UIMessage>,
+        conversation: Conversation,
         getConversation: () -> Conversation,
         updateConversationState: (Uuid, (Conversation) -> Conversation) -> Unit,
         saveConversation: suspend (Uuid, Conversation) -> Unit,
@@ -206,6 +219,18 @@ class BattleService(
             memoryRepository.getMemoriesOfAssistant(settings.assistantId.toString())
         }
         val tools = buildTools(settings)
+
+        // 根据开关决定重试时使用哪种上下文
+        val independentContext = conversation.conversationParams.battleIndependentContext
+        val contextMessages = if (independentContext) {
+            conversation.getMessagesForModel(model.id).also {
+                Log.d(BATTLE_TAG, "rerunSlot [${model.displayName}]: independentContext, msgs=${it.size}")
+            }
+        } else {
+            conversation.currentMessages.also {
+                Log.d(BATTLE_TAG, "rerunSlot [${model.displayName}]: sharedContext, msgs=${it.size}")
+            }
+        }
 
         // 清空当前 slot 内容，给用户即时反馈
         updateConversationState(conversationId) { conv ->

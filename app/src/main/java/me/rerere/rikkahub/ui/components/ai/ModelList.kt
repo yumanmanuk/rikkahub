@@ -806,6 +806,207 @@ fun ModelModalityTag(model: Model) {
     }
 }
 
+/**
+ * Battle Mode 专用模型列表。
+ *
+ * 与 [ModelList] 的区别：
+ * - 点击模型为 toggle（已选则取消，未选则添加），不关闭底部弹框
+ * - [selectedModelIds] 中的模型以高亮状态显示
+ */
+@Composable
+fun ColumnScope.BattleModelList(
+    providers: List<ProviderSetting>,
+    selectedModelIds: List<kotlin.uuid.Uuid>,
+    onToggle: (Model) -> Unit,
+) {
+    val coroutineScope = rememberCoroutineScope()
+    val settingsStore = koinInject<SettingsStore>()
+    val settings = settingsStore.settingsFlow.collectAsStateWithLifecycle()
+
+    val favoriteModels = settings.value.favoriteModels.mapNotNull { modelId ->
+        val model = settings.value.providers.findModelById(modelId) ?: return@mapNotNull null
+        if (model.type != ModelType.CHAT) return@mapNotNull null
+        val provider = model.findProvider(providers = settings.value.providers, checkOverwrite = false)
+            ?: return@mapNotNull null
+        model to provider
+    }
+
+    var searchKeywords by remember { mutableStateOf("") }
+
+    val searchFilteredModelsByProvider = remember(providers, searchKeywords) {
+        providers.associate { provider ->
+            provider.id to provider.models.fastFilter {
+                it.type == ModelType.CHAT && it.displayName.contains(searchKeywords, true)
+            }
+        }
+    }
+
+    val providerPositions = remember(providers, favoriteModels, searchFilteredModelsByProvider) {
+        var currentIndex = 0
+        if (providers.isEmpty()) currentIndex = 1
+        if (favoriteModels.isNotEmpty()) {
+            currentIndex += 1
+            currentIndex += favoriteModels.size
+        }
+        providers.map { provider ->
+            val position = currentIndex
+            currentIndex += 1
+            currentIndex += searchFilteredModelsByProvider[provider.id].orEmpty().size
+            provider.id to position
+        }.toMap()
+    }
+
+    val lazyListState = rememberLazyListState()
+
+    // 搜索框
+    Surface(
+        shape = RoundedCornerShape(50),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 8.dp),
+    ) {
+        OutlinedTextField(
+            value = searchKeywords,
+            onValueChange = { searchKeywords = it },
+            modifier = Modifier.fillMaxWidth(),
+            placeholder = { Text(text = stringResource(R.string.model_list_search_placeholder)) },
+            shape = RoundedCornerShape(50),
+            colors = TextFieldDefaults.colors(
+                unfocusedIndicatorColor = Color.Transparent,
+                focusedIndicatorColor = Color.Transparent,
+                focusedContainerColor = Color.Transparent,
+                unfocusedContainerColor = Color.Transparent,
+            ),
+            leadingIcon = { Icon(HugeIcons.Search01, null) },
+            maxLines = 1,
+        )
+    }
+
+    LazyColumn(
+        state = lazyListState,
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+        contentPadding = PaddingValues(8.dp),
+        modifier = Modifier
+            .weight(1f)
+            .fillMaxWidth(),
+    ) {
+        if (providers.isEmpty()) {
+            item {
+                Text(
+                    text = stringResource(R.string.model_list_no_providers),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.extendColors.gray6,
+                    modifier = Modifier.padding(8.dp),
+                )
+            }
+        }
+
+        if (favoriteModels.isNotEmpty()) {
+            stickyHeader {
+                Text(
+                    text = stringResource(R.string.model_list_favorite),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(bottom = 4.dp, top = 8.dp),
+                )
+            }
+            items(
+                items = favoriteModels,
+                key = { "favorite:" + it.first.id.toString() },
+            ) { (model, provider) ->
+                ModelItem(
+                    model = model,
+                    onSelect = { onToggle(it) },
+                    modifier = Modifier.animateItem(),
+                    providerSetting = provider,
+                    select = selectedModelIds.contains(model.id),
+                    onDismiss = {},
+                )
+            }
+        }
+
+        providers.fastForEach { providerSetting ->
+            stickyHeader(key = "header:${providerSetting.id}") {
+                Row(
+                    modifier = Modifier
+                        .padding(horizontal = 8.dp)
+                        .padding(bottom = 4.dp, top = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = providerSetting.name,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                    Spacer(modifier = Modifier.weight(1f))
+                    ProviderBalanceText(
+                        providerSetting = providerSetting,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
+            }
+            items(
+                items = searchFilteredModelsByProvider[providerSetting.id].orEmpty(),
+                key = { it.id },
+            ) { model ->
+                ModelItem(
+                    model = model,
+                    onSelect = { onToggle(it) },
+                    modifier = Modifier.animateItem(),
+                    providerSetting = providerSetting,
+                    select = selectedModelIds.contains(model.id),
+                    onDismiss = {},
+                )
+            }
+        }
+    }
+
+    // 供应商 Badge 行
+    val providerBadgeListState = rememberLazyListState()
+    LaunchedEffect(lazyListState) {
+        snapshotFlow { lazyListState.firstVisibleItemIndex }
+            .distinctUntilChanged()
+            .debounce(100)
+            .collect { index ->
+                if (index > 0) {
+                    val currentProvider = providerPositions.entries.findLast { index > it.value }
+                    val providerIndex = providers.indexOfFirst { it.id == currentProvider?.key }
+                    if (providerIndex >= 0) {
+                        providerBadgeListState.animateScrollToItem(providerIndex)
+                    } else {
+                        providerBadgeListState.requestScrollToItem(0)
+                    }
+                } else {
+                    providerBadgeListState.requestScrollToItem(0)
+                }
+            }
+    }
+    if (providers.isNotEmpty()) {
+        LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxWidth(),
+            contentPadding = PaddingValues(horizontal = 8.dp),
+            state = providerBadgeListState,
+        ) {
+            items(providers) { provider ->
+                AssistChip(
+                    onClick = {
+                        val position = providerPositions[provider.id] ?: 0
+                        coroutineScope.launch {
+                            lazyListState.animateScrollToItem(position)
+                        }
+                    },
+                    label = { Text(provider.name) },
+                    leadingIcon = {
+                        AutoAIIcon(name = provider.name, modifier = Modifier.size(16.dp))
+                    },
+                )
+            }
+        }
+    }
+}
+
 @Composable
 fun ModelAbilityTag(model: Model) {
     model.abilities.fastForEach { ability ->

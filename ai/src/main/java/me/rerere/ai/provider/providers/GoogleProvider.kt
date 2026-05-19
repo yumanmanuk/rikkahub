@@ -227,19 +227,24 @@ class GoogleProvider(private val client: OkHttpClient, context: Context? = null)
             }
         ).newBuilder().addQueryParameter("alt", "sse").build()
 
+        val encoded = json.encodeToString(requestBody)
+        if (encoded.length < 600_000) {
+            Log.i(TAG, "streamText: $encoded")
+        } else {
+            Log.i(TAG, "streamText: (request body too large to log, size=${encoded.length})")
+        }
+
         val request = transformRequest(
             providerSetting = providerSetting,
             request = Request.Builder()
                 .url(url)
                 .headers(params.customHeaders.toHeaders())
                 .post(
-                    json.encodeToString(requestBody).toRequestBody("application/json".toMediaType())
+                    encoded.toRequestBody("application/json".toMediaType())
                 )
                 .configureReferHeaders(providerSetting.baseUrl)
                 .build()
         )
-
-        Log.i(TAG, "streamText: ${json.encodeToString(requestBody)}")
 
         val listener = object : EventSourceListener() {
             override fun onEvent(

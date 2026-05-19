@@ -76,10 +76,16 @@ class ResponseAPI(
             params = params,
             stream = false,
         )
+        val encoded = json.encodeToString(requestBody)
+        if (encoded.length < 600_000) {
+            Log.i(TAG, "generateText: $encoded")
+        } else {
+            Log.i(TAG, "generateText: (request body too large to log, size=${encoded.length})")
+        }
         val request = Request.Builder()
             .url("${providerSetting.baseUrl}/responses")
             .headers(params.customHeaders.toHeaders())
-            .post(json.encodeToString(requestBody).toRequestBody("application/json".toMediaType()))
+            .post(encoded.toRequestBody("application/json".toMediaType()))
             .addHeader(
                 "Authorization",
                 "Bearer ${keyRoulette.next(providerSetting.apiKey, providerSetting.id.toString())}"
@@ -88,15 +94,12 @@ class ResponseAPI(
             .configureReferHeaders(providerSetting.baseUrl)
             .build()
 
-        Log.i(TAG, "generateText: ${json.encodeToString(requestBody)}")
-
         val response = client.newCall(request).await()
         if (!response.isSuccessful) {
             throw Exception("Failed to get response: ${response.code} ${response.body.string()}")
         }
 
         val bodyStr = response.body?.string() ?: ""
-        Log.i(TAG, "generateText: $bodyStr")
         val bodyJson = json.parseToJsonElement(bodyStr).jsonObject
         val output = parseResponseOutput(bodyJson)
 
@@ -114,18 +117,22 @@ class ResponseAPI(
             params = params,
             stream = true,
         )
+        val encoded = json.encodeToString(requestBody)
+        if (encoded.length < 600_000) {
+            Log.i(TAG, "streamText: $encoded")
+        } else {
+            Log.i(TAG, "streamText: (request body too large to log, size=${encoded.length})")
+        }
         val request = Request.Builder()
             .url("${providerSetting.baseUrl}/responses")
             .headers(params.customHeaders.toHeaders())
-            .post(json.encodeToString(requestBody).toRequestBody("application/json".toMediaType()))
+            .post(encoded.toRequestBody("application/json".toMediaType()))
             .addHeader(
                 "Authorization",
                 "Bearer ${keyRoulette.next(providerSetting.apiKey, providerSetting.id.toString())}"
             )
             .configureReferHeaders(providerSetting.baseUrl)
             .build()
-
-        Log.i(TAG, "streamText: ${json.encodeToString(requestBody)}")
 
         val listener = object : EventSourceListener() {
             override fun onEvent(

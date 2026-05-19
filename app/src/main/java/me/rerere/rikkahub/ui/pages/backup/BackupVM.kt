@@ -12,12 +12,15 @@ import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.repository.ConversationRepository
 import me.rerere.rikkahub.data.sync.importer.ChatboxImporter
 import me.rerere.rikkahub.data.sync.importer.CherryStudioProviderImporter
+import me.rerere.rikkahub.data.sync.importer.GoogleAiStudioImporter
+import me.rerere.rikkahub.data.sync.importer.GoogleAiStudioExport
 import me.rerere.rikkahub.data.sync.webdav.WebDavBackupItem
 import me.rerere.rikkahub.data.sync.webdav.WebDavSync
 import me.rerere.rikkahub.data.sync.S3BackupItem
 import me.rerere.rikkahub.data.sync.S3Sync
 import me.rerere.rikkahub.utils.UiState
 import java.io.File
+import kotlinx.serialization.json.Json
 
 private const val TAG = "BackupVM"
 
@@ -153,6 +156,55 @@ class BackupVM(
         )
     }
 
+    suspend fun restoreFromGoogleAiStudio(file: File, filename: String? = null): GoogleAiStudioRestoreResult {
+        // 从 runSettings.model 提取模型显示名：去掉 "models/" 前缀和 "-preview" 后缀
+        val modelName = runCatching {
+            val lenientJson = Json {
+                ignoreUnknownKeys = true
+                isLenient = true
+                coerceInputValues = true
+            }
+            val export = lenientJson.decodeFromString<GoogleAiStudioExport>(file.readText())
+            export.runSettings?.model
+                ?.substringAfterLast("/")
+                ?.removeSuffix("-preview")
+                ?.takeIf { it.isNotBlank() }
+        }.getOrNull()
+
+        val result = GoogleAiStudioImporter.import(
+            file = file,
+            assistantId = settings.value.assistantId,
+            filename = filename,
+            modelName = modelName,
+        )
+
+        var importedConversations = 0
+        var skippedExistingConversations = 0
+
+        result.conversations.forEach { conversation ->
+            if (conversationRepository.existsConversationById(conversation.id)) {
+                skippedExistingConversations++
+            } else {
+                conversationRepository.insertConversation(conversation)
+                importedConversations++
+            }
+        }
+
+        Log.i(
+            TAG,
+            "restoreFromGoogleAiStudio: $importedConversations imported, " +
+                "$skippedExistingConversations skipped, " +
+                "${result.skippedImageParts} image parts dropped, " +
+                "modelName: $modelName"
+        )
+
+        return GoogleAiStudioRestoreResult(
+            importedConversations = importedConversations,
+            skippedExistingConversations = skippedExistingConversations,
+            skippedImageParts = result.skippedImageParts,
+        )
+    }
+
     // S3 Backup methods
     fun loadS3BackupFileItems() {
         viewModelScope.launch {
@@ -205,4 +257,10 @@ data class ChatboxRestoreResult(
     val skippedExistingConversations: Int,
     val skippedImageParts: Int,
     val skippedEmptyMessages: Int,
+)
+
+data class GoogleAiStudioRestoreResult(
+    val importedConversations: Int,
+    val skippedExistingConversations: Int,
+    val skippedImageParts: Int,
 )

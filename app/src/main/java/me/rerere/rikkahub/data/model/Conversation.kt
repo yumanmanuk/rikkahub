@@ -37,6 +37,8 @@ data class ConversationParams(
     // [FORK] Battle Mode: 开启后发消息时用所有选中模型各并发回答一次
     val battleModeEnabled: Boolean = false,
     val battleModelIds: List<Uuid> = emptyList(),
+    // [FORK] Battle Mode: 各模型是否使用独立上下文（true = 每个模型看到自己之前的回答作为上下文）
+    val battleIndependentContext: Boolean = false,
 )
 
 @Serializable
@@ -72,6 +74,23 @@ data class Conversation(
         get(): List<UIMessage> {
             return messageNodes.map { node -> node.messages[node.selectIndex] }
         }
+
+    /**
+     * [FORK] Battle Mode 独立上下文：
+     * 对于 battle 节点，选取该 modelId 生成的那条 message 作为该模型的上下文；
+     * 对于非 battle 节点，直接取当前选中的 message。
+     * 若 battle 节点中找不到对应 modelId 的消息，则回退到 selectIndex。
+     */
+    fun getMessagesForModel(modelId: Uuid): List<UIMessage> {
+        return messageNodes.map { node ->
+            if (node.isBattleNode) {
+                node.messages.firstOrNull { it.modelId == modelId }
+                    ?: node.messages.getOrElse(node.selectIndex) { node.messages.first() }
+            } else {
+                node.messages[node.selectIndex]
+            }
+        }
+    }
 
     fun getMessageNodeByMessage(message: UIMessage): MessageNode? {
         return messageNodes.firstOrNull { node -> node.messages.contains(message) }

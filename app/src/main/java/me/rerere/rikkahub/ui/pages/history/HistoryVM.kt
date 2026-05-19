@@ -10,10 +10,13 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import me.rerere.rikkahub.data.datastore.HistoryViewMode
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.datastore.getCurrentAssistant
 import me.rerere.rikkahub.data.model.Conversation
+import me.rerere.rikkahub.data.model.Tag
 import me.rerere.rikkahub.data.repository.ConversationRepository
+import me.rerere.rikkahub.service.ChatService
 import kotlin.uuid.Uuid
 
 private const val TAG = "HistoryVM"
@@ -21,6 +24,7 @@ private const val TAG = "HistoryVM"
 class HistoryVM(
     private val conversationRepo: ConversationRepository,
     private val settingsStore: SettingsStore,
+    private val chatService: ChatService,
 ) : ViewModel() {
     val assistant = settingsStore.settingsFlow
         .map { it.getCurrentAssistant() }
@@ -34,6 +38,8 @@ class HistoryVM(
 
     fun deleteConversation(conversation: Conversation) {
         viewModelScope.launch {
+            // 先标记已删除，防止并发中的异步任务（如生成标题）在删库后重新将其 insert 回数据库
+            chatService.markConversationDeleted(conversation.id)
             conversationRepo.deleteConversation(conversation)
         }
     }
@@ -62,5 +68,68 @@ class HistoryVM(
 
     suspend fun getFullConversation(conversationId: Uuid): Conversation? {
         return conversationRepo.getConversationById(conversationId)
+    }
+
+    // [FORK] =========================================================
+    // 标签视图相关逻辑（历史页标签分组 / 拖拽排序）
+    // [FORK] =========================================================
+
+    val settings = settingsStore.settingsFlow
+        .stateIn(viewModelScope, SharingStarted.Eagerly, settingsStore.settingsFlow.value)
+
+    fun toggleViewMode() {
+        viewModelScope.launch {
+            settingsStore.update { s ->
+                s.copy(
+                    historyViewMode = when (s.historyViewMode) {
+                        HistoryViewMode.TIMELINE -> HistoryViewMode.TAG
+                        HistoryViewMode.TAG -> HistoryViewMode.TIMELINE
+                    }
+                )
+            }
+        }
+    }
+
+    fun updateConversationTag(conversationId: Uuid, tagId: Uuid?) {
+        viewModelScope.launch {
+            conversationRepo.updateConversationTag(conversationId, tagId)
+        }
+    }
+
+    fun addConversationTag(name: String) {
+        viewModelScope.launch {
+            settingsStore.update { s ->
+                val newTag = Tag(id = Uuid.random(), name = name.trim())
+                s.copy(conversationTags = s.conversationTags + newTag)
+            }
+        }
+    }
+
+    fun deleteConversationTag(tagId: Uuid) {
+        viewModelScope.launch {
+            settingsStore.update { s ->
+                s.copy(conversationTags = s.conversationTags.filter { it.id != tagId })
+            }
+        }
+    }
+
+    fun renameConversationTag(tagId: Uuid, newName: String) {
+        viewModelScope.launch {
+            settingsStore.update { s ->
+                s.copy(
+                    conversationTags = s.conversationTags.map { tag ->
+                        if (tag.id == tagId) tag.copy(name = newName.trim()) else tag
+                    }
+                )
+            }
+        }
+    }
+
+    fun reorderConversationTags(newOrderedTags: List<Tag>) {
+        viewModelScope.launch {
+            settingsStore.update { s ->
+                s.copy(conversationTags = newOrderedTags)
+            }
+        }
     }
 }

@@ -75,6 +75,10 @@ interface ConversationDAO {
     @Query("UPDATE conversationentity SET is_pinned = :isPinned WHERE id = :id")
     suspend fun updatePinStatus(id: String, isPinned: Boolean)
 
+    // [FORK] 更新对话标签
+    @Query("UPDATE conversationentity SET conversation_tag_id = :tagId WHERE id = :id")
+    suspend fun updateConversationTag(id: String, tagId: String?)
+
     @Query("SELECT COUNT(*) FROM conversationentity")
     suspend fun countAll(): Int
 

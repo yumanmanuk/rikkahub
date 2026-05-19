@@ -326,6 +326,14 @@ class ConversationRepository(
         )
     }
 
+    // [FORK] 更新对话标签
+    suspend fun updateConversationTag(conversationId: Uuid, tagId: Uuid?) {
+        conversationDAO.updateConversationTag(
+            id = conversationId.toString(),
+            tagId = tagId?.toString()
+        )
+    }
+
     private fun conversationSummaryToConversation(entity: LightConversationEntity): Conversation {
         return Conversation(
             id = Uuid.parse(entity.id),

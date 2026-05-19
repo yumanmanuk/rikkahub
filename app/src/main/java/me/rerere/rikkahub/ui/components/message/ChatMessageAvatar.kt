@@ -61,7 +61,11 @@ fun ChatMessageAssistantAvatar(
     val settings = LocalSettings.current
     val showIcon = settings.displaySetting.showModelIcon
     val useAssistantAvatar = assistant?.useAssistantAvatar == true
-    if (message.role == MessageRole.ASSISTANT && (model != null || useAssistantAvatar)) {
+    // model 未找到时，用 message.modelName 构造临时 Model 作为 fallback
+    val effectiveModel = model ?: message.modelName?.let { name ->
+        Model(modelId = name, displayName = name)
+    }
+    if (message.role == MessageRole.ASSISTANT && (effectiveModel != null || useAssistantAvatar)) {
         Row(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -89,7 +93,7 @@ fun ChatMessageAssistantAvatar(
                         )
                     }
                 }
-            } else if (model != null) {
+            } else if (effectiveModel != null) {
                 if (showIcon) {
                     AutoAIIcon(
                         name = model.modelId,

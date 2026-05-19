@@ -185,6 +185,8 @@
   <string name="backup_page_import_export">Local</string>
   <string name="backup_page_import_from_chatbox">Import from ChatBox</string>
   <string name="backup_page_import_from_cherry_studio">Import from Cherry Studio</string>
+  <string name="backup_page_import_from_google_ai_studio">从 Google AI Studio 导入</string>
+  <string name="backup_page_import_google_ai_studio_desc">导入 AI Studio 的对话记录</string>
   <string name="backup_page_import_from_other_app">Import from other app</string>
   <string name="backup_page_importing">Importing...</string>
   <string name="backup_page_loading_failed">Failed to load backup files: %s</string>
@@ -391,6 +393,9 @@
   <string name="history_page_title">Chat History</string>
   <string name="history_page_undo">Undo</string>
   <string name="history_page_unpin">Unpin</string>
+  <string name="history_page_import_google_ai_studio">从 Google AI Studio 导入</string>
+  <string name="history_page_import_success">Conversation imported successfully</string>
+  <string name="history_page_import_failed">Import failed</string>
   <string name="imggen_page_aspect_ratio">Image Aspect Ratio</string>
   <string name="imggen_page_aspect_ratio_desc">Select aspect ratio for generated images</string>
   <string name="imggen_page_aspect_ratio_landscape">16:9 Landscape</string>

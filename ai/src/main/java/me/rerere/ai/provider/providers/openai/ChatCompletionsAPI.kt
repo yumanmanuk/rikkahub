@@ -79,15 +79,19 @@ class ChatCompletionsAPI(
                 providerSetting = providerSetting
             )
 
+        val encoded = json.encodeToString(requestBody)
+        if (encoded.length < 600_000) {
+            Log.i(TAG, "generateText: $encoded")
+        } else {
+            Log.i(TAG, "generateText: (request body too large to log, size=${encoded.length})")
+        }
         val request = Request.Builder()
             .url("${providerSetting.baseUrl}${providerSetting.chatCompletionsPath}")
             .headers(params.customHeaders.toHeaders())
-            .post(json.encodeToString(requestBody).toRequestBody("application/json".toMediaType()))
+            .post(encoded.toRequestBody("application/json".toMediaType()))
             .addHeader("Authorization", "Bearer ${keyRoulette.next(providerSetting.apiKey, providerSetting.id.toString())}")
             .configureReferHeaders(providerSetting.baseUrl)
             .build()
-
-        Log.i(TAG, "generateText: ${json.encodeToString(requestBody)}")
 
         val response = client.newCall(request).await()
         if (!response.isSuccessful) {
@@ -136,16 +140,20 @@ class ChatCompletionsAPI(
             stream = true,
         )
 
+        val encoded = json.encodeToString(requestBody)
+        if (encoded.length < 600_000) {
+            Log.i(TAG, "streamText: $encoded")
+        } else {
+            Log.i(TAG, "streamText: (request body too large to log, size=${encoded.length})")
+        }
         val request = Request.Builder()
             .url("${providerSetting.baseUrl}${providerSetting.chatCompletionsPath}")
             .headers(params.customHeaders.toHeaders())
-            .post(json.encodeToString(requestBody).toRequestBody("application/json".toMediaType()))
+            .post(encoded.toRequestBody("application/json".toMediaType()))
             .addHeader("Authorization", "Bearer ${keyRoulette.next(providerSetting.apiKey, providerSetting.id.toString())}")
             .addHeader("Content-Type", "application/json")
             .configureReferHeaders(providerSetting.baseUrl)
             .build()
-
-        Log.i(TAG, "streamText: ${json.encodeToString(requestBody)}")
 
         // just for debugging response body
         // println(client.newCall(request).await().body?.string())

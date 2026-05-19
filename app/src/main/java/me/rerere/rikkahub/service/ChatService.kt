@@ -93,6 +93,7 @@ import me.rerere.rikkahub.utils.sendNotification
 import me.rerere.rikkahub.utils.cancelNotification
 import me.rerere.workspace.WorkspaceShellStatus
 import java.time.Instant
+import java.util.Collections
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.uuid.Uuid
@@ -161,6 +162,9 @@ class ChatService(
     // 统一会话管理
     private val sessions = ConcurrentHashMap<Uuid, ConversationSession>()
     private val _sessionsVersion = MutableStateFlow(0L)
+
+    // 已删除的对话 ID 集合，防止异步任务将已删除的对话重新插入数据库
+    private val deletedConversationIds = Collections.newSetFromMap(ConcurrentHashMap<Uuid, Boolean>())
 
     // 错误状态
     private val _errors = MutableStateFlow<List<ChatError>>(emptyList())
@@ -430,7 +434,7 @@ class ChatService(
                                 battleNodeId = node.id,
                                 messageId = message.id,
                                 modelId = message.modelId!!,
-                                contextMessages = contextConversation.currentMessages,
+                                conversation = contextConversation,
                                 getConversation = { getConversationFlow(conversationId).value },
                                 updateConversationState = ::updateConversationState,
                                 saveConversation = ::saveConversation,
@@ -543,7 +547,7 @@ class ChatService(
         if (battleParams.battleModeEnabled && battleParams.battleModelIds.isNotEmpty()) {
             battleService.runBattle(
                 conversationId = conversationId,
-                contextMessages = conversation.currentMessages,
+                conversation = conversation,
                 battleModelIds = battleParams.battleModelIds,
                 getConversation = { getConversationFlow(conversationId).value },
                 updateConversationState = ::updateConversationState,
@@ -1161,6 +1165,12 @@ class ChatService(
             return // 新会话且为空时不保存
         }
 
+        // 已被删除的对话不允许重新插入，防止异步任务（如生成标题/建议）将其复活
+        if (!exists && deletedConversationIds.contains(conversation.id)) {
+            Log.w(TAG, "saveConversation: skipping insert for deleted conversation ${conversation.id}")
+            return
+        }
+
         val updatedConversation = conversation.copy()
         updateConversation(conversationId, updatedConversation)
 
@@ -1169,6 +1179,16 @@ class ChatService(
         } else {
             conversationRepo.updateConversation(updatedConversation)
         }
+    }
+
+    /**
+     * 标记对话已被删除，防止后续异步任务将其重新插入数据库
+     */
+    fun markConversationDeleted(conversationId: Uuid) {
+        deletedConversationIds.add(conversationId)
+        // 同时取消该对话的生成任务
+        sessions[conversationId]?.getJob()?.cancel()
+        Log.i(TAG, "markConversationDeleted: $conversationId")
     }
 
     // ---- 翻译消息 ----

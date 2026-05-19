@@ -33,11 +33,10 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.dp
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Cancel01
-import me.rerere.ai.provider.ModelType
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.findModelById
 import me.rerere.rikkahub.data.model.ConversationParams
-import me.rerere.rikkahub.ui.components.ai.ModelSelector
+import me.rerere.rikkahub.ui.components.ai.BattleModelPicker
 import me.rerere.rikkahub.ui.components.ui.FormItem
 
 /**
@@ -100,6 +99,18 @@ fun BattleModeSection(
                     .padding(top = 4.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
+                // [FORK] Battle Mode: 独立上下文开关
+                FormItem(
+                    label = { Text("独立上下文") },
+                    tail = {
+                        Switch(
+                            checked = params.battleIndependentContext,
+                            onCheckedChange = { enabled ->
+                                onUpdate(params.copy(battleIndependentContext = enabled))
+                            }
+                        )
+                    }
+                )
                 // 已选模型 chip 列表 —— 自动换行，长按拖动排序，点击移除
                 FlowRow(
                     modifier = Modifier.fillMaxWidth(),
@@ -195,20 +206,17 @@ fun BattleModeSection(
                     }
                 }
 
-                // 使用 ModelSelector(modelId=null) 作为"添加模型"入口。
-                // 它会显示"选择模型"按钮，选中后追加到 battleModelIds，不替换。
-                ModelSelector(
-                    modelId = null,
+                // 「添加模型」按钮：弹一次框可多选，选完后用返回键/下滑关闭
+                BattleModelPicker(
                     providers = settings.providers,
-                    type = ModelType.CHAT,
-                    onlyIcon = false,
-                    allowClear = false,
-                    onSelect = { model ->
-                        if (!params.battleModelIds.contains(model.id)) {
-                            onUpdate(
-                                params.copy(battleModelIds = params.battleModelIds + model.id)
-                            )
+                    selectedModelIds = params.battleModelIds,
+                    onToggle = { model ->
+                        val newList = if (params.battleModelIds.contains(model.id)) {
+                            params.battleModelIds.filter { it != model.id }
+                        } else {
+                            params.battleModelIds + model.id
                         }
+                        onUpdate(params.copy(battleModelIds = newList))
                     }
                 )
             }

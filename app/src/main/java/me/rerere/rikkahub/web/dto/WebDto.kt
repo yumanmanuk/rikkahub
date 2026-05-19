@@ -286,7 +286,7 @@ fun Conversation.toDto(isGenerating: Boolean = false) = ConversationDto(
     messages = messageNodes.map { it.toDto() },
     chatSuggestions = chatSuggestions,
     isPinned = isPinned,
-    customSystemPrompt = customSystemPrompt,
+    customSystemPrompt = conversationParams.systemPrompt,
     modeInjectionIds = modeInjectionIds.map { it.toString() },
     lorebookIds = lorebookIds.map { it.toString() },
     createAt = createAt.toEpochMilli(),
