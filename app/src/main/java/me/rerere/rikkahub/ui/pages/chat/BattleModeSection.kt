@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -99,8 +100,10 @@ fun BattleModeSection(
                     .padding(top = 4.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
+                HorizontalDivider()
                 // [FORK] Battle Mode: 独立上下文开关
                 FormItem(
+                    modifier = Modifier.padding(horizontal = 8.dp),
                     label = { Text("独立上下文") },
                     tail = {
                         Switch(
