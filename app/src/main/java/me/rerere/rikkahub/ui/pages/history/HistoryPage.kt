@@ -1,15 +1,8 @@
 package me.rerere.rikkahub.ui.pages.history
 
-import me.rerere.hugeicons.HugeIcons
-import me.rerere.hugeicons.stroke.Pin
-import me.rerere.hugeicons.stroke.PinOff
-import me.rerere.hugeicons.stroke.GlobalSearch
-import me.rerere.hugeicons.stroke.Delete01
-import me.rerere.hugeicons.stroke.MoreVertical
-import me.rerere.hugeicons.stroke.Tag01
-import me.rerere.hugeicons.stroke.TimelineList
-import me.rerere.hugeicons.stroke.Label
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
@@ -24,6 +17,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -55,6 +49,14 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
+import me.rerere.hugeicons.HugeIcons
+import me.rerere.hugeicons.stroke.Delete01
+import me.rerere.hugeicons.stroke.GlobalSearch
+import me.rerere.hugeicons.stroke.Label
+import me.rerere.hugeicons.stroke.Pin
+import me.rerere.hugeicons.stroke.PinOff
+import me.rerere.hugeicons.stroke.Tag01
+import me.rerere.hugeicons.stroke.TimelineList
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.Screen
 import me.rerere.rikkahub.data.datastore.HistoryViewMode
@@ -65,16 +67,14 @@ import me.rerere.rikkahub.utils.navigateToChatPage
 import me.rerere.rikkahub.utils.plus
 import me.rerere.rikkahub.utils.toLocalDateTime
 import org.koin.androidx.compose.koinViewModel
-import kotlin.uuid.Uuid
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HistoryPage(vm: HistoryVM = koinViewModel()) {
     val navController = LocalNavController.current
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
     var showDeleteAllDialog by remember { mutableStateOf(false) }
-    var showDeleteConfirmDialog by remember { mutableStateOf(false) }
-    var conversationToDelete by remember { mutableStateOf<Conversation?>(null) }
 
     val conversations by vm.conversations.collectAsStateWithLifecycle()
 
@@ -83,9 +83,6 @@ fun HistoryPage(vm: HistoryVM = koinViewModel()) {
     val viewMode = settings.historyViewMode
     val conversationTags = settings.conversationTags
     var tagSheetConversation by remember { mutableStateOf<Conversation?>(null) }
-
-    val snackMessageDeleted = stringResource(R.string.history_page_conversation_deleted)
-    val snackMessageUndo = stringResource(R.string.history_page_undo)
 
     Scaffold(
         topBar = {
@@ -134,6 +131,9 @@ fun HistoryPage(vm: HistoryVM = koinViewModel()) {
             SnackbarHost(hostState = snackbarHostState)
         }
     ) { contentPadding ->
+        val snackMessageDeleted = stringResource(R.string.history_page_conversation_deleted)
+        val snackMessageUndo = stringResource(R.string.history_page_undo)
+
         // [FORK] 按视图模式切换显示内容
         when (viewMode) {
             HistoryViewMode.TIMELINE -> {
@@ -148,11 +148,21 @@ fun HistoryPage(vm: HistoryVM = koinViewModel()) {
                                 navigateToChatPage(navController, conversation.id)
                             },
                             onDelete = {
-                                conversationToDelete = conversation
-                                showDeleteConfirmDialog = true
+                                scope.launch {
+                                    val fullConversation = vm.getFullConversation(conversation.id) ?: conversation
+                                    vm.deleteConversation(conversation)
+                                    val result = snackbarHostState.showSnackbar(
+                                        message = snackMessageDeleted,
+                                        actionLabel = snackMessageUndo,
+                                        withDismissAction = true,
+                                    )
+                                    if (result == SnackbarResult.ActionPerformed) {
+                                        vm.restoreConversation(fullConversation)
+                                    }
+                                }
                             },
                             onTogglePin = { vm.togglePinStatus(conversation.id) },
-                            // [FORK] 时间视图也支持打标签
+                            // [FORK] 长按菜单中的打标签入口
                             onSetTag = { tagSheetConversation = conversation },
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -170,8 +180,18 @@ fun HistoryPage(vm: HistoryVM = koinViewModel()) {
                     onReorderTags = { vm.reorderConversationTags(it) },
                     onTogglePin = { vm.togglePinStatus(it) },
                     onDelete = { conv ->
-                        conversationToDelete = conv
-                        showDeleteConfirmDialog = true
+                        scope.launch {
+                            val fullConversation = vm.getFullConversation(conv.id) ?: conv
+                            vm.deleteConversation(conv)
+                            val result = snackbarHostState.showSnackbar(
+                                message = snackMessageDeleted,
+                                actionLabel = snackMessageUndo,
+                                withDismissAction = true,
+                            )
+                            if (result == SnackbarResult.ActionPerformed) {
+                                vm.restoreConversation(fullConversation)
+                            }
+                        }
                     },
                     onSetTag = { tagSheetConversation = it },
                     onClickConversation = { navigateToChatPage(navController, it.id) },
@@ -214,52 +234,6 @@ fun HistoryPage(vm: HistoryVM = koinViewModel()) {
             dismissButton = {
                 TextButton(
                     onClick = { showDeleteAllDialog = false }
-                ) {
-                    Text(stringResource(R.string.history_page_cancel))
-                }
-            }
-        )
-    }
-
-    if (showDeleteConfirmDialog && conversationToDelete != null) {
-        val conversationTitle = conversationToDelete!!.title.ifBlank { stringResource(R.string.history_page_new_conversation) }
-        AlertDialog(
-            onDismissRequest = {
-                showDeleteConfirmDialog = false
-                conversationToDelete = null
-            },
-            title = { Text(stringResource(R.string.chat_page_delete)) },
-            text = { Text(stringResource(R.string.chat_page_delete_conversation_confirm, conversationTitle.trim())) },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        val conversation = conversationToDelete!!
-                        scope.launch {
-                            // 先获取完整的对话数据（包含 messageNodes），用于撤销恢复
-                            val fullConversation = vm.getFullConversation(conversation.id) ?: conversation
-                            vm.deleteConversation(conversation)
-                            val result = snackbarHostState.showSnackbar(
-                                message = snackMessageDeleted,
-                                actionLabel = snackMessageUndo,
-                                withDismissAction = true,
-                            )
-                            if (result == SnackbarResult.ActionPerformed) {
-                                vm.restoreConversation(fullConversation)
-                            }
-                        }
-                        showDeleteConfirmDialog = false
-                        conversationToDelete = null
-                    }
-                ) {
-                    Text(stringResource(R.string.history_page_delete))
-                }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = {
-                        showDeleteConfirmDialog = false
-                        conversationToDelete = null
-                    }
                 ) {
                     Text(stringResource(R.string.history_page_cancel))
                 }
@@ -327,6 +301,7 @@ private fun SwipeableConversationItem(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ConversationItem(
     conversation: Conversation,
@@ -336,93 +311,80 @@ private fun ConversationItem(
     // [FORK] 打标签入口
     onSetTag: () -> Unit = {},
 ) {
-    // [FORK] 溢出菜单状态
+    // [FORK] 长按菜单状态
     var menuExpanded by remember { mutableStateOf(false) }
 
-    Surface(
-        onClick = onClick,
-        tonalElevation = 2.dp,
-        shape = RoundedCornerShape(25),
-        modifier = modifier
-    ) {
-        ListItem(
-            headlineContent = {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    if (conversation.isPinned) {
-                        Icon(
-                            imageVector = HugeIcons.Pin,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(16.dp),
-                        )
-                    }
-                    Text(
-                        text = conversation.title.ifBlank { stringResource(R.string.history_page_new_conversation) }
-                            .trim(),
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                        style = MaterialTheme.typography.titleMedium,
-                    )
-                }
-            },
-            supportingContent = {
-                Text(conversation.createAt.toLocalDateTime())
-            },
-            // [FORK] 原 Pin 按钮改为溢出菜单（⋮），里面包含置顶和打标签
-            trailingContent = {
-                Box {
-                    IconButton(onClick = { menuExpanded = true }) {
-                        Icon(
-                            imageVector = HugeIcons.MoreVertical,
-                            contentDescription = null,
-                        )
-                    }
-                    DropdownMenu(
-                        expanded = menuExpanded,
-                        onDismissRequest = { menuExpanded = false },
+    Box(modifier = modifier) {
+        Surface(
+            tonalElevation = 2.dp,
+            shape = RoundedCornerShape(25),
+            modifier = Modifier
+                .fillMaxWidth()
+                .combinedClickable(
+                    onClick = onClick,
+                    onLongClick = { menuExpanded = true },
+                )
+        ) {
+            ListItem(
+                headlineContent = {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
-                        DropdownMenuItem(
-                            leadingIcon = {
-                                Icon(
-                                    imageVector = if (conversation.isPinned) HugeIcons.PinOff else HugeIcons.Pin,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(18.dp),
-                                )
-                            },
-                            text = {
-                                Text(
-                                    if (conversation.isPinned)
-                                        stringResource(R.string.history_page_unpin)
-                                    else
-                                        stringResource(R.string.history_page_pin)
-                                )
-                            },
-                            onClick = {
-                                menuExpanded = false
-                                onTogglePin()
-                            },
+                        if (conversation.isPinned) {
+                            Icon(
+                                imageVector = HugeIcons.Pin,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(16.dp),
+                            )
+                        }
+                        Text(
+                            text = conversation.title.ifBlank { stringResource(R.string.history_page_new_conversation) }
+                                .trim(),
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            style = MaterialTheme.typography.titleMedium,
                         )
-                        // [FORK] 设置标签菜单项
-                        DropdownMenuItem(
-                            leadingIcon = {
-                                Icon(
-                                    imageVector = HugeIcons.Tag01,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(18.dp),
-                                )
-                            },
-                            text = { Text("设置标签") },
-                            onClick = {
-                                menuExpanded = false
-                                onSetTag()
-                            },
+                    }
+                },
+                supportingContent = {
+                    Text(conversation.createAt.toLocalDateTime())
+                },
+                trailingContent = {
+                    // 与 upstream 保持一致：trailing 是 Pin 按钮
+                    IconButton(onClick = onTogglePin) {
+                        Icon(
+                            if (conversation.isPinned) HugeIcons.PinOff else HugeIcons.Pin,
+                            contentDescription = if (conversation.isPinned)
+                                stringResource(R.string.history_page_unpin)
+                            else
+                                stringResource(R.string.history_page_pin)
                         )
                     }
                 }
-            }
-        )
+            )
+        }
+
+        // [FORK] 长按弹出的菜单，包含打标签入口
+        DropdownMenu(
+            expanded = menuExpanded,
+            onDismissRequest = { menuExpanded = false },
+        ) {
+            DropdownMenuItem(
+                leadingIcon = {
+                    Icon(
+                        imageVector = HugeIcons.Tag01,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                    )
+                },
+                text = { Text("设置标签") },
+                onClick = {
+                    menuExpanded = false
+                    onSetTag()
+                },
+            )
+        }
     }
 }
