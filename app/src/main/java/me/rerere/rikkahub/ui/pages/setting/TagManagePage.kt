@@ -28,6 +28,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -35,6 +36,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import me.rerere.rikkahub.utils.plus
@@ -178,6 +181,10 @@ fun TagManagePage(vm: SettingVM = koinViewModel()) {
     // 新建标签弹窗
     if (showAddDialog) {
         var newName by remember { mutableStateOf("") }
+        val focusRequester = remember { FocusRequester() }
+        LaunchedEffect(Unit) {
+            focusRequester.requestFocus()
+        }
         AlertDialog(
             onDismissRequest = { showAddDialog = false },
             title = { Text("新建标签") },
@@ -187,6 +194,7 @@ fun TagManagePage(vm: SettingVM = koinViewModel()) {
                     onValueChange = { newName = it },
                     label = { Text("标签名称") },
                     singleLine = true,
+                    modifier = Modifier.focusRequester(focusRequester),
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                     keyboardActions = KeyboardActions(onDone = {
                         if (newName.isNotBlank()) {
@@ -217,6 +225,10 @@ fun TagManagePage(vm: SettingVM = koinViewModel()) {
     // 重命名弹窗
     renamingTag?.let { tag ->
         var renameText by remember(tag.id) { mutableStateOf(tag.name) }
+        val renameFocusRequester = remember(tag.id) { FocusRequester() }
+        LaunchedEffect(tag.id) {
+            renameFocusRequester.requestFocus()
+        }
         AlertDialog(
             onDismissRequest = { renamingTag = null },
             title = { Text("重命名标签") },
@@ -226,6 +238,7 @@ fun TagManagePage(vm: SettingVM = koinViewModel()) {
                     onValueChange = { renameText = it },
                     label = { Text("标签名称") },
                     singleLine = true,
+                    modifier = Modifier.focusRequester(renameFocusRequester),
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                     keyboardActions = KeyboardActions(onDone = {
                         if (renameText.isNotBlank()) {

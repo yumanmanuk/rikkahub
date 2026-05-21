@@ -36,6 +36,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
@@ -44,6 +45,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -469,6 +472,10 @@ fun ConversationTagSheet(
         HorizontalDivider()
 
         if (showAddField) {
+            val addFieldFocusRequester = remember { FocusRequester() }
+            LaunchedEffect(Unit) {
+                addFieldFocusRequester.requestFocus()
+            }
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -481,7 +488,9 @@ fun ConversationTagSheet(
                     onValueChange = { newTagName = it },
                     placeholder = { Text("标签名称") },
                     singleLine = true,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier
+                        .weight(1f)
+                        .focusRequester(addFieldFocusRequester),
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                     keyboardActions = KeyboardActions(onDone = {
                         if (newTagName.isNotBlank()) {
@@ -573,6 +582,10 @@ fun TagManageSection(
 
     // 重命名对话框
     renamingTag?.let { tag ->
+        val renameFocusRequester = remember { FocusRequester() }
+        LaunchedEffect(Unit) {
+            renameFocusRequester.requestFocus()
+        }
         AlertDialog(
             onDismissRequest = { renamingTag = null },
             title = { Text("重命名标签") },
@@ -582,6 +595,7 @@ fun TagManageSection(
                     onValueChange = { renameText = it },
                     singleLine = true,
                     label = { Text("标签名称") },
+                    modifier = Modifier.focusRequester(renameFocusRequester),
                 )
             },
             confirmButton = {
