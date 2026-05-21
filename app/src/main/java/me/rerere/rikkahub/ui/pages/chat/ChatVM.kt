@@ -285,6 +285,18 @@ class ChatVM(
         }
     }
 
+    fun updateConversationTitle(conversation: Conversation, title: String) {
+        viewModelScope.launch {
+            if (conversation.id == _conversationId) {
+                val updatedConversation = this@ChatVM.conversation.value.copy(title = title)
+                chatService.saveConversation(_conversationId, updatedConversation)
+            } else {
+                val full = conversationRepo.getConversationById(conversation.id) ?: return@launch
+                conversationRepo.updateConversation(full.copy(title = title))
+            }
+        }
+    }
+
     fun deleteConversation(conversation: Conversation) {
         viewModelScope.launch {
             // 先标记已删除，防止并发中的异步任务（如生成标题）在删库后重新将其 insert 回数据库
@@ -388,6 +400,23 @@ class ChatVM(
                         }
                     }
                 )
+            }
+        }
+    }
+
+    // [FORK] 对话标签：更新对话所属标签
+    fun updateConversationTag(conversationId: Uuid, tagId: Uuid?) {
+        viewModelScope.launch {
+            conversationRepo.updateConversationTag(conversationId, tagId)
+        }
+    }
+
+    // [FORK] 对话标签：新增标签到 Settings
+    fun addConversationTag(name: String) {
+        viewModelScope.launch {
+            settingsStore.update { s ->
+                val newTag = me.rerere.rikkahub.data.model.Tag(id = Uuid.random(), name = name.trim())
+                s.copy(conversationTags = s.conversationTags + newTag)
             }
         }
     }

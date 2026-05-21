@@ -22,7 +22,9 @@ import me.rerere.ai.provider.ProviderSetting
 import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.rikkahub.data.model.Conversation
+import me.rerere.rikkahub.data.model.ConversationParams
 import me.rerere.rikkahub.data.model.MessageNode
+import me.rerere.rikkahub.data.model.SystemPromptMode
 import me.rerere.rikkahub.utils.JsonInstant
 import me.rerere.rikkahub.utils.JsonInstantPretty
 import java.io.File
@@ -115,7 +117,7 @@ object ChatboxImporter {
                 skippedEmptyMessages += result.skippedEmptyMessages
                 result.conversation?.let { conversation ->
                     parsedConversations++
-                    if (!conversation.customSystemPrompt.isNullOrBlank()) {
+                    if (!conversation.conversationParams.systemPrompt.isNullOrBlank()) {
                         hasConversationSystemPrompt = true
                     }
                     onConversation(conversation)
@@ -320,7 +322,10 @@ object ChatboxImporter {
                 messageNodes = nodes,
                 createAt = minTimestamp?.let { Instant.ofEpochMilli(it) } ?: Instant.now(),
                 updateAt = maxTimestamp?.let { Instant.ofEpochMilli(it) } ?: Instant.now(),
-                customSystemPrompt = customSystemPrompt,
+                conversationParams = ConversationParams(
+                    systemPrompt = customSystemPrompt,
+                    systemPromptMode = SystemPromptMode.OVERRIDE,
+                ),
             ),
             skippedImageParts = skippedImageParts,
             skippedEmptyMessages = skippedEmptyMessages,

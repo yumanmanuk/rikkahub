@@ -1,8 +1,6 @@
 package me.rerere.rikkahub.ui.pages.history
 
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
@@ -15,10 +13,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
@@ -52,14 +46,10 @@ import kotlinx.coroutines.launch
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Delete01
 import me.rerere.hugeicons.stroke.GlobalSearch
-import me.rerere.hugeicons.stroke.Label
 import me.rerere.hugeicons.stroke.Pin
 import me.rerere.hugeicons.stroke.PinOff
-import me.rerere.hugeicons.stroke.Tag01
-import me.rerere.hugeicons.stroke.TimelineList
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.Screen
-import me.rerere.rikkahub.data.datastore.HistoryViewMode
 import me.rerere.rikkahub.data.model.Conversation
 import me.rerere.rikkahub.ui.components.nav.BackButton
 import me.rerere.rikkahub.ui.context.LocalNavController
@@ -68,7 +58,6 @@ import me.rerere.rikkahub.utils.plus
 import me.rerere.rikkahub.utils.toLocalDateTime
 import org.koin.androidx.compose.koinViewModel
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HistoryPage(vm: HistoryVM = koinViewModel()) {
     val navController = LocalNavController.current
@@ -77,12 +66,6 @@ fun HistoryPage(vm: HistoryVM = koinViewModel()) {
     var showDeleteAllDialog by remember { mutableStateOf(false) }
 
     val conversations by vm.conversations.collectAsStateWithLifecycle()
-
-    // [FORK] 标签视图状态
-    val settings by vm.settings.collectAsStateWithLifecycle()
-    val viewMode = settings.historyViewMode
-    val conversationTags = settings.conversationTags
-    var tagSheetConversation by remember { mutableStateOf<Conversation?>(null) }
 
     Scaffold(
         topBar = {
@@ -111,19 +94,6 @@ fun HistoryPage(vm: HistoryVM = koinViewModel()) {
                     ) {
                         Icon(HugeIcons.Delete01, contentDescription = stringResource(R.string.history_page_delete_all))
                     }
-                    // [FORK] 视图切换按钮
-                    IconButton(onClick = { vm.toggleViewMode() }) {
-                        Icon(
-                            imageVector = if (viewMode == HistoryViewMode.TAG)
-                                HugeIcons.TimelineList
-                            else
-                                HugeIcons.Label,
-                            contentDescription = if (viewMode == HistoryViewMode.TAG)
-                                "切换到时间视图"
-                            else
-                                "切换到标签视图",
-                        )
-                    }
                 }
             )
         },
@@ -133,56 +103,20 @@ fun HistoryPage(vm: HistoryVM = koinViewModel()) {
     ) { contentPadding ->
         val snackMessageDeleted = stringResource(R.string.history_page_conversation_deleted)
         val snackMessageUndo = stringResource(R.string.history_page_undo)
-
-        // [FORK] 按视图模式切换显示内容
-        when (viewMode) {
-            HistoryViewMode.TIMELINE -> {
-                LazyColumn(
-                    contentPadding = contentPadding + PaddingValues(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    items(conversations, key = { it.id }) { conversation ->
-                        SwipeableConversationItem(
-                            conversation = conversation,
-                            onClick = {
-                                navigateToChatPage(navController, conversation.id)
-                            },
-                            onDelete = {
-                                scope.launch {
-                                    val fullConversation = vm.getFullConversation(conversation.id) ?: conversation
-                                    vm.deleteConversation(conversation)
-                                    val result = snackbarHostState.showSnackbar(
-                                        message = snackMessageDeleted,
-                                        actionLabel = snackMessageUndo,
-                                        withDismissAction = true,
-                                    )
-                                    if (result == SnackbarResult.ActionPerformed) {
-                                        vm.restoreConversation(fullConversation)
-                                    }
-                                }
-                            },
-                            onTogglePin = { vm.togglePinStatus(conversation.id) },
-                            // [FORK] 长按菜单中的打标签入口
-                            onSetTag = { tagSheetConversation = conversation },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .animateItem()
-                        )
-                    }
-                }
-            }
-            // [FORK] 标签视图
-            HistoryViewMode.TAG -> {
-                TagView(
-                    contentPadding = contentPadding + PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                    conversations = conversations,
-                    orderedTags = conversationTags,
-                    onReorderTags = { vm.reorderConversationTags(it) },
-                    onTogglePin = { vm.togglePinStatus(it) },
-                    onDelete = { conv ->
+        LazyColumn(
+            contentPadding = contentPadding + PaddingValues(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            items(conversations, key = { it.id }) { conversation ->
+                SwipeableConversationItem(
+                    conversation = conversation,
+                    onClick = {
+                        navigateToChatPage(navController, conversation.id)
+                    },
+                    onDelete = {
                         scope.launch {
-                            val fullConversation = vm.getFullConversation(conv.id) ?: conv
-                            vm.deleteConversation(conv)
+                            val fullConversation = vm.getFullConversation(conversation.id) ?: conversation
+                            vm.deleteConversation(conversation)
                             val result = snackbarHostState.showSnackbar(
                                 message = snackMessageDeleted,
                                 actionLabel = snackMessageUndo,
@@ -193,27 +127,13 @@ fun HistoryPage(vm: HistoryVM = koinViewModel()) {
                             }
                         }
                     },
-                    onSetTag = { tagSheetConversation = it },
-                    onClickConversation = { navigateToChatPage(navController, it.id) },
+                    onTogglePin = { vm.togglePinStatus(conversation.id) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .animateItem()
                 )
             }
         }
-    }
-
-    // [FORK] 设置标签 BottomSheet
-    tagSheetConversation?.let { conv ->
-        ConversationTagSheet(
-            conversation = conv,
-            allTags = conversationTags,
-            onDismiss = { tagSheetConversation = null },
-            onSelectTag = { tagId ->
-                vm.updateConversationTag(conv.id, tagId)
-                tagSheetConversation = null
-            },
-            onAddTag = { name ->
-                vm.addConversationTag(name)
-            },
-        )
     }
 
     if (showDeleteAllDialog) {
@@ -249,8 +169,6 @@ private fun SwipeableConversationItem(
     onDelete: () -> Unit = {},
     onTogglePin: () -> Unit = {},
     onClick: () -> Unit = {},
-    // [FORK] 打标签入口
-    onSetTag: () -> Unit = {},
 ) {
     val positionThreshold = SwipeToDismissBoxDefaults.positionalThreshold
     val dismissState = remember {
@@ -296,95 +214,60 @@ private fun SwipeableConversationItem(
             conversation = conversation,
             onTogglePin = onTogglePin,
             onClick = onClick,
-            onSetTag = onSetTag,
         )
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ConversationItem(
     conversation: Conversation,
     modifier: Modifier = Modifier,
     onTogglePin: () -> Unit = {},
     onClick: () -> Unit = {},
-    // [FORK] 打标签入口
-    onSetTag: () -> Unit = {},
 ) {
-    // [FORK] 长按菜单状态
-    var menuExpanded by remember { mutableStateOf(false) }
-
-    Box(modifier = modifier) {
-        Surface(
-            tonalElevation = 2.dp,
-            shape = RoundedCornerShape(25),
-            modifier = Modifier
-                .fillMaxWidth()
-                .combinedClickable(
-                    onClick = onClick,
-                    onLongClick = { menuExpanded = true },
-                )
-        ) {
-            ListItem(
-                headlineContent = {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    ) {
-                        if (conversation.isPinned) {
-                            Icon(
-                                imageVector = HugeIcons.Pin,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(16.dp),
-                            )
-                        }
-                        Text(
-                            text = conversation.title.ifBlank { stringResource(R.string.history_page_new_conversation) }
-                                .trim(),
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                            style = MaterialTheme.typography.titleMedium,
-                        )
-                    }
-                },
-                supportingContent = {
-                    Text(conversation.createAt.toLocalDateTime())
-                },
-                trailingContent = {
-                    // 与 upstream 保持一致：trailing 是 Pin 按钮
-                    IconButton(onClick = onTogglePin) {
+    Surface(
+        onClick = onClick,
+        tonalElevation = 2.dp,
+        shape = RoundedCornerShape(25),
+        modifier = modifier
+    ) {
+        ListItem(
+            headlineContent = {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    if (conversation.isPinned) {
                         Icon(
-                            if (conversation.isPinned) HugeIcons.PinOff else HugeIcons.Pin,
-                            contentDescription = if (conversation.isPinned)
-                                stringResource(R.string.history_page_unpin)
-                            else
-                                stringResource(R.string.history_page_pin)
+                            imageVector = HugeIcons.Pin,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(16.dp),
                         )
                     }
-                }
-            )
-        }
-
-        // [FORK] 长按弹出的菜单，包含打标签入口
-        DropdownMenu(
-            expanded = menuExpanded,
-            onDismissRequest = { menuExpanded = false },
-        ) {
-            DropdownMenuItem(
-                leadingIcon = {
-                    Icon(
-                        imageVector = HugeIcons.Tag01,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp),
+                    Text(
+                        text = conversation.title.ifBlank { stringResource(R.string.history_page_new_conversation) }
+                            .trim(),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.titleMedium,
                     )
-                },
-                text = { Text("设置标签") },
-                onClick = {
-                    menuExpanded = false
-                    onSetTag()
-                },
-            )
-        }
+                }
+            },
+            supportingContent = {
+                Text(conversation.createAt.toLocalDateTime())
+            },
+            trailingContent = {
+                IconButton(onClick = onTogglePin) {
+                    Icon(
+                        if (conversation.isPinned) HugeIcons.PinOff else HugeIcons.Pin,
+                        contentDescription = if (conversation.isPinned)
+                            stringResource(R.string.history_page_unpin)
+                        else
+                            stringResource(R.string.history_page_pin)
+                    )
+                }
+            }
+        )
     }
 }

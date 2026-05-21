@@ -16,6 +16,29 @@
 构建应用需要在 `app/` 下提供 `google-services.json`（用于 Firebase）。
 `web` 模块会在 `preBuild` 阶段构建 `web-ui/` 并复制静态资源，需要本地可用 `pnpm`。
 
+## Import 规则
+
+编写 Kotlin 代码时，**每次引用一个新的类、函数或扩展函数，必须同时添加对应的 `import` 语句**。不要使用完全限定名（fully qualified name）直接写在代码中，例如：
+
+```kotlin
+// ❌ 错误：缺少 import，且使用完全限定名
+sh.calvin.reorderable.ReorderableItem(reorderState, key = tag.id.toString()) { ... }
+
+// ✅ 正确：先 import，再直接使用
+import sh.calvin.reorderable.ReorderableItem
+ReorderableItem(reorderState, key = tag.id.toString()) { ... }
+```
+
+常见的容易遗漏 import 的场景：
+
+- `ColumnScope` / `RowScope` — `import androidx.compose.foundation.layout.ColumnScope`
+- `ReorderableItem` / `rememberReorderableLazyListState` — `import sh.calvin.reorderable.XXX`
+- `longPressDraggableHandle` — reorderable 库的扩展函数
+- `HugeIcons` 及各类图标 — `import me.rerere.hugeicons.HugeIcons` / `import me.rerere.hugeicons.stroke.XXX`
+- `LocalToaster.current` — `import me.rerere.rikkahub.ui.components.ui.LocalToaster`
+
+**在提交代码前，确保编译通过**（`./gradlew assembleDebug`），避免因遗漏 import 导致构建失败。
+
 ## Coding Style & Naming Conventions
 
 本仓库使用 `.editorconfig` 统一格式：

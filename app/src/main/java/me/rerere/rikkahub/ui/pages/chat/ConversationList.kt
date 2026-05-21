@@ -2,10 +2,12 @@ package me.rerere.rikkahub.ui.pages.chat
 
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Forward02
+import me.rerere.hugeicons.stroke.PencilEdit01
 import me.rerere.hugeicons.stroke.Pin
 import me.rerere.hugeicons.stroke.PinOff
 import me.rerere.hugeicons.stroke.Refresh01
 import me.rerere.hugeicons.stroke.Delete01
+import me.rerere.hugeicons.stroke.Tag01
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
@@ -27,6 +29,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -83,7 +86,10 @@ fun ColumnScope.ConversationList(
     onDelete: (Conversation) -> Unit = {},
     onRegenerateTitle: (Conversation) -> Unit = {},
     onPin: (Conversation) -> Unit = {},
-    onMoveToAssistant: (Conversation) -> Unit = {}
+    onMoveToAssistant: (Conversation) -> Unit = {},
+    // [FORK] 打标签入口
+    onSetTag: (Conversation) -> Unit = {},
+    onRenameTitle: (Conversation, String) -> Unit = { _, _ -> },
 ) {
     var hasScrolledToCurrent by remember(current.id) { mutableStateOf(false) }
 
@@ -159,6 +165,9 @@ fun ColumnScope.ConversationList(
                         onRegenerateTitle = onRegenerateTitle,
                         onPin = onPin,
                         onMoveToAssistant = onMoveToAssistant,
+                        // [FORK] 打标签
+                        onSetTag = onSetTag,
+                        onRenameTitle = onRenameTitle,
                         modifier = Modifier.animateItem()
                     )
                 }
@@ -180,14 +189,14 @@ private fun DateHeaderItem(
         modifier = modifier
             .fillMaxWidth()
             .background(MaterialTheme.colorScheme.surfaceContainerLow)
-            .padding(horizontal = 12.dp, vertical = 8.dp),
+            .padding(horizontal = 12.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
             text = label,
-            style = MaterialTheme.typography.labelLarge,
+            style = MaterialTheme.typography.labelSmall,
             fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.primary
+            color = MaterialTheme.colorScheme.onSurfaceVariant
         )
     }
 }
@@ -200,27 +209,27 @@ private fun PinnedHeader(
         modifier = modifier
             .fillMaxWidth()
             .background(MaterialTheme.colorScheme.surfaceContainerLow)
-            .padding(horizontal = 12.dp, vertical = 8.dp),
+            .padding(horizontal = 12.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(
             imageVector = HugeIcons.Pin,
             contentDescription = null,
-            modifier = Modifier.size(16.dp),
-            tint = MaterialTheme.colorScheme.primary
+            modifier = Modifier.size(14.dp),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant
         )
-        Spacer(Modifier.size(8.dp))
+        Spacer(Modifier.size(6.dp))
         Text(
             text = stringResource(R.string.pinned_chats),
-            style = MaterialTheme.typography.labelLarge,
+            style = MaterialTheme.typography.labelSmall,
             fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.primary
+            color = MaterialTheme.colorScheme.onSurfaceVariant
         )
     }
 }
 
 @Composable
-private fun ConversationItem(
+internal fun ConversationItem(
     conversation: Conversation,
     selected: Boolean,
     loading: Boolean,
@@ -229,11 +238,14 @@ private fun ConversationItem(
     onRegenerateTitle: (Conversation) -> Unit = {},
     onPin: (Conversation) -> Unit = {},
     onMoveToAssistant: (Conversation) -> Unit = {},
+    // [FORK] 打标签入口
+    onSetTag: (Conversation) -> Unit = {},
+    onRenameTitle: (Conversation, String) -> Unit = { _, _ -> },
     onClick: (Conversation) -> Unit
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val backgroundColor = if (selected) {
-        MaterialTheme.colorScheme.surfaceColorAtElevation(8.dp)
+        MaterialTheme.colorScheme.primaryContainer
     } else {
         Color.Transparent
     }
@@ -242,6 +254,12 @@ private fun ConversationItem(
     }
     var showDeleteConfirmDialog by remember {
         mutableStateOf(false)
+    }
+    var showRenameDialog by remember {
+        mutableStateOf(false)
+    }
+    var renameInput by remember(conversation.id) {
+        mutableStateOf(conversation.title)
     }
     Box(
         modifier = modifier
@@ -293,6 +311,16 @@ private fun ConversationItem(
                 expanded = showDropdownMenu,
                 onDismissRequest = { showDropdownMenu = false },
             ) {
+                // [FORK] 设置标签（方便快速打标签）
+                DropdownMenuItem(
+                    text = { Text("设置标签") },
+                    onClick = {
+                        onSetTag(conversation)
+                        showDropdownMenu = false
+                    },
+                    leadingIcon = { Icon(HugeIcons.Tag01, null) }
+                )
+
                 DropdownMenuItem(
                     text = {
                         Text(
@@ -309,6 +337,16 @@ private fun ConversationItem(
                             null
                         )
                     }
+                )
+
+                DropdownMenuItem(
+                    text = { Text("修改标题") },
+                    onClick = {
+                        renameInput = conversation.title
+                        showRenameDialog = true
+                        showDropdownMenu = false
+                    },
+                    leadingIcon = { Icon(HugeIcons.PencilEdit01, null) }
                 )
 
                 DropdownMenuItem(
@@ -376,6 +414,38 @@ private fun ConversationItem(
             dismissButton = {
                 TextButton(
                     onClick = { showDeleteConfirmDialog = false }
+                ) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        )
+    }
+
+    if (showRenameDialog) {
+        AlertDialog(
+            onDismissRequest = { showRenameDialog = false },
+            title = { Text("修改标题") },
+            text = {
+                OutlinedTextField(
+                    value = renameInput,
+                    onValueChange = { renameInput = it },
+                    label = { Text("标题") },
+                    singleLine = true,
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onRenameTitle(conversation, renameInput)
+                        showRenameDialog = false
+                    }
+                ) {
+                    Text(stringResource(R.string.confirm))
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showRenameDialog = false }
                 ) {
                     Text(stringResource(R.string.cancel))
                 }

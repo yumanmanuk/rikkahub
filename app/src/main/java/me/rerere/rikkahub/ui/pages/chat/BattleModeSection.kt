@@ -56,30 +56,37 @@ fun BattleModeSection(
     settings: Settings,
     onUpdate: (ConversationParams) -> Unit,
 ) {
-    FormItem(
-        modifier = Modifier.padding(8.dp),
-        label = {
-            Text("Battle Mode")
-        },
-        description = {
-            Text(
-                text = if (params.battleModeEnabled)
-                    "发消息时用选中的模型各并发回答，通过 <> 切换对比"
-                else
-                    "关闭",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        },
-        tail = {
-            Switch(
-                checked = params.battleModeEnabled,
-                onCheckedChange = { enabled ->
-                    onUpdate(params.copy(battleModeEnabled = enabled))
-                }
-            )
-        }
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(0.dp),
     ) {
+        // Battle Mode 主开关行
+        FormItem(
+            modifier = Modifier.padding(8.dp),
+            label = {
+                Text("Battle Mode")
+            },
+            description = {
+                Text(
+                    text = if (params.battleModeEnabled)
+                        "发消息时用选中的模型各并发回答，通过 <> 切换对比"
+                    else
+                        "关闭",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            },
+            tail = {
+                Switch(
+                    checked = params.battleModeEnabled,
+                    onCheckedChange = { enabled ->
+                        onUpdate(params.copy(battleModeEnabled = enabled))
+                    }
+                )
+            }
+        )
+
+        // 展开内容：独立上下文开关 + 模型列表（与外层 FormItem 分离，避免开关并行）
         if (params.battleModeEnabled) {
             val haptic = LocalHapticFeedback.current
 
@@ -94,13 +101,14 @@ fun BattleModeSection(
             // 从拖拽开始累计的位移
             var cumulativeDrag by remember { mutableStateOf(Offset.Zero) }
 
+            HorizontalDivider()
+
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 4.dp),
+                    .padding(vertical = 4.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                HorizontalDivider()
                 // [FORK] Battle Mode: 独立上下文开关
                 FormItem(
                     modifier = Modifier.padding(horizontal = 8.dp),

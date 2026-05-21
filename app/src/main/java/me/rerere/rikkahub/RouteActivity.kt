@@ -420,6 +420,11 @@ class RouteActivity : ComponentActivity() {
                                 SettingPreferencesUIPage()
                             }
 
+                            // [FORK] 标签管理页
+                            entry<Screen.TagManage> {
+                                TagManagePage()
+                            }
+
                             entry<Screen.SettingProvider> {
                                 SettingProviderPage()
                             }

@@ -3,6 +3,7 @@ package me.rerere.rikkahub.ui.pages.history
 // [FORK] 标签视图 — 独立文件，upstream 合并时无冲突
 
 import androidx.compose.animation.animateContentSize
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -412,95 +413,109 @@ fun ConversationTagSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
     ) {
-        Column(
+        // 标题（固定，不滚动）
+        Text(
+            text = "设置标签",
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
+        )
+
+        HorizontalDivider()
+
+        // 标签列表（可滚动，撑满剩余空间）
+        LazyColumn(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(bottom = 24.dp),
+                // fill=false：内容少时不强制占满，内容多时可滚动
+                .weight(1f, fill = false),
         ) {
-            Text(
-                text = "设置标签",
-                style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
-            )
-
-            HorizontalDivider()
-
             // 无标签选项
-            ListItem(
-                headlineContent = { Text("无标签（未分类）") },
-                leadingContent = {
-                    RadioButton(
-                        selected = conversation.conversationTagId == null,
-                        onClick = { onSelectTag(null) },
-                    )
-                },
-                modifier = Modifier.fillMaxWidth(),
-            )
+            item {
+                ListItem(
+                    headlineContent = { Text("无标签（未分类）") },
+                    leadingContent = {
+                        RadioButton(
+                            selected = conversation.conversationTagId == null,
+                            // onClick=null：点击由整行 clickable 处理，避免双重触发
+                            onClick = null,
+                        )
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onSelectTag(null) },
+                )
+            }
 
-            HorizontalDivider()
+            item { HorizontalDivider() }
 
-            allTags.forEach { tag ->
+            // 所有标签行
+            items(allTags) { tag ->
                 ListItem(
                     headlineContent = { Text(tag.name) },
                     leadingContent = {
                         RadioButton(
                             selected = conversation.conversationTagId == tag.id,
-                            onClick = { onSelectTag(tag.id) },
+                            onClick = null,
                         )
                     },
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onSelectTag(tag.id) },
                 )
             }
+        }
 
-            HorizontalDivider()
+        // 新建标签区域（固定在底部，始终可见）
+        HorizontalDivider()
 
-            // 新建标签入口
-            if (showAddField) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    OutlinedTextField(
-                        value = newTagName,
-                        onValueChange = { newTagName = it },
-                        placeholder = { Text("标签名称") },
-                        singleLine = true,
-                        modifier = Modifier.weight(1f),
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                        keyboardActions = KeyboardActions(onDone = {
-                            if (newTagName.isNotBlank()) {
-                                onAddTag(newTagName)
-                                newTagName = ""
-                                showAddField = false
-                            }
-                        }),
-                    )
-                    TextButton(
-                        onClick = {
-                            if (newTagName.isNotBlank()) {
-                                onAddTag(newTagName)
-                                newTagName = ""
-                                showAddField = false
-                            }
+        if (showAddField) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                OutlinedTextField(
+                    value = newTagName,
+                    onValueChange = { newTagName = it },
+                    placeholder = { Text("标签名称") },
+                    singleLine = true,
+                    modifier = Modifier.weight(1f),
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = {
+                        if (newTagName.isNotBlank()) {
+                            onAddTag(newTagName)
+                            newTagName = ""
+                            showAddField = false
                         }
-                    ) {
-                        Text("添加")
-                    }
-                }
-            } else {
+                    }),
+                )
                 TextButton(
-                    onClick = { showAddField = true },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                    onClick = {
+                        if (newTagName.isNotBlank()) {
+                            onAddTag(newTagName)
+                            newTagName = ""
+                            showAddField = false
+                        }
+                    }
                 ) {
-                    Text("+ 新建标签")
+                    Text("添加")
                 }
             }
+        } else {
+            TextButton(
+                onClick = { showAddField = true },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 4.dp),
+            ) {
+                Text("+ 新建标签")
+            }
         }
+
+        // 底部安全距离
+        Spacer(modifier = Modifier.padding(bottom = 16.dp))
     }
 }
 
