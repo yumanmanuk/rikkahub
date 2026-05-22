@@ -38,7 +38,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import me.rerere.rikkahub.utils.plus
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -224,7 +226,10 @@ fun TagManagePage(vm: SettingVM = koinViewModel()) {
 
     // 重命名弹窗
     renamingTag?.let { tag ->
-        var renameText by remember(tag.id) { mutableStateOf(tag.name) }
+        // 初始化时将光标置于文字末尾
+        var renameText by remember(tag.id) {
+            mutableStateOf(TextFieldValue(tag.name, selection = TextRange(tag.name.length)))
+        }
         val renameFocusRequester = remember(tag.id) { FocusRequester() }
         LaunchedEffect(tag.id) {
             renameFocusRequester.requestFocus()
@@ -241,9 +246,9 @@ fun TagManagePage(vm: SettingVM = koinViewModel()) {
                     modifier = Modifier.focusRequester(renameFocusRequester),
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                     keyboardActions = KeyboardActions(onDone = {
-                        if (renameText.isNotBlank()) {
+                        if (renameText.text.isNotBlank()) {
                             val idx = tags.indexOfFirst { it.id == tag.id }
-                            if (idx != -1) tags[idx] = tag.copy(name = renameText.trim())
+                            if (idx != -1) tags[idx] = tag.copy(name = renameText.text.trim())
                             persistTags()
                             renamingTag = null
                         }
@@ -253,9 +258,9 @@ fun TagManagePage(vm: SettingVM = koinViewModel()) {
             confirmButton = {
                 TextButton(
                     onClick = {
-                        if (renameText.isNotBlank()) {
+                        if (renameText.text.isNotBlank()) {
                             val idx = tags.indexOfFirst { it.id == tag.id }
-                            if (idx != -1) tags[idx] = tag.copy(name = renameText.trim())
+                            if (idx != -1) tags[idx] = tag.copy(name = renameText.text.trim())
                             persistTags()
                             renamingTag = null
                         }

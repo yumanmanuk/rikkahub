@@ -47,7 +47,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import me.rerere.hugeicons.HugeIcons
@@ -539,7 +541,8 @@ fun TagManageSection(
     onDelete: (Uuid) -> Unit,
 ) {
     var renamingTag by remember { mutableStateOf<Tag?>(null) }
-    var renameText by remember { mutableStateOf("") }
+    // 使用 TextFieldValue 以便初始化时将光标置于文字末尾
+    var renameText by remember { mutableStateOf(TextFieldValue("")) }
     var deletingTag by remember { mutableStateOf<Tag?>(null) }
 
     Column(modifier = Modifier.fillMaxWidth()) {
@@ -564,7 +567,8 @@ fun TagManageSection(
                 )
                 IconButton(onClick = {
                     renamingTag = tag
-                    renameText = tag.name
+                    // 将光标置于现有标签名末尾
+                    renameText = TextFieldValue(tag.name, selection = TextRange(tag.name.length))
                 }) {
                     Icon(HugeIcons.Edit01, contentDescription = "重命名", modifier = Modifier.size(18.dp))
                 }
@@ -600,8 +604,8 @@ fun TagManageSection(
             },
             confirmButton = {
                 TextButton(onClick = {
-                    if (renameText.isNotBlank()) {
-                        onRename(tag.id, renameText)
+                    if (renameText.text.isNotBlank()) {
+                        onRename(tag.id, renameText.text)
                     }
                     renamingTag = null
                 }) { Text("确认") }
