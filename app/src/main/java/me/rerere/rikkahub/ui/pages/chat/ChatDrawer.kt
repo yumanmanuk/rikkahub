@@ -1,8 +1,11 @@
 package me.rerere.rikkahub.ui.pages.chat
 
 import androidx.activity.ComponentActivity
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -45,6 +48,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -234,13 +238,28 @@ fun ChatDrawerContent(
                     )
                 }
 
-                IconButton(
-                    onClick = {
-                        scope.launch {
-                            drawerState?.close()
-                            navigateToChatPage(navController)
-                        }
-                    }
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clip(CircleShape)
+                        .combinedClickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = LocalIndication.current,
+                            onClick = {
+                                scope.launch {
+                                    drawerState?.close()
+                                    navigateToChatPage(navController)
+                                }
+                            },
+                            onLongClick = {
+                                scope.launch {
+                                    val tempId = vm.prepareTemporaryConversation()
+                                    drawerState?.close()
+                                    navigateToChatPage(navController, chatId = tempId)
+                                }
+                            }
+                        ),
+                    contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = HugeIcons.MessageAdd01,

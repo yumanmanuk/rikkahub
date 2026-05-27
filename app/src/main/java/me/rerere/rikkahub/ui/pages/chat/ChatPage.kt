@@ -77,6 +77,7 @@ import me.rerere.ai.ui.UIMessagePart
 import me.rerere.common.android.appTempFolder
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Cancel01
+import me.rerere.hugeicons.stroke.Hourglass
 import me.rerere.hugeicons.stroke.LeftToRightListBullet
 import me.rerere.hugeicons.stroke.Menu03
 import me.rerere.hugeicons.stroke.Crane
@@ -358,6 +359,8 @@ private fun ChatPageContent(
                     onUpdateConversationParams = {
                         vm.updateConversationParams(it)
                     },
+                    onSaveTemporary = { vm.saveTemporaryConversation() },
+                    onDeleteTemporary = { navigateToChatPage(navController) },
                 )
             },
             bottomBar = {
@@ -748,6 +751,8 @@ private fun TopBar(
     onClickMenu: () -> Unit,
     onUpdateTitle: (String) -> Unit,
     onUpdateConversationParams: (ConversationParams) -> Unit,
+    onSaveTemporary: () -> Unit,
+    onDeleteTemporary: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
     val toaster = LocalToaster.current
@@ -806,6 +811,13 @@ private fun TopBar(
         },
         actions = {
             var showParamsSheet by remember { mutableStateOf(false) }
+            var showTemporaryDialog by remember { mutableStateOf(false) }
+
+            if (conversation.isTemporary) {
+                IconButton(onClick = { showTemporaryDialog = true }) {
+                    Icon(HugeIcons.Hourglass, contentDescription = "临时对话")
+                }
+            }
 
             IconButton(
                 onClick = { showParamsSheet = true }
@@ -827,6 +839,37 @@ private fun TopBar(
                     settings = settings,
                     onDismiss = { showParamsSheet = false },
                     onUpdate = onUpdateConversationParams,
+                )
+            }
+
+            if (showTemporaryDialog) {
+                AlertDialog(
+                    onDismissRequest = { showTemporaryDialog = false },
+                    title = { Text("临时对话") },
+                    text = { Text("这段对话目前不会保存到历史记录中。") },
+                    confirmButton = {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            TextButton(onClick = { showTemporaryDialog = false }) {
+                                Text("取消")
+                            }
+                            TextButton(
+                                onClick = {
+                                    showTemporaryDialog = false
+                                    onDeleteTemporary()
+                                }
+                            ) {
+                                Text("删除", color = MaterialTheme.colorScheme.error)
+                            }
+                            TextButton(
+                                onClick = {
+                                    showTemporaryDialog = false
+                                    onSaveTemporary()
+                                }
+                            ) {
+                                Text("保存")
+                            }
+                        }
+                    }
                 )
             }
         },

@@ -281,7 +281,7 @@ private fun MiMoTTSConfiguration(
     setting: TTSProviderSetting.MiMo,
     onValueChange: (TTSProviderSetting) -> Unit
 ) {
-    // MiMo 配置均为自由输入 默认值只是占位
+    // MiMo 配置均为自由输入，同时提供候选列表方便快速选择
     // API Key
     FormItem(
         label = { Text(stringResource(R.string.setting_tts_page_api_key)) },
@@ -312,36 +312,101 @@ private fun MiMoTTSConfiguration(
         )
     }
 
-    // Model
+    // Model — 提供 v2.5 三个模型的候选列表
+    var modelExpanded by remember { mutableStateOf(false) }
+    val models = listOf(
+        "mimo-v2.5-tts",
+        "mimo-v2.5-tts-voicedesign",
+        "mimo-v2.5-tts-voiceclone"
+    )
+
     FormItem(
         label = { Text(stringResource(R.string.setting_tts_page_model)) },
         description = { Text(stringResource(R.string.setting_tts_page_model_description)) }
     ) {
-        OutlinedTextField(
-            value = setting.model,
-            onValueChange = { newModel ->
-                onValueChange(setting.copy(model = newModel))
-            },
-            modifier = Modifier.fillMaxWidth(),
-            placeholder = { Text("mimo-v2-tts") }
-        )
+        ExposedDropdownMenuBox(
+            expanded = modelExpanded,
+            onExpandedChange = { modelExpanded = !modelExpanded }
+        ) {
+            OutlinedTextField(
+                value = setting.model,
+                onValueChange = { newModel ->
+                    onValueChange(setting.copy(model = newModel))
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .menuAnchor(MenuAnchorType.PrimaryEditable),
+                placeholder = { Text("mimo-v2.5-tts") },
+                trailingIcon = {
+                    ExposedDropdownMenuDefaults.TrailingIcon(expanded = modelExpanded)
+                }
+            )
+            ExposedDropdownMenu(
+                expanded = modelExpanded,
+                onDismissRequest = { modelExpanded = false }
+            ) {
+                models.forEach { model ->
+                    DropdownMenuItem(
+                        text = { Text(model) },
+                        onClick = {
+                            modelExpanded = false
+                            onValueChange(setting.copy(model = model))
+                        }
+                    )
+                }
+            }
+        }
     }
 
-    // Voice
+    // Voice — 预置音色候选列表（仅 mimo-v2.5-tts 支持，其他模型可自由填写）
+    var voiceExpanded by remember { mutableStateOf(false) }
+    val voices = listOf(
+        "mimo_default",
+        // 中文音色
+        "冰糖", "茉莉", "劲打", "白桦",
+        // 英文音色
+        "Mia", "Chloe", "Milo", "Dean"
+    )
+
     FormItem(
         label = { Text(stringResource(R.string.setting_tts_page_voice)) },
         description = { Text(stringResource(R.string.setting_tts_page_voice_description)) }
     ) {
-        OutlinedTextField(
-            value = setting.voice,
-            onValueChange = { newVoice ->
-                onValueChange(setting.copy(voice = newVoice))
-            },
-            modifier = Modifier.fillMaxWidth(),
-            placeholder = { Text("mimo_default") }
-        )
+        ExposedDropdownMenuBox(
+            expanded = voiceExpanded,
+            onExpandedChange = { voiceExpanded = !voiceExpanded }
+        ) {
+            OutlinedTextField(
+                value = setting.voice,
+                onValueChange = { newVoice ->
+                    onValueChange(setting.copy(voice = newVoice))
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .menuAnchor(MenuAnchorType.PrimaryEditable),
+                placeholder = { Text("mimo_default") },
+                trailingIcon = {
+                    ExposedDropdownMenuDefaults.TrailingIcon(expanded = voiceExpanded)
+                }
+            )
+            ExposedDropdownMenu(
+                expanded = voiceExpanded,
+                onDismissRequest = { voiceExpanded = false }
+            ) {
+                voices.forEach { voice ->
+                    DropdownMenuItem(
+                        text = { Text(voice) },
+                        onClick = {
+                            voiceExpanded = false
+                            onValueChange(setting.copy(voice = voice))
+                        }
+                    )
+                }
+            }
+        }
     }
 }
+
 
 @Composable
 private fun MiniMaxTTSConfiguration(

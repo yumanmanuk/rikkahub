@@ -166,6 +166,19 @@ class ChatService(
     // 已删除的对话 ID 集合，防止异步任务将已删除的对话重新插入数据库
     private val deletedConversationIds = Collections.newSetFromMap(ConcurrentHashMap<Uuid, Boolean>())
 
+    // [FORK] 临时对话：待标记为临时的对话 ID（在导航前登记，由 ChatVM.init 消费）
+    private val pendingTemporaryConversationIds = Collections.newSetFromMap(ConcurrentHashMap<Uuid, Boolean>())
+
+    // 预登记一个对话 ID 为临时对话，在导航跳转前调用
+    fun schedulePendingTemporary(conversationId: Uuid) {
+        pendingTemporaryConversationIds.add(conversationId)
+    }
+
+    // 消费并检查是否为待临时对话，由 ChatVM.init 在初始化完成后调用
+    fun consumePendingTemporary(conversationId: Uuid): Boolean {
+        return pendingTemporaryConversationIds.remove(conversationId)
+    }
+
     // 错误状态
     private val _errors = MutableStateFlow<List<ChatError>>(emptyList())
     val errors: StateFlow<List<ChatError>> = _errors.asStateFlow()
@@ -1168,6 +1181,12 @@ class ChatService(
         // 已被删除的对话不允许重新插入，防止异步任务（如生成标题/建议）将其复活
         if (!exists && deletedConversationIds.contains(conversation.id)) {
             Log.w(TAG, "saveConversation: skipping insert for deleted conversation ${conversation.id}")
+            return
+        }
+
+        // 临时对话只更新内存状态，不写入数据库
+        if (conversation.isTemporary) {
+            updateConversation(conversationId, conversation)
             return
         }
 

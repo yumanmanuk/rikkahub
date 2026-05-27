@@ -164,13 +164,14 @@ sealed class TTSProviderSetting {
 
     @Serializable
     @SerialName("mimo")
-    // 默认值仅用于快捷起步 可在设置页任意修改
+    // 默认值仅用于快捷起步，可在设置页任意修改
+    // 模型列表：mimo-v2.5-tts / mimo-v2.5-tts-voicedesign / mimo-v2.5-tts-voiceclone
     data class MiMo(
         override var id: Uuid = Uuid.random(),
         override var name: String = "MiMo TTS",
         val apiKey: String = "",
         val baseUrl: String = "https://api.xiaomimimo.com/v1",
-        val model: String = "mimo-v2-tts",
+        val model: String = "mimo-v2.5-tts",
         val voice: String = "mimo_default"
     ) : TTSProviderSetting() {
         override fun copyProvider(

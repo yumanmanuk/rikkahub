@@ -90,10 +90,14 @@ class ChatVM(
         // 初始化对话
         viewModelScope.launch {
             chatService.initializeConversation(_conversationId)
+            // [FORK] 临时对话：初始化完成后消费 pending 标记，避免竞争条件
+            if (chatService.consumePendingTemporary(_conversationId)) {
+                chatService.updateConversationState(_conversationId) { it.copy(isTemporary = true) }
+            } else {
+                // 非临时对话才写 lastConversationId，避免下次启动恢复到已丢弃的对话
+                context.writeStringPreference("lastConversationId", _conversationId.toString())
+            }
         }
-
-        // 记住对话ID, 方便下次启动恢复
-        context.writeStringPreference("lastConversationId", _conversationId.toString())
     }
 
     override fun onCleared() {
@@ -419,6 +423,21 @@ class ChatVM(
                 s.copy(conversationTags = s.conversationTags + newTag)
             }
         }
+    }
+    // [FORK] 临时对话：将临时对话转为永久保存
+    fun saveTemporaryConversation() {
+        viewModelScope.launch {
+            val current = conversation.value.copy(isTemporary = false)
+            chatService.updateConversationState(_conversationId) { current }
+            chatService.saveConversation(_conversationId, current)
+        }
+    }
+
+    // [FORK] 临时对话：在导航前预登记新对话 ID，导航后由 ChatVM.init 消费
+    fun prepareTemporaryConversation(): Uuid {
+        val newId = Uuid.random()
+        chatService.schedulePendingTemporary(newId)
+        return newId
     }
 
 }

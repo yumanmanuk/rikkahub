@@ -59,7 +59,9 @@ data class Conversation(
     // Absolute path inside the workspace rootfs
     val workspaceCwd: String? = null,
     @Transient
-    val newConversation: Boolean = false
+    val newConversation: Boolean = false,
+    @Transient
+    val isTemporary: Boolean = false
 ) {
     val files: List<Uri>
         get() = messageNodes
