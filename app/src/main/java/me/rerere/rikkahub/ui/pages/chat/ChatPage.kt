@@ -844,6 +844,7 @@ private fun TopBar(
                 ConversationParamsSheet(
                     conversation = conversation,
                     settings = settings,
+                    vm = vm,
                     onDismiss = { showParamsSheet = false },
                     onUpdate = onUpdateConversationParams,
                 )
@@ -924,6 +925,7 @@ private fun TopBar(
 private fun ConversationParamsSheet(
     conversation: Conversation,
     settings: Settings,
+    vm: ChatVM,
     onDismiss: () -> Unit,
     onUpdate: (ConversationParams) -> Unit,
 ) {
@@ -933,6 +935,8 @@ private fun ConversationParamsSheet(
     var params by remember {
         mutableStateOf(conversation.conversationParams)
     }
+    // [FORK] 对话专属记忆列表（响应式）
+    val conversationMemories by vm.conversationMemories.collectAsStateWithLifecycle()
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -972,10 +976,10 @@ private fun ConversationParamsSheet(
                 },
                 tail = {
                     Switch(
-                        checked = params.temperature != null,
+                        checked = params.contextMessageSize != null,
                         onCheckedChange = { enabled ->
                             val newParams = params.copy(
-                                temperature = if (enabled) (assistant.temperature ?: 1.0f) else null
+                                contextMessageSize = if (enabled) assistant.contextMessageSize else null
                             )
                             params = newParams
                             onUpdate(newParams)

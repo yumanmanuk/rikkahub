@@ -25,6 +25,8 @@ data class Assistant(
     val streamOutput: Boolean = true,
     val enableMemory: Boolean = false,
     val useGlobalMemory: Boolean = false, // 使用全局共享记忆而非助手隔离记忆
+    // [FORK] 上下文摘要：自动压缩超出上下文窗口的历史消息
+    val enableContextSummary: Boolean = false,
     val enableRecentChatsReference: Boolean = false,
     val messageTemplate: String = "{{ message }}",
     val presetMessages: List<UIMessage> = emptyList(),

@@ -615,16 +615,86 @@ class ChatService(
 
             // start generating
             val session = getOrCreateSession(conversationId)
+
+            // [FORK] 上下文摘要：在发送前检查是否需要生成/更新摘要
+            val resolved = conversation.conversationParams.resolveWith(assistant)
+            var activeParams = conversation.conversationParams
+            if (resolved.enableContextSummary) {
+                session.processingStatus.value = "正在生成上下文摘要…"
+                val updatedParams = generateContextSummaryIfNeeded(
+                    params = activeParams,
+                    allMessages = conversation.currentMessages,
+                    assistant = assistant,
+                    settings = settings,
+                    providerManager = providerManager,
+                    enableContextSummary = true,
+                )
+                session.processingStatus.value = null
+                if (updatedParams != null) {
+                    activeParams = updatedParams
+                    // [FORK] 只更新 conversationParams 字段，不走全量 saveConversation
+                    // 全量 saveConversation 会先 deleteByConversation 再 insertAll message_node，
+                    // 此时 conversation 中 messageNodes 可能不完整，会导致历史消息被永久删除
+                    conversationRepo.updateConversationParamsOnly(conversationId, activeParams)
+                    // 同步更新内存状态
+                    updateConversationState(conversationId) { it.copy(conversationParams = activeParams) }
+                }
+            }
+
+            // [FORK] 对话专属记忆：加载以 conversation.id 为 key 的隔离记忆
+            val conversationMemoryKey: String? = if (resolved.enableConversationMemory) {
+                conversationId.toString()
+            } else null
+            val conversationMemories = if (conversationMemoryKey != null) {
+                memoryRepository.getMemoriesOfAssistant(conversationMemoryKey)
+            } else emptyList()
+
             generationHandler.generateText(
                 settings = settings,
                 model = model,
                 processingStatus = session.processingStatus,
-                messages = conversation.currentMessages.let {
+                messages = conversation.let { conv ->
+                    val allMessages = conv.currentMessages
+                    // messageRange 路径：按索引截取，直接返回原顺序切片（无 limitContext 截断问题）
                     if (messageRange != null) {
-                        it.subList(messageRange.start, messageRange.endInclusive + 1)
-                    } else {
-                        it
+                        return@let allMessages.subList(
+                            messageRange.start.coerceAtLeast(0),
+                            (messageRange.endInclusive + 1).coerceAtMost(allMessages.size)
+                        )
                     }
+
+                    // [FORK] 固定到上下文保护：受保护节点（isPinned / isFavorite）不被 limitContext 截断
+                    // limitContext 策略是保留末尾 N 条，因此受保护节点必须放在头部
+                    // 同时对普通消息预先截断，使总长度 ≤ contextMessageSize，
+                    // 这样 generateText 内部的 limitContext 就不会再截掉任何东西
+                    val nodes = conv.messageNodes
+                    val protectedNodeIds = nodes
+                        .filter { it.isPinned || it.isFavorite }
+                        .map { it.id }
+                        .toSet()
+
+                    if (protectedNodeIds.isEmpty()) return@let allMessages
+
+                    // 建立「选中消息 id → 所属节点 id」映射，用于划分受保护消息
+                    val selectMsgIdToNodeId = nodes.associate { node ->
+                        node.messages.getOrNull(node.selectIndex)?.id to node.id
+                    }
+                    val (protectedMsgs, normalMsgs) = allMessages.partition { msg ->
+                        selectMsgIdToNodeId[msg.id]?.let { it in protectedNodeIds } == true
+                    }
+                    if (protectedMsgs.isEmpty()) return@let allMessages
+
+                    // 对普通消息预先截断，保证 protectedMsgs + limitedNormalMsgs 总长 ≤ effectiveContextSize
+                    val effectiveContextSize = resolved.contextMessageSize
+                    val limitedNormalMsgs = if (effectiveContextSize > 0) {
+                        val maxNormal = (effectiveContextSize - protectedMsgs.size).coerceAtLeast(0)
+                        normalMsgs.takeLast(maxNormal)
+                    } else {
+                        normalMsgs
+                    }
+
+                    // 受保护消息放头部（长期上下文锚点），普通消息按时序在后
+                    protectedMsgs + limitedNormalMsgs
                 },
                 assistant = assistant,
                 conversationSystemPrompt = conversation.customSystemPrompt,

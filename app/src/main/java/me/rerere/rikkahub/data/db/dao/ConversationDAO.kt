@@ -79,6 +79,10 @@ interface ConversationDAO {
     @Query("UPDATE conversationentity SET conversation_tag_id = :tagId WHERE id = :id")
     suspend fun updateConversationTag(id: String, tagId: String?)
 
+    // [FORK] 只更新 conversation_params 字段（摘要/参数变更专用，不影响 message_node）
+    @Query("UPDATE conversationentity SET conversation_params = :params WHERE id = :id")
+    suspend fun updateConversationParams(id: String, params: String)
+
     @Query("SELECT COUNT(*) FROM conversationentity")
     suspend fun countAll(): Int
 

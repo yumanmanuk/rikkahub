@@ -97,16 +97,21 @@ class GenerationHandler(
 
             val toolsInternal = buildList {
                 Log.i(TAG, "generateInternal: build tools($assistant)")
-                if (assistant?.enableMemory == true) {
-                    val memoryAssistantId = if (assistant.useGlobalMemory) {
+                // [FORK] 对话专属记忆优先：有 conversationMemoryKey 时使用对话 key，否则回退助手记忆
+                val effectiveMemoryKey: String? = when {
+                    conversationMemoryKey != null -> conversationMemoryKey
+                    assistant?.enableMemory == true -> if (assistant.useGlobalMemory) {
                         MemoryRepository.GLOBAL_MEMORY_ID
                     } else {
                         assistant.id.toString()
                     }
+                    else -> null
+                }
+                if (effectiveMemoryKey != null) {
                     buildMemoryTools(
                         json = json,
                         onCreation = { content ->
-                            memoryRepo.addMemory(memoryAssistantId, content)
+                            memoryRepo.addMemory(effectiveMemoryKey, content)
                         },
                         onUpdate = { id, content ->
                             memoryRepo.updateContent(id, content)
@@ -385,7 +390,7 @@ class GenerationHandler(
                     append(effectiveSystemPrompt)
                 }
 
-                // 记忆
+                // 记忆（助手级）
                 if (assistant.enableMemory) {
                     appendLine()
                     append(buildMemoryPrompt(memories = memories))
