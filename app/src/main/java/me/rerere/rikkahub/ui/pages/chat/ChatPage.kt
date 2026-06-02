@@ -7,13 +7,16 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.relocation.bringIntoViewResponder
@@ -76,16 +79,21 @@ import me.rerere.ai.provider.Model
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.common.android.appTempFolder
 import me.rerere.hugeicons.HugeIcons
+import me.rerere.hugeicons.stroke.Add01
 import me.rerere.hugeicons.stroke.Cancel01
+import me.rerere.hugeicons.stroke.Delete01
 import me.rerere.hugeicons.stroke.Hourglass
 import me.rerere.hugeicons.stroke.LeftToRightListBullet
 import me.rerere.hugeicons.stroke.Menu03
 import me.rerere.hugeicons.stroke.Crane
+import me.rerere.hugeicons.stroke.ArrowRight01
+import me.rerere.hugeicons.stroke.PencilEdit01
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.findProvider
 import me.rerere.rikkahub.data.datastore.getCurrentAssistant
 import me.rerere.rikkahub.data.datastore.getCurrentChatModel
+import me.rerere.rikkahub.data.datastore.getAssistantById
 import me.rerere.rikkahub.data.files.FilesManager
 import me.rerere.rikkahub.data.model.Assistant
 import me.rerere.rikkahub.data.model.Conversation
@@ -959,131 +967,6 @@ private fun ConversationParamsSheet(
             )
             HorizontalDivider()
 
-            // Temperature
-            FormItem(
-                modifier = Modifier.padding(8.dp),
-                label = {
-                    Text(stringResource(R.string.assistant_page_temperature))
-                },
-                description = {
-                    if (params.temperature == null) {
-                        Text(
-                            text = "使用助手设置: ${assistant.temperature ?: "默认"}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                },
-                tail = {
-                    Switch(
-                        checked = params.contextMessageSize != null,
-                        onCheckedChange = { enabled ->
-                            val newParams = params.copy(
-                                contextMessageSize = if (enabled) assistant.contextMessageSize else null
-                            )
-                            params = newParams
-                            onUpdate(newParams)
-                        }
-                    )
-                }
-            ) {
-                if (params.temperature != null) {
-                    Slider(
-                        value = params.temperature!!,
-                        onValueChange = {
-                            val newParams = params.copy(
-                                temperature = it.toFixed(2).toFloatOrNull() ?: 0.6f
-                            )
-                            params = newParams
-                            onUpdate(newParams)
-                        },
-                        valueRange = 0f..2f,
-                        steps = 19,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        val currentTemperature = params.temperature!!
-                        val tagType = when (currentTemperature) {
-                            in 0.0f..0.3f -> TagType.INFO
-                            in 0.3f..1.0f -> TagType.SUCCESS
-                            in 1.0f..1.5f -> TagType.WARNING
-                            in 1.5f..2.0f -> TagType.ERROR
-                            else -> TagType.ERROR
-                        }
-                        Tag(type = TagType.INFO) {
-                            Text(text = "$currentTemperature")
-                        }
-                        Tag(type = tagType) {
-                            Text(
-                                text = when (currentTemperature) {
-                                    in 0.0f..0.3f -> stringResource(R.string.assistant_page_strict)
-                                    in 0.3f..1.0f -> stringResource(R.string.assistant_page_balanced)
-                                    in 1.0f..1.5f -> stringResource(R.string.assistant_page_creative)
-                                    in 1.5f..2.0f -> stringResource(R.string.assistant_page_chaotic)
-                                    else -> "?"
-                                }
-                            )
-                        }
-                    }
-                }
-            }
-            HorizontalDivider()
-
-            // Top P
-            FormItem(
-                modifier = Modifier.padding(8.dp),
-                label = {
-                    Text(stringResource(R.string.assistant_page_top_p))
-                },
-                description = {
-                    if (params.topP == null) {
-                        Text(
-                            text = "使用助手设置: ${assistant.topP ?: "默认"}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                },
-                tail = {
-                    Switch(
-                        checked = params.topP != null,
-                        onCheckedChange = { enabled ->
-                            val newParams = params.copy(
-                                topP = if (enabled) (assistant.topP ?: 1.0f) else null
-                            )
-                            params = newParams
-                            onUpdate(newParams)
-                        }
-                    )
-                }
-            ) {
-                params.topP?.let { topP ->
-                    Slider(
-                        value = topP,
-                        onValueChange = {
-                            val newParams = params.copy(
-                                topP = it.toFixed(2).toFloatOrNull() ?: 1.0f
-                            )
-                            params = newParams
-                            onUpdate(newParams)
-                        },
-                        valueRange = 0f..1f,
-                        steps = 0,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    Text(
-                        text = stringResource(R.string.assistant_page_top_p_value, topP.toString()),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.75f),
-                    )
-                }
-            }
-            HorizontalDivider()
-
             // Context Message Size
             FormItem(
                 modifier = Modifier.padding(8.dp),
@@ -1137,6 +1020,210 @@ private fun ConversationParamsSheet(
                     )
                 }
             }
+            HorizontalDivider()
+
+            // [FORK] 上下文摘要
+            FormItem(
+                modifier = Modifier.padding(8.dp),
+                label = { Text("上下文摘要") },
+                description = {
+                    val effectiveEnabled = params.enableContextSummary ?: assistant.enableContextSummary
+                    Text(
+                        text = when {
+                            params.enableContextSummary == null -> "跟随助手设置（当前：${if (assistant.enableContextSummary) "开启" else "关闭"}）"
+                            effectiveEnabled -> "已开启：超出上下文窗口的历史消息将自动摘要"
+                            else -> "已关闭"
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                },
+                tail = {
+                    Switch(
+                        checked = params.enableContextSummary ?: assistant.enableContextSummary,
+                        onCheckedChange = { enabled ->
+                            val newParams = params.copy(enableContextSummary = enabled)
+                            params = newParams
+                            onUpdate(newParams)
+                        }
+                    )
+                }
+            ) {
+                // 显示摘要缓存状态
+                val summary = params.contextSummary
+                if (!summary.isNullOrBlank()) {
+                    var showManageDialog by remember { mutableStateOf(false) }
+                    var showClearConfirm by remember { mutableStateOf(false) }
+
+                    Surface(
+                        shape = MaterialTheme.shapes.small,
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        onClick = { showManageDialog = true },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp),
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            Text(
+                                text = "当前摘要（覆盖前 ${params.summarizedUntilIndex / 2} 轮问答）",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = "管理摘要",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.primary,
+                                )
+                                Spacer(Modifier.size(2.dp))
+                                Icon(
+                                    imageVector = HugeIcons.ArrowRight01,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(14.dp),
+                                    tint = MaterialTheme.colorScheme.primary,
+                                )
+                            }
+                        }
+                    }
+
+                    if (showManageDialog) {
+                        var editText by remember { mutableStateOf(summary) }
+                        AlertDialog(
+                            onDismissRequest = { showManageDialog = false },
+                            title = { Text("管理摘要") },
+                            text = {
+                                OutlinedTextField(
+                                    value = editText,
+                                    onValueChange = { editText = it },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .heightIn(max = 400.dp),
+                                    minLines = 8,
+                                    textStyle = MaterialTheme.typography.bodySmall,
+                                    placeholder = {
+                                        Text(
+                                            text = "摘要内容…",
+                                            style = MaterialTheme.typography.bodySmall,
+                                        )
+                                    }
+                                )
+                            },
+                            confirmButton = {
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    TextButton(onClick = { showClearConfirm = true }) {
+                                        Text("清除摘要缓存")
+                                    }
+                                    Spacer(Modifier.weight(1f))
+                                    TextButton(onClick = { showManageDialog = false }) {
+                                        Text("取消")
+                                    }
+                                    TextButton(onClick = {
+                                        val newParams = params.copy(contextSummary = editText.trim())
+                                        params = newParams
+                                        onUpdate(newParams)
+                                        showManageDialog = false
+                                    }) {
+                                        Text("保存")
+                                    }
+                                }
+                            },
+                        )
+                    }
+
+                    if (showClearConfirm) {
+                        AlertDialog(
+                            onDismissRequest = { showClearConfirm = false },
+                            title = { Text("清除摘要缓存") },
+                            text = { Text("确定要清除当前上下文摘要吗？下次发送消息时将重新生成。") },
+                            confirmButton = {
+                                TextButton(onClick = {
+                                    val newParams = params.copy(
+                                        contextSummary = null,
+                                        summarizedUntilIndex = 0,
+                                    )
+                                    params = newParams
+                                    onUpdate(newParams)
+                                    showClearConfirm = false
+                                    showManageDialog = false
+                                }) {
+                                    Text("清除")
+                                }
+                            },
+                            dismissButton = {
+                                TextButton(onClick = { showClearConfirm = false }) {
+                                    Text("取消")
+                                }
+                            }
+                        )
+                    }
+                }
+            }
+            HorizontalDivider()
+
+            // [FORK] 对话专属记忆
+            FormItem(
+                modifier = Modifier.padding(8.dp),
+                label = { Text("对话专属记忆") },
+                description = {
+                    Text(
+                        text = if (params.enableConversationMemory)
+                            "已开启：LLM 可将重要内容写入此对话的专属记忆（与其他对话完全隔离）"
+                        else
+                            "关闭：不使用对话专属记忆",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                },
+                tail = {
+                    Switch(
+                        checked = params.enableConversationMemory,
+                        onCheckedChange = { enabled ->
+                            val newParams = params.copy(enableConversationMemory = enabled)
+                            params = newParams
+                            onUpdate(newParams)
+                        }
+                    )
+                }
+            ) {
+                if (params.enableConversationMemory) {
+                    // [FORK] 管理对话专属记忆：点击入口弹出 BottomSheet
+                    var showMemorySheet by remember { mutableStateOf(false) }
+                    TextButton(
+                        onClick = { showMemorySheet = true },
+                        modifier = Modifier.padding(top = 4.dp)
+                    ) {
+                        Text(
+                            "管理记忆（${conversationMemories.size} 条）→",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+
+                    if (showMemorySheet) {
+                        ConversationMemorySheet(
+                            memories = conversationMemories,
+                            onDismiss = { showMemorySheet = false },
+                            onAdd = { content -> vm.saveMessageAsMemory(content) },
+                            onUpdate = { memory -> vm.updateConversationMemory(memory) },
+                            onDelete = { memory -> vm.deleteConversationMemory(memory) },
+                        )
+                    }
+                }
+            }
+            HorizontalDivider()
+
+            // [FORK] Battle Mode
+            BattleModeSection(
+                params = params,
+                settings = settings,
+                onUpdate = { newParams ->
+                    params = newParams
+                    onUpdate(newParams)
+                }
+            )
             HorizontalDivider()
 
             // System Prompt

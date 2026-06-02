@@ -87,6 +87,8 @@ import me.rerere.rikkahub.data.repository.ConversationRepository
 import me.rerere.rikkahub.data.repository.MemoryRepository
 import me.rerere.rikkahub.data.repository.WorkspaceRepository
 import me.rerere.rikkahub.web.BadRequestException
+import me.rerere.rikkahub.data.ai.generateContextSummaryIfNeeded
+import me.rerere.rikkahub.data.ai.resolveWith
 import me.rerere.rikkahub.web.NotFoundException
 import me.rerere.rikkahub.utils.applyPlaceholders
 import me.rerere.rikkahub.utils.sendNotification
@@ -1460,6 +1462,22 @@ class ChatService(
         if (targetNodeIndex == 0) return // 没有之前的消息，无需操作
 
         val updatedNodes = currentConversation.messageNodes.subList(targetNodeIndex, currentConversation.messageNodes.size)
+        saveConversation(conversationId, currentConversation.copy(messageNodes = updatedNodes))
+    }
+
+    suspend fun deleteMessagesAfterMessage(
+        conversationId: Uuid,
+        messageId: Uuid,
+    ) {
+        val currentConversation = getConversationFlow(conversationId).value
+        val targetNodeIndex = currentConversation.messageNodes.indexOfFirst { node ->
+            node.messages.any { it.id == messageId }
+        }
+        if (targetNodeIndex == -1) return
+        val lastIndex = currentConversation.messageNodes.lastIndex
+        if (targetNodeIndex == lastIndex) return // 没有之后的消息，无需操作
+
+        val updatedNodes = currentConversation.messageNodes.subList(0, targetNodeIndex + 1)
         saveConversation(conversationId, currentConversation.copy(messageNodes = updatedNodes))
     }
 

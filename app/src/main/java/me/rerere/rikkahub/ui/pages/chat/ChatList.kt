@@ -147,6 +147,11 @@ fun ChatList(
     onToolAnswer: ((toolCallId: String, answer: String) -> Unit)? = null,
     onToggleFavorite: ((MessageNode) -> Unit)? = null,
     onConversationSystemPromptChange: ((String?) -> Unit)? = null,
+    // [FORK] 对话专属记忆操作
+    onExtractMemory: ((UIMessage) -> Unit)? = null,
+    onSaveAsMemory: ((String) -> Unit)? = null,
+    // [FORK] 固定到上下文：仅当有上下文限制时才显示此选项
+    onTogglePin: ((MessageNode) -> Unit)? = null,
 ) {
     AnimatedContent(
         targetState = previewMode,
@@ -192,6 +197,11 @@ fun ChatList(
                 onToolAnswer = onToolAnswer,
                 onToggleFavorite = onToggleFavorite,
                 onConversationSystemPromptChange = onConversationSystemPromptChange,
+                // [FORK] 对话专属记忆
+                onExtractMemory = onExtractMemory,
+                onSaveAsMemory = onSaveAsMemory,
+                // [FORK] 固定到上下文
+                onTogglePin = onTogglePin,
             )
         }
     }
@@ -225,6 +235,11 @@ private fun ChatListNormal(
     onToolAnswer: ((toolCallId: String, answer: String) -> Unit)? = null,
     onToggleFavorite: ((MessageNode) -> Unit)? = null,
     onConversationSystemPromptChange: ((String?) -> Unit)? = null,
+    // [FORK] 对话专属记忆操作
+    onExtractMemory: ((UIMessage) -> Unit)? = null,
+    onSaveAsMemory: ((String) -> Unit)? = null,
+    // [FORK] 固定到上下文
+    onTogglePin: ((MessageNode) -> Unit)? = null,
 ) {
     val scope = rememberCoroutineScope()
     val loadingState by rememberUpdatedState(loading)

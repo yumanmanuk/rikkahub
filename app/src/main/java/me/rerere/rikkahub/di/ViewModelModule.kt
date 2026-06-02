@@ -36,6 +36,10 @@ val viewModelModule = module {
             // analytics = get(), // [FORK] Firebase removed
             filesManager = get(),
             favoriteRepository = get(),
+            // [FORK] 对话专属记忆 + 摘要操作
+            memoryRepository = get(),
+            generationHandler = get(),
+            providerManager = get(),
         )
     }
     viewModelOf(::ChatDrawerVM)

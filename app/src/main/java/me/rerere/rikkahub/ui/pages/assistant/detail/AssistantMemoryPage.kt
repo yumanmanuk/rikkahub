@@ -204,6 +204,27 @@ private fun AssistantMemoryContent(
                     )
                 }
             )
+            // [FORK] 上下文摘要：默认开关，对话可在参数面板中覆盖
+            item(
+                headlineContent = { Text("上下文摘要（默认）") },
+                supportingContent = {
+                    Text(
+                        text = "开启后，本助手的新对话默认开启上下文摘要功能。超出上下文窗口的历史消息将由 AI 自动摘要并注入到新消息中。",
+                    )
+                },
+                trailingContent = {
+                    Switch(
+                        checked = assistant.enableContextSummary,
+                        onCheckedChange = {
+                            onUpdateAssistant(
+                                assistant.copy(
+                                    enableContextSummary = it
+                                )
+                            )
+                        }
+                    )
+                }
+            )
             item(
                 headlineContent = { Text(stringResource(R.string.assistant_page_recent_chats)) },
                 supportingContent = {

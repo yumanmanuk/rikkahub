@@ -16,6 +16,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -26,6 +28,7 @@ import me.rerere.ai.ui.isEmptyInputMessage
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.SettingsStore
+import me.rerere.rikkahub.data.datastore.getAssistantById
 import me.rerere.rikkahub.data.datastore.getCurrentChatModel
 import me.rerere.rikkahub.data.files.FilesManager
 import me.rerere.rikkahub.data.model.Assistant
@@ -45,6 +48,16 @@ import me.rerere.rikkahub.utils.UiState
 import me.rerere.rikkahub.utils.UpdateChecker
 import java.util.Locale
 import kotlin.uuid.Uuid
+// [FORK] 对话专属记忆 + 摘要操作
+import me.rerere.rikkahub.data.repository.MemoryRepository
+import me.rerere.rikkahub.data.ai.GenerationHandler
+import me.rerere.rikkahub.data.datastore.findModelById
+import me.rerere.rikkahub.data.datastore.findProvider
+import me.rerere.rikkahub.data.datastore.getCurrentAssistant
+import me.rerere.rikkahub.data.model.AssistantMemory
+import me.rerere.ai.provider.TextGenerationParams
+import me.rerere.ai.provider.ProviderManager
+import me.rerere.ai.ui.handleMessageChunk
 
 private const val TAG = "ChatVM"
 
@@ -59,6 +72,10 @@ class ChatVM(
     // private val analytics: FirebaseAnalytics,
     private val filesManager: FilesManager,
     private val favoriteRepository: FavoriteRepository,
+    // [FORK] 对话专属记忆 + 摘要操作
+    private val memoryRepository: MemoryRepository,
+    private val generationHandler: GenerationHandler,
+    private val providerManager: ProviderManager,
 ) : ViewModel() {
     private val _conversationId: Uuid = Uuid.parse(id)
     val conversation: StateFlow<Conversation> = chatService.getConversationFlow(_conversationId)
@@ -458,6 +475,111 @@ class ChatVM(
         val newId = Uuid.random()
         chatService.schedulePendingTemporary(newId)
         return newId
+    }
+
+    // [FORK] 对话专属记忆：用 LLM 自动提炼消息内容并写入对话隔离记忆库
+    // onResult(true) = 提炼并保存成功，onResult(false) = 提炼失败
+    fun extractMemoryFromMessage(
+        message: me.rerere.ai.ui.UIMessage,
+        onResult: (success: Boolean) -> Unit = {},
+    ) {
+        viewModelScope.launch {
+            val settings = settingsStore.settingsFlow.first()
+            val conv = conversation.value
+            val assistant = settings.getAssistantById(conv.assistantId)
+                ?: settings.getCurrentAssistant()
+            val model = settings.findModelById(assistant.chatModelId ?: settings.chatModelId)
+                ?: run { onResult(false); return@launch }
+            val provider = model.findProvider(settings.providers)
+                ?: run { onResult(false); return@launch }
+
+            val conversationMemoryKey = conv.id.toString()
+            val messageText = message.parts
+                .filterIsInstance<me.rerere.ai.ui.UIMessagePart.Text>()
+                .joinToString("\n") { it.text }
+                .take(4000)
+            if (messageText.isBlank()) {
+                onResult(false)
+                return@launch
+            }
+
+            // 构建提炼请求，要求输出中文
+            val prompt = """从以下消息中提取值得记忆的关键信息，用于在本对话后续中参考。要求简洁、客观，**必须使用中文输出**，无论原始消息是何种语言。
+
+消息内容：
+$messageText
+
+只输出需要记忆的关键要点，每行一条，不要添加编号或额外说明。"""
+
+            runCatching {
+                val providerImpl = providerManager.getProviderByType(provider)
+                val requestMessages = listOf(me.rerere.ai.ui.UIMessage.user(prompt))
+                var resultMessages = requestMessages
+                val chunk = providerImpl.generateText(
+                    providerSetting = provider,
+                    messages = requestMessages,
+                    params = TextGenerationParams(
+                        model = model,
+                        temperature = 0.3f,
+                    )
+                )
+                resultMessages = resultMessages.handleMessageChunk(chunk, model)
+                val extracted = resultMessages.lastOrNull()
+                    ?.parts
+                    ?.filterIsInstance<me.rerere.ai.ui.UIMessagePart.Text>()
+                    ?.joinToString("\n") { it.text }
+                    ?.trim()
+                if (!extracted.isNullOrBlank()) {
+                    memoryRepository.addMemory(conversationMemoryKey, extracted)
+                    onResult(true)
+                } else {
+                    onResult(false)
+                }
+            }.onFailure {
+                onResult(false)
+            }
+        }
+    }
+
+    // [FORK] 对话专属记忆：直接将指定内容写入对话隔离记忆库
+    fun saveMessageAsMemory(content: String) {
+        viewModelScope.launch {
+            if (content.isBlank()) return@launch
+            val conversationMemoryKey = conversation.value.id.toString()
+            memoryRepository.addMemory(conversationMemoryKey, content.trim())
+        }
+    }
+
+    // [FORK] 对话专属记忆：当前对话的记忆列表（响应式）
+    val conversationMemories = conversation
+        .flatMapLatest { conv ->
+            memoryRepository.getMemoriesOfAssistantFlow(conv.id.toString())
+        }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    // [FORK] 对话专属记忆：删除指定记忆条目
+    fun deleteConversationMemory(memory: me.rerere.rikkahub.data.model.AssistantMemory) {
+        viewModelScope.launch {
+            memoryRepository.deleteMemory(memory.id)
+        }
+    }
+
+    // [FORK] 对话专属记忆：更新指定记忆条目内容
+    fun updateConversationMemory(memory: me.rerere.rikkahub.data.model.AssistantMemory) {
+        viewModelScope.launch {
+            memoryRepository.updateContent(memory.id, memory.content)
+        }
+    }
+
+
+    // [FORK] 摘要功能：清除对话的摘要缓存，下次发消息时会重新生成
+    fun clearContextSummary() {
+        val currentParams = conversation.value.conversationParams
+        val clearedParams = currentParams.copy(
+            contextSummary = null,
+            summarizedUntilIndex = 0,
+        )
+        updateConversationParams(clearedParams)
     }
 
 }

@@ -89,18 +89,24 @@ class BattleService(
         }
 
         val assistant = settings.getCurrentAssistant()
-        val memories: List<AssistantMemory> = if (assistant.useGlobalMemory) {
+        // [FORK] 对话专属记忆开启时优先加载对话隔离库
+        val conversationMemoryEnabled = conversation.conversationParams.enableConversationMemory
+        val conversationMemoryKey: String? = if (conversationMemoryEnabled) conversationId.toString() else null
+        val memories: List<AssistantMemory> = if (conversationMemoryEnabled) {
+            memoryRepository.getMemoriesOfAssistant(conversationId.toString())
+        } else if (assistant.useGlobalMemory) {
             memoryRepository.getGlobalMemories()
         } else {
             memoryRepository.getMemoriesOfAssistant(settings.assistantId.toString())
         }
         val tools = buildTools(settings)
 
-        // 为每个模型创建空占位 UIMessage
-        val placeholderMessages = battleModels.map {
+        // 为每个模型创建空占位 UIMessage，并预先写入 modelId 以便失败时仍可单独重试
+        val placeholderMessages = battleModels.map { model ->
             UIMessage(
                 role = MessageRole.ASSISTANT,
                 parts = emptyList(),
+                modelId = model.id,
             )
         }
 
@@ -149,6 +155,8 @@ class BattleService(
                             battleNodeId = battleNode.id,
                             placeholderMsgId = placeholderMsgId,
                             memories = memories,
+                            // [FORK] 对话专属记忆
+                            conversationMemoryKey = conversationMemoryKey,
                             tools = tools,
                             getConversation = getConversation,
                             updateConversationState = updateConversationState,
@@ -159,7 +167,11 @@ class BattleService(
                         Log.e(BATTLE_TAG, "Model '${model.displayName}' failed: ${e.message}", e)
                         updateConversationState(conversationId) { conv ->
                             updateMessageInBattleNode(conv, battleNode.id, placeholderMsgId) {
-                                it.copy(parts = listOf(UIMessagePart.Text("❌ ${model.displayName} 生成失败：${e.message}")))
+                                // 保留 modelId，确保失败后单独重试时能识别目标模型
+                                it.copy(
+                                    modelId = model.id,
+                                    parts = listOf(UIMessagePart.Text("❌ ${model.displayName} 生成失败：${e.message}")),
+                                )
                             }
                         }
                     }
@@ -213,7 +225,12 @@ class BattleService(
         }
 
         val assistant = settings.getCurrentAssistant()
-        val memories: List<AssistantMemory> = if (assistant.useGlobalMemory) {
+        // [FORK] 对话专属记忆开启时优先加载对话隔离库
+        val conversationMemoryEnabled = conversation.conversationParams.enableConversationMemory
+        val conversationMemoryKey: String? = if (conversationMemoryEnabled) conversationId.toString() else null
+        val memories: List<AssistantMemory> = if (conversationMemoryEnabled) {
+            memoryRepository.getMemoriesOfAssistant(conversationId.toString())
+        } else if (assistant.useGlobalMemory) {
             memoryRepository.getGlobalMemories()
         } else {
             memoryRepository.getMemoriesOfAssistant(settings.assistantId.toString())
@@ -249,6 +266,8 @@ class BattleService(
                 battleNodeId = battleNodeId,
                 placeholderMsgId = messageId,
                 memories = memories,
+                // [FORK] 对话专属记忆
+                conversationMemoryKey = conversationMemoryKey,
                 tools = tools,
                 getConversation = getConversation,
                 updateConversationState = updateConversationState,
@@ -259,7 +278,11 @@ class BattleService(
             Log.e(BATTLE_TAG, "rerunSlot '${model.displayName}' failed: ${e.message}", e)
             updateConversationState(conversationId) { conv ->
                 updateMessageInBattleNode(conv, battleNodeId, messageId) {
-                    it.copy(parts = listOf(UIMessagePart.Text("❌ ${model.displayName} 重试失败：${e.message}")))
+                    // 保留 modelId，确保失败后再次单独重试时能识别目标模型
+                    it.copy(
+                        modelId = model.id,
+                        parts = listOf(UIMessagePart.Text("❌ ${model.displayName} 重试失败：${e.message}")),
+                    )
                 }
             }
         }
@@ -284,6 +307,8 @@ class BattleService(
         processingStatus: MutableStateFlow<String?>,
         // [FORK] Battle Mode 独立重试
         retryCount: Int = 0,
+        // [FORK] 对话专属记忆 key
+        conversationMemoryKey: String? = null,
     ) {
         val maxRetries = 3
         val retryDelayMs = 2000L
@@ -307,6 +332,8 @@ class BattleService(
                 outputTransformers = outputTransformers,
                 tools = tools,
                 processingStatus = processingStatus,
+                // [FORK] 对话专属记忆
+                conversationMemoryKey = conversationMemoryKey,
             ).onCompletion {
                 // 生成结束后确保 reasoning 状态归位
                 updateConversationState(conversationId) { conv ->
@@ -350,6 +377,8 @@ class BattleService(
                     updateConversationState = updateConversationState,
                     processingStatus = processingStatus,
                     retryCount = retryCount + 1,
+                    // [FORK] 对话专属记忆 key 传递给重试
+                    conversationMemoryKey = conversationMemoryKey,
                 )
             } else {
                 // 超过重试次数或 429，向上抛出让外层显示最终错误
