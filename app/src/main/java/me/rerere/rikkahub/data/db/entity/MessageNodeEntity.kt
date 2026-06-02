@@ -28,5 +28,7 @@ data class MessageNodeEntity(
     @ColumnInfo("messages")
     val messages: String,  // JSON serialized List<UIMessage>
     @ColumnInfo("select_index")
-    val selectIndex: Int
+    val selectIndex: Int,
+    @ColumnInfo("is_pinned", defaultValue = "0")
+    val isPinned: Boolean = false
 )

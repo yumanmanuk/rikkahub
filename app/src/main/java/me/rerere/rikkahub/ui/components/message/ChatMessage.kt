@@ -14,9 +14,11 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.CardDefaults
@@ -71,6 +73,8 @@ import me.rerere.ai.ui.UIMessagePart
 import me.rerere.ai.ui.isEmptyUIMessage
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.File02
+import me.rerere.hugeicons.stroke.Lock
+import me.rerere.hugeicons.stroke.Pin02
 import me.rerere.hugeicons.stroke.MusicNote03
 import me.rerere.hugeicons.stroke.Video01
 import me.rerere.rikkahub.R
@@ -161,24 +165,50 @@ fun ChatMessage(
                 )
             }
         }
-        ProvideTextStyle(textStyle) {
-            MessagePartsBlock(
-                assistant = assistant,
-                role = message.role,
-                parts = message.parts,
-                annotations = message.annotations,
-                loading = loading,
-                model = model,
-                onToolApproval = onToolApproval,
-                onToolAnswer = onToolAnswer,
-                onUserMessageClick = if (message.role == MessageRole.USER) onEdit else null,
-            )
+        // [FORK] 固定到上下文：USER 消息被 pin 时，在气泡右上角显示锁徽章
+        // Box 提供 overlay 能力；内部必须有 Column 保证 MessagePartsBlock 的多个子项纵向排列
+        Box {
+            Column {
+                ProvideTextStyle(textStyle) {
+                    MessagePartsBlock(
+                        assistant = assistant,
+                        role = message.role,
+                        parts = message.parts,
+                        annotations = message.annotations,
+                        loading = loading,
+                        model = model,
+                        onToolApproval = onToolApproval,
+                        onToolAnswer = onToolAnswer,
+                        onUserMessageClick = if (message.role == MessageRole.USER) onEdit else null,
+                    )
 
-            message.translation?.let { translation ->
-                CollapsibleTranslationText(
-                    content = translation,
-                    onClickCitation = {}
-                )
+                    message.translation?.let { translation ->
+                        CollapsibleTranslationText(
+                            content = translation,
+                            onClickCitation = {}
+                        )
+                    }
+                }
+            }
+            if (message.role == MessageRole.USER && isPinned) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .offset(x = 4.dp, y = (-4).dp)
+                        .size(18.dp)
+                        .background(
+                            color = MaterialTheme.colorScheme.tertiary,
+                            shape = CircleShape
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = HugeIcons.Pin02,
+                        contentDescription = "固定到上下文",
+                        modifier = Modifier.size(11.dp),
+                        tint = MaterialTheme.colorScheme.onTertiary
+                    )
+                }
             }
         }
 

@@ -12,6 +12,8 @@ import me.rerere.hugeicons.stroke.Cancel01
 import me.rerere.hugeicons.stroke.Filter
 import me.rerere.hugeicons.stroke.Favourite
 import me.rerere.hugeicons.stroke.InLove
+import me.rerere.hugeicons.stroke.Lock
+import me.rerere.hugeicons.stroke.Pin02
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.AnimatedVisibilityScope
@@ -704,30 +706,42 @@ private fun ChatListPreview(
             messages = messages.filter { (_, node) -> node.currentMessage.toText().contains(searchQuery, ignoreCase = true) }
         }
 
-        // 再按点赞状态过滤
+        // 再按点赞/固定状态过滤
         if (showOnlyFavorites) {
             messages = messages.filter { (_, node) ->
-                node.isFavorite || node.currentMessage.role == me.rerere.ai.core.MessageRole.USER
+                node.isFavorite || node.isPinned || node.currentMessage.role == me.rerere.ai.core.MessageRole.USER
             }
-            // 当显示点赞消息时，同时显示对应的提问（前一个消息如果是USER）
+            // 当显示点赞/固定消息时，同时显示对应的提问（前一个消息如果是USER）
             val result = mutableListOf<Pair<Int, MessageNode>>()
             val addedIndices = mutableSetOf<Int>()
             messages.forEach { (index, node) ->
-                if (node.isFavorite && node.currentMessage.role == me.rerere.ai.core.MessageRole.ASSISTANT) {
+                val isProtected = node.isFavorite || node.isPinned
+                if (isProtected && node.currentMessage.role == me.rerere.ai.core.MessageRole.ASSISTANT) {
                     // 添加对应的提问（前一个消息）
                     if (index > 0 && !addedIndices.contains(index - 1)) {
                         result.add(index - 1 to conversation.messageNodes[index - 1])
                         addedIndices.add(index - 1)
                     }
-                    // 添加当前点赞的回答
+                    // 添加当前收藏/固定的回答
                     if (!addedIndices.contains(index)) {
                         result.add(index to node)
                         addedIndices.add(index)
                     }
+                } else if (isProtected && node.currentMessage.role == me.rerere.ai.core.MessageRole.USER) {
+                    // pin 的提问：带出自身
+                    if (!addedIndices.contains(index)) {
+                        result.add(index to node)
+                        addedIndices.add(index)
+                    }
+                    // 带出紧跟的回答（若有）
+                    if (index + 1 < conversation.messageNodes.size && !addedIndices.contains(index + 1)) {
+                        result.add(index + 1 to conversation.messageNodes[index + 1])
+                        addedIndices.add(index + 1)
+                    }
                 } else if (node.currentMessage.role == me.rerere.ai.core.MessageRole.USER) {
-                    // 检查下一个消息是否是点赞的回答
+                    // 检查下一个消息是否是收藏/固定的回答
                     if (index + 1 < conversation.messageNodes.size &&
-                        conversation.messageNodes[index + 1].isFavorite &&
+                        (conversation.messageNodes[index + 1].isFavorite || conversation.messageNodes[index + 1].isPinned) &&
                         !addedIndices.contains(index)) {
                         result.add(index to node)
                         addedIndices.add(index)
@@ -862,6 +876,15 @@ private fun ChatListPreview(
                                     contentDescription = "Favorite",
                                     modifier = Modifier.size(16.dp),
                                     tint = MaterialTheme.colorScheme.error
+                                )
+                            }
+                            // [FORK] 固定到上下文标识：仅 USER 消息显示
+                            if (isUser && node.isPinned) {
+                                Icon(
+                                    imageVector = HugeIcons.Pin02,
+                                    contentDescription = "固定到上下文",
+                                    modifier = Modifier.size(16.dp),
+                                    tint = MaterialTheme.colorScheme.tertiary
                                 )
                             }
                             val highlightColor = MaterialTheme.colorScheme.tertiaryContainer

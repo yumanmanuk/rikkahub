@@ -408,6 +408,26 @@ class ChatVM(
         }
     }
 
+    // [FORK] 固定到上下文：切换节点的 isPinned 状态并持久化
+    fun toggleMessagePin(node: MessageNode) {
+        viewModelScope.launch {
+            val newPinnedState = !node.isPinned
+            chatService.updateConversationState(_conversationId) { currentConversation ->
+                currentConversation.copy(
+                    messageNodes = currentConversation.messageNodes.map { existingNode ->
+                        if (existingNode.id == node.id) {
+                            existingNode.copy(isPinned = newPinnedState)
+                        } else {
+                            existingNode
+                        }
+                    }
+                )
+            }
+            val updatedConversation = conversation.value
+            chatService.saveConversation(_conversationId, updatedConversation)
+        }
+    }
+
     // [FORK] 对话标签：更新对话所属标签
     fun updateConversationTag(conversationId: Uuid, tagId: Uuid?) {
         viewModelScope.launch {

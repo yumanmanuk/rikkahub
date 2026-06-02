@@ -483,6 +483,13 @@ private fun ChatPageContent(
                         vm.deleteMessagesBeforeMessage(it)
                     }
                 },
+                onDeleteAfterMessage = {
+                    if (loadingJob != null) {
+                        vm.showDeleteBlockedWhileGeneratingError()
+                    } else {
+                        vm.deleteMessagesAfterMessage(it)
+                    }
+                },
                 onUpdateMessage = { newNode ->
                     vm.updateConversation(
                         conversation.copy(

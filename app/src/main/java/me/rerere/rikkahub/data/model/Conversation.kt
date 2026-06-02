@@ -160,6 +160,9 @@ data class MessageNode(
     val isBattleNode: Boolean = false,
     @Transient
     val isFavorite: Boolean = false,
+    // [FORK] 固定到上下文：设置了上下文长度时，该节点不会被截断
+    @Transient
+    val isPinned: Boolean = false,
 ) {
     val currentMessage get() = if (messages.isEmpty() || selectIndex !in messages.indices) {
         throw IllegalStateException("MessageNode has no valid current message: messages.size=${messages.size}, selectIndex=$selectIndex")
