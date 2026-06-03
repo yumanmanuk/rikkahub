@@ -2,6 +2,7 @@
 
 本文档面向贡献者，概述本仓库的模块结构、开发流程，便于快速上手并保持一致的协作质量。
 
+
 ## Build, Test, and Development Commands
 
 使用 Android Studio 或命令行 Gradle：
@@ -36,6 +37,13 @@ ReorderableItem(reorderState, key = tag.id.toString()) { ... }
 - `longPressDraggableHandle` — reorderable 库的扩展函数
 - `HugeIcons` 及各类图标 — `import me.rerere.hugeicons.HugeIcons` / `import me.rerere.hugeicons.stroke.XXX`
 - `LocalToaster.current` — `import me.rerere.rikkahub.ui.components.ui.LocalToaster`
+- `rememberLazyListState` — `import androidx.compose.foundation.lazy.rememberLazyListState`（与 `LazyListState` 是两个独立的 import，缺一个就会报错）
+- `rememberScrollState` / `verticalScroll` / `horizontalScroll` — `import androidx.compose.foundation.rememberScrollState` / `import androidx.compose.foundation.verticalScroll`
+- `collectAsStateWithLifecycle` — `import androidx.lifecycle.compose.collectAsStateWithLifecycle`
+- `toPaddingValues` / `asPaddingValues` 等扩展函数 — 注意对应包路径
+
+> ❗️ **重要提示（AI 助手必读）**：每次向现有文件新增一个类、函数、扩展函数的引用，必须先检查文件头部是否已有对应 `import`。
+> 就算同个包下的不同类（如 `LazyListState` 和 `rememberLazyListState`）也各自需要独立的 import，不要假定已包含。
 
 **在提交代码前，确保编译通过**（`./gradlew assembleDebug`），避免因遗漏 import 导致构建失败。
 
