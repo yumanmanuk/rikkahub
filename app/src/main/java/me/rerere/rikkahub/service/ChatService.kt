@@ -697,6 +697,9 @@ class ChatService(
                     add(workspaceReminderTransformer)
                 },
                 outputTransformers = outputTransformers,
+                // [FORK] 对话专属记忆
+                conversationMemoryKey = conversationMemoryKey,
+                conversationMemories = conversationMemories,
                 tools = buildList {
                     if (settings.enableWebSearch) {
                         addAll(createSearchTools(settings))

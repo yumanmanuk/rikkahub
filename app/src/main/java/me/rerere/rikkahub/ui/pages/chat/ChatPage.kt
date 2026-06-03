@@ -358,6 +358,7 @@ private fun ChatPageContent(
                     bigScreen = bigScreen,
                     drawerState = drawerState,
                     previewMode = previewMode,
+                    vm = vm,
                     onClickMenu = {
                         previewMode = !previewMode
                     },
@@ -763,6 +764,7 @@ private fun TopBar(
     drawerState: DrawerState,
     bigScreen: Boolean,
     previewMode: Boolean,
+    vm: ChatVM,
     onClickMenu: () -> Unit,
     onUpdateTitle: (String) -> Unit,
     onUpdateConversationParams: (ConversationParams) -> Unit,
@@ -1164,17 +1166,132 @@ private fun ConversationParamsSheet(
             }
             HorizontalDivider()
 
-            // [FORK] Battle Mode
-            BattleModeSection(
-                params = params,
-                settings = settings,
-                onUpdate = { newParams ->
-                    params = newParams
-                    onUpdate(newParams)
+            // Temperature
+            FormItem(
+                modifier = Modifier.padding(8.dp),
+                label = {
+                    Text(stringResource(R.string.assistant_page_temperature))
+                },
+                description = {
+                    if (params.temperature == null) {
+                        Text(
+                            text = "使用助手设置: ${assistant.temperature ?: "默认"}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                },
+                tail = {
+                    Switch(
+                        checked = params.temperature != null,
+                        onCheckedChange = { enabled ->
+                            val newParams = params.copy(
+                                temperature = if (enabled) (assistant.temperature ?: 1.0f) else null
+                            )
+                            params = newParams
+                            onUpdate(newParams)
+                        }
+                    )
                 }
-            )
+            ) {
+                if (params.temperature != null) {
+                    Slider(
+                        value = params.temperature!!,
+                        onValueChange = {
+                            val newParams = params.copy(
+                                temperature = it.toFixed(2).toFloatOrNull() ?: 0.6f
+                            )
+                            params = newParams
+                            onUpdate(newParams)
+                        },
+                        valueRange = 0f..2f,
+                        steps = 19,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        val currentTemperature = params.temperature!!
+                        val tagType = when (currentTemperature) {
+                            in 0.0f..0.3f -> TagType.INFO
+                            in 0.3f..1.0f -> TagType.SUCCESS
+                            in 1.0f..1.5f -> TagType.WARNING
+                            in 1.5f..2.0f -> TagType.ERROR
+                            else -> TagType.ERROR
+                        }
+                        Tag(type = TagType.INFO) {
+                            Text(text = "$currentTemperature")
+                        }
+                        Tag(type = tagType) {
+                            Text(
+                                text = when (currentTemperature) {
+                                    in 0.0f..0.3f -> stringResource(R.string.assistant_page_strict)
+                                    in 0.3f..1.0f -> stringResource(R.string.assistant_page_balanced)
+                                    in 1.0f..1.5f -> stringResource(R.string.assistant_page_creative)
+                                    in 1.5f..2.0f -> stringResource(R.string.assistant_page_chaotic)
+                                    else -> "?"
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+            HorizontalDivider()
+
+            // Top P
+            FormItem(
+                modifier = Modifier.padding(8.dp),
+                label = {
+                    Text(stringResource(R.string.assistant_page_top_p))
+                },
+                description = {
+                    if (params.topP == null) {
+                        Text(
+                            text = "使用助手设置: ${assistant.topP ?: "默认"}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                },
+                tail = {
+                    Switch(
+                        checked = params.topP != null,
+                        onCheckedChange = { enabled ->
+                            val newParams = params.copy(
+                                topP = if (enabled) (assistant.topP ?: 1.0f) else null
+                            )
+                            params = newParams
+                            onUpdate(newParams)
+                        }
+                    )
+                }
+            ) {
+                params.topP?.let { topP ->
+                    Slider(
+                        value = topP,
+                        onValueChange = {
+                            val newParams = params.copy(
+                                topP = it.toFixed(2).toFloatOrNull() ?: 1.0f
+                            )
+                            params = newParams
+                            onUpdate(newParams)
+                        },
+                        valueRange = 0f..1f,
+                        steps = 0,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Text(
+                        text = stringResource(R.string.assistant_page_top_p_value, topP.toString()),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.75f),
+                    )
+                }
+            }
             HorizontalDivider()
 
         }
     }
 }
+

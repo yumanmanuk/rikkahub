@@ -13,9 +13,12 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -27,6 +30,7 @@ import androidx.compose.material3.ProvideTextStyle
 import androidx.compose.material3.Text
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.rememberBottomSheetState
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -37,6 +41,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -63,6 +68,14 @@ import me.rerere.hugeicons.stroke.TextSelection
 import me.rerere.hugeicons.stroke.Translate
 import me.rerere.hugeicons.stroke.VolumeHigh
 import me.rerere.hugeicons.stroke.WebDesign01
+// [FORK] 对话专属记忆操作图标
+import me.rerere.hugeicons.stroke.AiBrain01
+import me.rerere.hugeicons.stroke.NoteAdd
+// [FORK] 固定到上下文图标
+import me.rerere.hugeicons.stroke.Pin02
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.OutlinedTextField
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.model.MessageNode
 import me.rerere.rikkahub.ui.components.ui.RikkaConfirmDialog
@@ -101,9 +114,9 @@ fun ColumnScope.ChatMessageActionButtons(
         }
     }
 
-    FlowRow(
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        itemVerticalAlignment = Alignment.CenterVertically,
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         val actionIconColor = MaterialTheme.colorScheme.onSurfaceVariant
 
@@ -118,24 +131,17 @@ fun ColumnScope.ChatMessageActionButtons(
             tint = actionIconColor
         )
 
-        Icon(
-            imageVector = HugeIcons.Refresh03,
-            contentDescription = stringResource(R.string.regenerate),
-            modifier = Modifier
-                .clip(CircleShape)
-                .clickable {
-                    if (message.role == MessageRole.USER) {
-                        showRegenerateConfirm = true
-                    } else {
-                        onRegenerate()
-                    }
-                }
-                .padding(8.dp)
-                .size(16.dp),
-            tint = actionIconColor
-        )
+            Icon(
+                imageVector = HugeIcons.Refresh03,
+                contentDescription = stringResource(R.string.regenerate),
+                modifier = Modifier
+                    .clip(CircleShape)
+                    .clickable { onRegenerate() }
+                    .padding(8.dp)
+                    .size(16.dp),
+                tint = actionIconColor
+            )
 
-        if (message.role == MessageRole.ASSISTANT) {
             val tts = LocalTTSState.current
             val isSpeaking by tts.isSpeaking.collectAsState()
             val isAvailable by tts.isAvailable.collectAsState()
@@ -214,36 +220,39 @@ fun ColumnScope.ChatMessageActionButtons(
                     )
                 }
             }
-        }
 
-        Icon(
-            imageVector = HugeIcons.MoreVertical,
-            contentDescription = stringResource(R.string.more_options),
-            modifier = Modifier
-                .clip(CircleShape)
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = LocalIndication.current,
-                    onClick = {
-                        onOpenActionSheet()
-                    }
+            Icon(
+                imageVector = HugeIcons.MoreVertical,
+                contentDescription = stringResource(R.string.more_options),
+                modifier = Modifier
+                    .clip(CircleShape)
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = LocalIndication.current,
+                        onClick = { onOpenActionSheet() }
+                    )
+                    .padding(8.dp)
+                    .size(16.dp),
+                tint = actionIconColor
+            )
+
+            if (settings.displaySetting.showDateTimeInMessage) {
+                Text(
+                    text = message.createdAt.toJavaLocalDateTime().toMessageTimeString(),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                    maxLines = 1,
+                    modifier = Modifier.padding(horizontal = 4.dp),
                 )
-                .padding(8.dp)
-                .size(16.dp),
-            tint = actionIconColor
-        )
+            }
 
-        ChatMessageBranchSelector(
-            node = node,
-            onUpdate = onUpdate,
-        )
+            // 占满剩余空间，将 BranchSelector 推到右侧
+            Spacer(modifier = Modifier.weight(1f))
 
-        if (settings.displaySetting.showDateTimeInMessage) {
-            Text(
-                text = message.createdAt.toJavaLocalDateTime().toMessageTimeString(),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                maxLines = 1,
+            // 分支切换器固定在右侧，与操作图标同行
+            ChatMessageBranchSelector(
+                node = node,
+                onUpdate = onUpdate,
             )
         }
     }
@@ -289,6 +298,7 @@ fun ChatMessageActionsSheet(
     onShare: () -> Unit,
     onFork: () -> Unit,
     onDeleteBefore: () -> Unit,
+    onDeleteAfter: () -> Unit,
     onCopy: () -> Unit,
     onSelectAndCopy: () -> Unit,
     onTranslate: ((UIMessage, Locale) -> Unit)? = null,
@@ -296,18 +306,31 @@ fun ChatMessageActionsSheet(
     isFavorite: Boolean = false,
     onToggleFavorite: (() -> Unit)? = null,
     onWebViewPreview: () -> Unit,
+    // [FORK] 对话专属记忆： AI 提炼和手动保存
+    onExtractMemory: (() -> Unit)? = null,
+    onSaveAsMemory: ((String) -> Unit)? = null,
+    // [FORK] 固定到上下文
+    isPinned: Boolean = false,
+    onTogglePin: (() -> Unit)? = null,
     onDismissRequest: () -> Unit
 ) {
     var showTranslateDialog by remember { mutableStateOf(false) }
     var showDeleteBeforeConfirm by remember { mutableStateOf(false) }
+    var showDeleteAfterConfirm by remember { mutableStateOf(false) }
+    // [FORK] 手动保存记忆的编辑对话框
+    var showSaveMemoryDialog by remember { mutableStateOf(false) }
+    var saveMemoryContent by remember { mutableStateOf("") }
 
     ModalBottomSheet(
         onDismissRequest = onDismissRequest,
         sheetState = rememberBottomSheetState(initialValue = SheetValue.Hidden, enabledValues = setOf(SheetValue.Hidden, SheetValue.Expanded)),
     ) {
+        val screenHeight = LocalConfiguration.current.screenHeightDp
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .heightIn(max = (screenHeight * 0.7f).dp)
+                .verticalScroll(rememberScrollState())
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -339,6 +362,186 @@ fun ChatMessageActionsSheet(
                 }
             }
 
+            // [FORK] 对话专属记忆： AI 提炼
+            if (onExtractMemory != null) {
+                Card(
+                    onClick = {
+                        onDismissRequest()
+                        onExtractMemory()
+                    },
+                    shape = MaterialTheme.shapes.medium,
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        modifier = Modifier
+                            .padding(16.dp)
+                            .fillMaxWidth()
+                    ) {
+                        Icon(
+                            imageVector = HugeIcons.AiBrain01,
+                            contentDescription = null,
+                            modifier = Modifier.padding(4.dp)
+                        )
+                        Text(
+                            text = "AI 提炼为记忆",
+                            style = MaterialTheme.typography.titleMedium,
+                        )
+                    }
+                }
+            }
+
+            // [FORK] 对话专属记忆：手动保存
+            if (onSaveAsMemory != null) {
+                Card(
+                    onClick = {
+                        // 预填消息文本为默认值
+                        saveMemoryContent = message.parts
+                            .filterIsInstance<UIMessagePart.Text>()
+                            .joinToString("\n") { it.text }
+                            .take(2000)
+                        showSaveMemoryDialog = true
+                    },
+                    shape = MaterialTheme.shapes.medium,
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        modifier = Modifier
+                            .padding(16.dp)
+                            .fillMaxWidth()
+                    ) {
+                        Icon(
+                            imageVector = HugeIcons.NoteAdd,
+                            contentDescription = null,
+                            modifier = Modifier.padding(4.dp)
+                        )
+                        Text(
+                            text = "手动保存为记忆",
+                            style = MaterialTheme.typography.titleMedium,
+                        )
+                    }
+                }
+            }
+
+            // [FORK] 固定到上下文
+            if (onTogglePin != null) {
+                Card(
+                    onClick = {
+                        onDismissRequest()
+                        onTogglePin()
+                    },
+                    shape = MaterialTheme.shapes.medium,
+                    colors = if (isPinned) CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.primaryContainer
+                    ) else CardDefaults.cardColors()
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        modifier = Modifier
+                            .padding(16.dp)
+                            .fillMaxWidth()
+                    ) {
+                        Icon(
+                            imageVector = HugeIcons.Pin02,
+                            contentDescription = null,
+                            modifier = Modifier.padding(4.dp),
+                            tint = if (isPinned) MaterialTheme.colorScheme.primary else LocalContentColor.current
+                        )
+                        Text(
+                            text = if (isPinned) "取消固定到上下文" else "固定到上下文",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = if (isPinned) MaterialTheme.colorScheme.primary else LocalContentColor.current
+                        )
+                    }
+                }
+            }
+
+            // Delete
+            Card(
+                onClick = {
+                    onDismissRequest()
+                    onDelete()
+                },
+                shape = MaterialTheme.shapes.medium,
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.errorContainer
+                )
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    modifier = Modifier
+                        .padding(16.dp)
+                        .fillMaxWidth()
+                ) {
+                    Icon(
+                        imageVector = HugeIcons.Delete01,
+                        contentDescription = null,
+                        modifier = Modifier.padding(4.dp)
+                    )
+                    Text(
+                        text = stringResource(R.string.delete),
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                }
+            }
+
+            // Edit
+            Card(
+                onClick = {
+                    onDismissRequest()
+                    onEdit()
+                },
+                shape = MaterialTheme.shapes.medium
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    modifier = Modifier
+                        .padding(16.dp)
+                        .fillMaxWidth()
+                ) {
+                    Icon(
+                        imageVector = HugeIcons.Edit01,
+                        contentDescription = null,
+                        modifier = Modifier.padding(4.dp)
+                    )
+                    Text(
+                        text = stringResource(R.string.edit),
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                }
+            }
+
+            // Create a Fork
+            Card(
+                onClick = {
+                    onDismissRequest()
+                    onFork()
+                },
+                shape = MaterialTheme.shapes.medium,
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    modifier = Modifier
+                        .padding(16.dp)
+                        .fillMaxWidth()
+                ) {
+                    Icon(
+                        imageVector = HugeIcons.GitFork,
+                        contentDescription = null,
+                        modifier = Modifier.padding(4.dp)
+                    )
+                    Text(
+                        text = stringResource(R.string.create_fork),
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                }
+            }
+
             // Select and Copy
             Card(
                 onClick = {
@@ -361,6 +564,33 @@ fun ChatMessageActionsSheet(
                     )
                     Text(
                         text = stringResource(R.string.select_and_copy),
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                }
+            }
+
+            // Share
+            Card(
+                onClick = {
+                    onDismissRequest()
+                    onShare()
+                },
+                shape = MaterialTheme.shapes.medium,
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    modifier = Modifier
+                        .padding(16.dp)
+                        .fillMaxWidth()
+                ) {
+                    Icon(
+                        imageVector = HugeIcons.Share04,
+                        contentDescription = null,
+                        modifier = Modifier.padding(4.dp)
+                    )
+                    Text(
+                        text = stringResource(R.string.share),
                         style = MaterialTheme.typography.titleMedium,
                     )
                 }
@@ -426,87 +656,6 @@ fun ChatMessageActionsSheet(
                 }
             }
 
-            // Edit
-            Card(
-                onClick = {
-                    onDismissRequest()
-                    onEdit()
-                },
-                shape = MaterialTheme.shapes.medium
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(16.dp),
-                    modifier = Modifier
-                        .padding(16.dp)
-                        .fillMaxWidth()
-                ) {
-                    Icon(
-                        imageVector = HugeIcons.Edit01,
-                        contentDescription = null,
-                        modifier = Modifier.padding(4.dp)
-                    )
-                    Text(
-                        text = stringResource(R.string.edit),
-                        style = MaterialTheme.typography.titleMedium,
-                    )
-                }
-            }
-
-            // Share
-            Card(
-                onClick = {
-                    onDismissRequest()
-                    onShare()
-                },
-                shape = MaterialTheme.shapes.medium,
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(16.dp),
-                    modifier = Modifier
-                        .padding(16.dp)
-                        .fillMaxWidth()
-                ) {
-                    Icon(
-                        imageVector = HugeIcons.Share04,
-                        contentDescription = null,
-                        modifier = Modifier.padding(4.dp)
-                    )
-                    Text(
-                        text = stringResource(R.string.share),
-                        style = MaterialTheme.typography.titleMedium,
-                    )
-                }
-            }
-
-            // Create a Fork
-            Card(
-                onClick = {
-                    onDismissRequest()
-                    onFork()
-                },
-                shape = MaterialTheme.shapes.medium,
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(16.dp),
-                    modifier = Modifier
-                        .padding(16.dp)
-                        .fillMaxWidth()
-                ) {
-                    Icon(
-                        imageVector = HugeIcons.GitFork,
-                        contentDescription = null,
-                        modifier = Modifier.padding(4.dp)
-                    )
-                    Text(
-                        text = stringResource(R.string.create_fork),
-                        style = MaterialTheme.typography.titleMedium,
-                    )
-                }
-            }
-
             // Delete messages before this one
             Card(
                 onClick = {
@@ -536,16 +685,14 @@ fun ChatMessageActionsSheet(
                 }
             }
 
-
-            // Delete
+            // Delete messages after this one
             Card(
                 onClick = {
-                    onDismissRequest()
-                    onDelete()
+                    showDeleteAfterConfirm = true
                 },
                 shape = MaterialTheme.shapes.medium,
                 colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.errorContainer
+                    containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f)
                 )
             ) {
                 Row(
@@ -561,7 +708,7 @@ fun ChatMessageActionsSheet(
                         modifier = Modifier.padding(4.dp)
                     )
                     Text(
-                        text = stringResource(R.string.delete),
+                        text = stringResource(R.string.delete_messages_after),
                         style = MaterialTheme.typography.titleMedium,
                     )
                 }
@@ -577,6 +724,47 @@ fun ChatMessageActionsSheet(
         }
     }
 
+    // [FORK] 手动保存记忆编辑对话框
+    if (showSaveMemoryDialog && onSaveAsMemory != null) {
+        AlertDialog(
+            onDismissRequest = { showSaveMemoryDialog = false },
+            title = { Text("保存为记忆") },
+            text = {
+                OutlinedTextField(
+                    value = saveMemoryContent,
+                    onValueChange = { saveMemoryContent = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    minLines = 4,
+                    maxLines = 10,
+                    placeholder = {
+                        Text(
+                            text = "输入要保存的记忆内容…",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    },
+                    label = { Text("记忆内容") },
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showSaveMemoryDialog = false
+                        onDismissRequest()
+                        onSaveAsMemory(saveMemoryContent)
+                    },
+                    enabled = saveMemoryContent.isNotBlank()
+                ) {
+                    Text("保存")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showSaveMemoryDialog = false }) {
+                    Text("取消")
+                }
+            }
+        )
+    }
+
     // Delete before confirmation dialog
     RikkaConfirmDialog(
         show = showDeleteBeforeConfirm,
@@ -590,6 +778,21 @@ fun ChatMessageActionsSheet(
         },
         onDismiss = { showDeleteBeforeConfirm = false },
         text = { Text(stringResource(R.string.delete_messages_before_confirm)) }
+    )
+
+    // Delete after confirmation dialog
+    RikkaConfirmDialog(
+        show = showDeleteAfterConfirm,
+        title = stringResource(R.string.delete_messages_after),
+        confirmText = stringResource(R.string.confirm),
+        dismissText = stringResource(R.string.cancel),
+        onConfirm = {
+            showDeleteAfterConfirm = false
+            onDismissRequest()
+            onDeleteAfter()
+        },
+        onDismiss = { showDeleteAfterConfirm = false },
+        text = { Text(stringResource(R.string.delete_messages_after_confirm)) }
     )
 
     // Translation dialog

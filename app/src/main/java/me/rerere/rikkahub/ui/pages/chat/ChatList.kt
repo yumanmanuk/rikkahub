@@ -139,6 +139,7 @@ fun ChatList(
     onForkMessage: (UIMessage) -> Unit = {},
     onDelete: (UIMessage) -> Unit = {},
     onDeleteBeforeMessage: (UIMessage) -> Unit = {},
+    onDeleteAfterMessage: (UIMessage) -> Unit = {},
     onUpdateMessage: (MessageNode) -> Unit = {},
     onClickSuggestion: (String) -> Unit = {},
     onTranslate: ((UIMessage, java.util.Locale) -> Unit)? = null,
@@ -193,6 +194,7 @@ fun ChatList(
                 onForkMessage = onForkMessage,
                 onDelete = onDelete,
                 onDeleteBeforeMessage = onDeleteBeforeMessage,
+                onDeleteAfterMessage = onDeleteAfterMessage,
                 onUpdateMessage = onUpdateMessage,
                 onClickSuggestion = onClickSuggestion,
                 onTranslate = onTranslate,
@@ -231,6 +233,7 @@ private fun ChatListNormal(
     onForkMessage: (UIMessage) -> Unit,
     onDelete: (UIMessage) -> Unit,
     onDeleteBeforeMessage: (UIMessage) -> Unit,
+    onDeleteAfterMessage: (UIMessage) -> Unit,
     onUpdateMessage: (MessageNode) -> Unit,
     onClickSuggestion: (String) -> Unit,
     onTranslate: ((UIMessage, java.util.Locale) -> Unit)?,
@@ -409,6 +412,9 @@ private fun ChatListNormal(
                             },
                             onDeleteBefore = {
                                 onDeleteBeforeMessage(node.currentMessage)
+                            },
+                            onDeleteAfter = {
+                                onDeleteAfterMessage(node.currentMessage)
                             },
                             onShare = {
                                 selecting = true

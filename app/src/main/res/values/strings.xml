@@ -323,6 +323,8 @@
   <string name="create_fork">Create a fork</string>
   <string name="delete_messages_before">Delete previous messages</string>
   <string name="delete_messages_before_confirm">Are you sure you want to delete all messages before this one? This action cannot be undone.</string>
+  <string name="delete_messages_after">Delete following messages</string>
+  <string name="delete_messages_after_confirm">Are you sure you want to delete all messages after this one? This action cannot be undone.</string>
   <string name="db_migrating">Migrating database...</string>
   <string name="deep_thinking">Deep Thinking</string>
   <string name="deep_thinking_seconds">Thought for %1$.1f seconds</string>

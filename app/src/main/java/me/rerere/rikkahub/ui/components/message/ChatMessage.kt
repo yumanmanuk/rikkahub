@@ -116,6 +116,7 @@ fun ChatMessage(
     onShare: () -> Unit,
     onDelete: () -> Unit,
     onDeleteBefore: () -> Unit,
+    onDeleteAfter: () -> Unit,
     onUpdate: (MessageNode) -> Unit,
     isFavorite: Boolean = false,
     onToggleFavorite: (() -> Unit)? = null,
@@ -124,6 +125,12 @@ fun ChatMessage(
     onToolApproval: ((toolCallId: String, approved: Boolean, reason: String) -> Unit)? = null,
     onToolAnswer: ((toolCallId: String, answer: String) -> Unit)? = null,
     onScrollToQuestion: (() -> Unit)? = null,
+    // [FORK] 对话专属记忆操作
+    onExtractMemory: ((UIMessage) -> Unit)? = null,
+    onSaveAsMemory: ((String) -> Unit)? = null,
+    // [FORK] 固定到上下文
+    isPinned: Boolean = false,
+    onTogglePin: (() -> Unit)? = null,
 ) {
     val message = node.messages[node.selectIndex]
     val settings = LocalSettings.current.displaySetting
@@ -265,6 +272,7 @@ fun ChatMessage(
             onShare = onShare,
             onFork = onFork,
             onDeleteBefore = onDeleteBefore,
+            onDeleteAfter = onDeleteAfter,
             model = model,
             onCopy = {
                 context.copyMessageToClipboard(message)
@@ -290,6 +298,14 @@ fun ChatMessage(
                     navController.navigate(Screen.WebView(content = htmlContent.base64Encode()))
                 }
             },
+            // [FORK] 对话专属记忆操作
+            onExtractMemory = if (onExtractMemory != null) {
+                { onExtractMemory(message) }
+            } else null,
+            onSaveAsMemory = onSaveAsMemory,
+            // [FORK] 固定到上下文
+            isPinned = isPinned,
+            onTogglePin = onTogglePin,
             onDismissRequest = {
                 showActionsSheet = false
             }

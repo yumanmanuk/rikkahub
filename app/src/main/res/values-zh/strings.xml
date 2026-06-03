@@ -320,6 +320,8 @@
   <string name="create_fork">创建分支</string>
   <string name="delete_messages_before">删除之前的问答</string>
   <string name="delete_messages_before_confirm">确定要删除此消息之前的所有问答吗？此操作不可撤销。</string>
+  <string name="delete_messages_after">删除之后的问答</string>
+  <string name="delete_messages_after_confirm">确定要删除此消息之后的所有问答吗？此操作不可撤销。</string>
   <string name="db_migrating">正在迁移数据库…</string>
   <string name="deep_thinking">深度思考</string>
   <string name="deep_thinking_seconds">思考了 %1$.1f 秒</string>
