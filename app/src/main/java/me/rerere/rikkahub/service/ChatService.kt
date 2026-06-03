@@ -421,8 +421,8 @@ class ChatService(
                 val isBattle = battleParams.battleModeEnabled && battleParams.battleModelIds.isNotEmpty()
 
                 if (message.role == MessageRole.USER) {
-                    // 如果是用户消息，则截止到当前消息
-                    val node = conversation.getMessageNodeByMessage(message)
+                    // 用 id 查找节点，避免异步更新导致 equals 失效
+                    val node = conversation.getMessageNodeByMessageId(message.id)
                     val indexAt = conversation.messageNodes.indexOf(node)
                     val newConversation = conversation.copy(
                         messageNodes = conversation.messageNodes.subList(0, indexAt + 1)
@@ -435,11 +435,17 @@ class ChatService(
                     )
                 } else {
                     if (regenerateAssistantMsg) {
-                        val node = conversation.getMessageNodeByMessage(message)
+                        // [FORK] Battle Mode 根本修复：
+                        // 用 message.id 查找 node，而不是 equals（因为 cancel 后 onCompletion 会
+                        // 调用 finishReasoning 修改消息内容，导致快照对象与最新状态不 equals，
+                        // getMessageNodeByMessage 返回 null，从而错误地触发全量重试所有模型）
+                        val node = conversation.getMessageNodeByMessageId(message.id)
                         val nodeIndex = conversation.messageNodes.indexOf(node)
-                        // [FORK] Battle Mode: 若消息属于 battle 节点，只重试当前显示的模型
-                        if (node != null && node.isBattleNode && message.modelId != null) {
-                            // 取 battle 节点之前的所有消息作为上下文
+                        // 从最新状态的 node 中取 modelId，而非依赖已过期的快照消息
+                        val currentModelId = node?.messages?.firstOrNull { it.id == message.id }?.modelId
+                            ?: message.modelId
+                        if (node != null && node.isBattleNode && currentModelId != null) {
+                            // [FORK] Battle Mode: 消息属于 battle 节点，只重试当前显示的模型
                             val contextConversation = conversation.copy(
                                 messageNodes = conversation.messageNodes.subList(0, nodeIndex)
                             )
@@ -447,7 +453,7 @@ class ChatService(
                                 conversationId = conversationId,
                                 battleNodeId = node.id,
                                 messageId = message.id,
-                                modelId = message.modelId!!,
+                                modelId = currentModelId,
                                 conversation = contextConversation,
                                 getConversation = { getConversationFlow(conversationId).value },
                                 updateConversationState = ::updateConversationState,
