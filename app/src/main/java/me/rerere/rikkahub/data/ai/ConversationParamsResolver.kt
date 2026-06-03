@@ -6,7 +6,6 @@ package me.rerere.rikkahub.data.ai
 import me.rerere.rikkahub.data.model.Assistant
 import me.rerere.rikkahub.data.model.ConversationParams
 import me.rerere.rikkahub.data.model.SystemPromptMode
-import kotlin.uuid.Uuid
 
 /**
  * ConversationParams 与 Assistant 合并后的最终生效参数。
@@ -17,8 +16,6 @@ data class ResolvedConversationParams(
     val topP: Float?,
     val contextMessageSize: Int,
     val systemPrompt: String,
-    // [FORK] 上下文摘要
-    val enableContextSummary: Boolean,
     // [FORK] 对话专属记忆
     val enableConversationMemory: Boolean,
 )
@@ -44,8 +41,6 @@ fun ConversationParams.resolveWith(assistant: Assistant): ResolvedConversationPa
         topP = topP ?: assistant.topP,
         contextMessageSize = contextMessageSize ?: assistant.contextMessageSize,
         systemPrompt = effectiveSystemPrompt,
-        // [FORK] null = 跟随助手设置
-        enableContextSummary = enableContextSummary ?: assistant.enableContextSummary,
         // [FORK] 对话专属记忆不继承助手设置，仅当对话自己开启时有效
         enableConversationMemory = enableConversationMemory,
     )

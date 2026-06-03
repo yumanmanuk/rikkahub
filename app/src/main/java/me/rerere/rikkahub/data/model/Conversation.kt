@@ -39,12 +39,6 @@ data class ConversationParams(
     val battleModelIds: List<Uuid> = emptyList(),
     // [FORK] Battle Mode: 各模型是否使用独立上下文（true = 每个模型看到自己之前的回答作为上下文）
     val battleIndependentContext: Boolean = false,
-    // [FORK] 上下文摘要：null = 使用助手设置
-    val enableContextSummary: Boolean? = null,
-    // 摘要缓存文本（由 LLM 自动生成，也可手动编辑）
-    val contextSummary: String? = null,
-    // 已摘要的消息数量（前 N 条已被摘要压缩）
-    val summarizedUntilIndex: Int = 0,
     // [FORK] 对话专属记忆：开启后记忆以 conversation.id 为 key 存储，与其他对话完全隔离
     val enableConversationMemory: Boolean = false,
 )

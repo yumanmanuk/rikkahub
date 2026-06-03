@@ -230,16 +230,6 @@ class ConversationRepository(
         messageFtsManager.indexConversation(conversation)
     }
 
-    /**
-     * [FORK] 只更新 conversationParams 字段，不删除/重写 message_node。
-     * 专用于摘要参数保存场景：避免全量 updateConversation 先 deleteByConversation
-     * 再 insertAll 的路径在消息节点不完整时误删历史记录。
-     */
-    suspend fun updateConversationParamsOnly(conversationId: Uuid, params: ConversationParams) {
-        val encoded = JsonInstant.encodeToString(params)
-        conversationDAO.updateConversationParams(conversationId.toString(), encoded)
-    }
-
     suspend fun deleteConversation(conversation: Conversation) {
         // 获取完整的 Conversation（包含 messageNodes）以正确清理文件
         val fullConversation = if (conversation.messageNodes.isEmpty()) {

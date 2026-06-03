@@ -87,7 +87,6 @@ import me.rerere.rikkahub.data.repository.ConversationRepository
 import me.rerere.rikkahub.data.repository.MemoryRepository
 import me.rerere.rikkahub.data.repository.WorkspaceRepository
 import me.rerere.rikkahub.web.BadRequestException
-import me.rerere.rikkahub.data.ai.generateContextSummaryIfNeeded
 import me.rerere.rikkahub.data.ai.resolveWith
 import me.rerere.rikkahub.web.NotFoundException
 import me.rerere.rikkahub.utils.applyPlaceholders
@@ -618,30 +617,8 @@ class ChatService(
             // start generating
             val session = getOrCreateSession(conversationId)
 
-            // [FORK] 上下文摘要：在发送前检查是否需要生成/更新摘要
+            // [FORK] 解析对话参数（pin-to-context 保护逻辑需要 resolved.contextMessageSize）
             val resolved = conversation.conversationParams.resolveWith(assistant)
-            var activeParams = conversation.conversationParams
-            if (resolved.enableContextSummary) {
-                session.processingStatus.value = "正在生成上下文摘要…"
-                val updatedParams = generateContextSummaryIfNeeded(
-                    params = activeParams,
-                    allMessages = conversation.currentMessages,
-                    assistant = assistant,
-                    settings = settings,
-                    providerManager = providerManager,
-                    enableContextSummary = true,
-                )
-                session.processingStatus.value = null
-                if (updatedParams != null) {
-                    activeParams = updatedParams
-                    // [FORK] 只更新 conversationParams 字段，不走全量 saveConversation
-                    // 全量 saveConversation 会先 deleteByConversation 再 insertAll message_node，
-                    // 此时 conversation 中 messageNodes 可能不完整，会导致历史消息被永久删除
-                    conversationRepo.updateConversationParamsOnly(conversationId, activeParams)
-                    // 同步更新内存状态
-                    updateConversationState(conversationId) { it.copy(conversationParams = activeParams) }
-                }
-            }
 
             // [FORK] 对话专属记忆：加载以 conversation.id 为 key 的隔离记忆
             val conversationMemoryKey: String? = if (resolved.enableConversationMemory) {

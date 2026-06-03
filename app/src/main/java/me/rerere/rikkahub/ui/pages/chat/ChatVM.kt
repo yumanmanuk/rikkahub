@@ -48,7 +48,7 @@ import me.rerere.rikkahub.utils.UiState
 import me.rerere.rikkahub.utils.UpdateChecker
 import java.util.Locale
 import kotlin.uuid.Uuid
-// [FORK] 对话专属记忆 + 摘要操作
+// [FORK] 对话专属记忆
 import me.rerere.rikkahub.data.repository.MemoryRepository
 import me.rerere.rikkahub.data.ai.GenerationHandler
 import me.rerere.rikkahub.data.datastore.findModelById
@@ -72,7 +72,7 @@ class ChatVM(
     // private val analytics: FirebaseAnalytics,
     private val filesManager: FilesManager,
     private val favoriteRepository: FavoriteRepository,
-    // [FORK] 对话专属记忆 + 摘要操作
+    // [FORK] 对话专属记忆
     private val memoryRepository: MemoryRepository,
     private val generationHandler: GenerationHandler,
     private val providerManager: ProviderManager,
@@ -569,17 +569,6 @@ $messageText
         viewModelScope.launch {
             memoryRepository.updateContent(memory.id, memory.content)
         }
-    }
-
-
-    // [FORK] 摘要功能：清除对话的摘要缓存，下次发消息时会重新生成
-    fun clearContextSummary() {
-        val currentParams = conversation.value.conversationParams
-        val clearedParams = currentParams.copy(
-            contextSummary = null,
-            summarizedUntilIndex = 0,
-        )
-        updateConversationParams(clearedParams)
     }
 
 }
