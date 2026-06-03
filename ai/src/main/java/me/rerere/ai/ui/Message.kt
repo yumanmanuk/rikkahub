@@ -237,7 +237,7 @@ fun List<UIMessage>.handleMessageChunk(chunk: MessageChunk, model: Model? = null
     val choice = chunk.choices.getOrNull(0) ?: return this
     val message = choice.delta ?: choice.message ?: return this
     if (this.last().role != message.role) {
-        return this + (UIMessage(modelId = model?.id, role = message.role, parts = emptyList()) + chunk)
+        return this + (UIMessage(modelId = model?.id, modelName = model?.displayName, role = message.role, parts = emptyList()) + chunk)
     } else {
         val last = this.last() + chunk
         return this.dropLast(1) + last

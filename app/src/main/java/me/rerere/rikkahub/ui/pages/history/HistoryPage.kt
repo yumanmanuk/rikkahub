@@ -264,7 +264,11 @@ private fun ConversationItem(
                         contentDescription = if (conversation.isPinned)
                             stringResource(R.string.history_page_unpin)
                         else
-                            stringResource(R.string.history_page_pin)
+                            stringResource(R.string.history_page_pin),
+                        tint = if (conversation.isPinned)
+                            MaterialTheme.colorScheme.primary
+                        else
+                            MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }

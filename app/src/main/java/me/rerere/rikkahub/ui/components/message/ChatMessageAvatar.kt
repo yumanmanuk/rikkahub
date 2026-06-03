@@ -15,6 +15,7 @@ import me.rerere.ai.provider.Model
 import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.isEmptyUIMessage
 import me.rerere.rikkahub.R
+import me.rerere.rikkahub.data.datastore.findModelById
 import me.rerere.rikkahub.data.model.Assistant
 import me.rerere.rikkahub.data.model.Avatar
 import me.rerere.rikkahub.ui.components.ui.AutoAIIcon
@@ -62,9 +63,11 @@ fun ChatMessageAssistantAvatar(
     val showIcon = settings.displaySetting.showModelIcon
     val useAssistantAvatar = assistant?.useAssistantAvatar == true
     // model 未找到时，用 message.modelName 构造临时 Model 作为 fallback
+    // modelName 也为空（旧历史消息未存名称）时，最终兜底显示当前 assistant/全局 选用的模型
+    val currentModel = settings.findModelById(assistant?.chatModelId ?: settings.chatModelId)
     val effectiveModel = model ?: message.modelName?.let { name ->
         Model(modelId = name, displayName = name)
-    }
+    } ?: currentModel
     if (message.role == MessageRole.ASSISTANT && (effectiveModel != null || useAssistantAvatar)) {
         Row(
             horizontalArrangement = Arrangement.spacedBy(8.dp),

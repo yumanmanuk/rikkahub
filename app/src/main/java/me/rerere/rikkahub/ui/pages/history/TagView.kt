@@ -350,6 +350,10 @@ private fun TagConversationItem(
                                     imageVector = if (conversation.isPinned) HugeIcons.PinOff else HugeIcons.Pin,
                                     contentDescription = null,
                                     modifier = Modifier.size(18.dp),
+                                    tint = if (conversation.isPinned)
+                                        MaterialTheme.colorScheme.primary
+                                    else
+                                        MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             },
                             text = { Text(if (conversation.isPinned) "取消置顶" else "置顶") },

@@ -350,10 +350,13 @@ fun ChatDrawerContent(
                         vm.generateTitle(it, true)
                     },
                     onDelete = {
-                        vm.deleteConversation(it)
-                        conversations.refresh()
-                        if (it.id == current.id) {
-                            navigateToChatPage(navController)
+                        scope.launch {
+                            // 等待删除协程完成，确保数据库已删除后再刷新列表
+                            vm.deleteConversation(it).join()
+                            conversations.refresh()
+                            if (it.id == current.id) {
+                                navigateToChatPage(navController)
+                            }
                         }
                     },
                     onPin = {

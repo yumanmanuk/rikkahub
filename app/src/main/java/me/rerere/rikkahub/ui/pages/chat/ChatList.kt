@@ -45,6 +45,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListItemInfo
 import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -153,6 +154,9 @@ fun ChatList(
     // [FORK] 固定到上下文：仅当有上下文限制时才显示此选项
     onTogglePin: ((MessageNode) -> Unit)? = null,
 ) {
+    // 提升到 AnimatedContent 外部，保证预览模式滚动位置在切换时不丢失
+    val previewListState = rememberLazyListState()
+
     AnimatedContent(
         targetState = previewMode,
         label = "ChatListMode",
@@ -168,6 +172,7 @@ fun ChatList(
                 hazeState = hazeState,
                 onJumpToMessage = onJumpToMessage,
                 animatedVisibilityScope = this@AnimatedContent,
+                listState = previewListState,
             )
         } else {
             ChatListNormal(
@@ -686,6 +691,7 @@ private fun ChatListPreview(
     settings: Settings,
     hazeState: HazeState,
     animatedVisibilityScope: AnimatedVisibilityScope,
+    listState: LazyListState,
     onJumpToMessage: (Int) -> Unit
 ) {
     var searchQuery by remember { mutableStateOf("") }
@@ -777,7 +783,7 @@ private fun ChatListPreview(
     ) {
         // 统计信息
         Text(
-            text = "${conversationStats.first}轮  提问${conversationStats.second}字  回答${conversationStats.third}字",
+            text = "${conversationStats.first}轮  提问${"%,d".format(conversationStats.second)}字  回答${"%,d".format(conversationStats.third)}字",
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
             modifier = Modifier
@@ -845,6 +851,7 @@ private fun ChatListPreview(
 
         // 消息预览
         LazyColumn(
+            state = listState,
             contentPadding = PaddingValues(16.dp) + PaddingValues(bottom = 32.dp + innerPadding.calculateBottomPadding()),
             verticalArrangement = Arrangement.spacedBy(20.dp),
             modifier = Modifier

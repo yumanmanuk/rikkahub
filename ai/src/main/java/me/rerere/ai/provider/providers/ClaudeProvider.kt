@@ -284,7 +284,7 @@ class ClaudeProvider(private val client: OkHttpClient, context: Context? = null)
                 put("cache_control", cacheControlEphemeral(providerSetting.promptCacheTtl))
             }
 
-            if (params.temperature != null && !params.reasoningLevel.isEnabled) put(
+            if (params.temperature != null && params.reasoningLevel?.isEnabled != true) put(
                 "temperature",
                 params.temperature
             )

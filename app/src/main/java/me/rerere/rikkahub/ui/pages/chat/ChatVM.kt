@@ -318,8 +318,8 @@ class ChatVM(
         }
     }
 
-    fun deleteConversation(conversation: Conversation) {
-        viewModelScope.launch {
+    fun deleteConversation(conversation: Conversation): Job {
+        return viewModelScope.launch {
             // 先标记已删除，防止并发中的异步任务（如生成标题）在删库后重新将其 insert 回数据库
             chatService.markConversationDeleted(conversation.id)
             conversationRepo.deleteConversation(conversation)
