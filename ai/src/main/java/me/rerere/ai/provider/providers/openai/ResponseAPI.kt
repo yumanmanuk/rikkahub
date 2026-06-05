@@ -455,7 +455,10 @@ class ResponseAPI(
     }
 
     private fun parseResponseDelta(jsonObject: JsonObject): MessageChunk? {
-        val chunkType = jsonObject["type"]?.jsonPrimitive?.content ?: error("chunk type not found")
+        val chunkType = jsonObject["type"]?.jsonPrimitive?.content ?: run {
+            Log.w(TAG, "parseResponseDelta: missing type field in event: $jsonObject")
+            return null
+        }
 
         when (chunkType) {
             "response.output_text.delta" -> {
@@ -501,9 +504,9 @@ class ResponseAPI(
             }
 
             "response.output_item.added" -> {
-                val item = jsonObject["item"]?.jsonObject ?: error("chunk item not found")
-                val type = item["type"]?.jsonPrimitive?.content ?: error("chunk type not found")
-                val id = item["id"]?.jsonPrimitive?.content ?: error("chunk id not found")
+                val item = jsonObject["item"]?.jsonObject ?: return null
+                val type = item["type"]?.jsonPrimitive?.content ?: return null
+                val id = item["id"]?.jsonPrimitive?.content ?: return null
                 if (type == "function_call") {
                     return MessageChunk(
                         id = id,
@@ -575,9 +578,9 @@ class ResponseAPI(
             }
 
             "response.output_item.done" -> {
-                val item = jsonObject["item"]?.jsonObject ?: error("chunk item not found")
-                val type = item["type"]?.jsonPrimitive?.content ?: error("chunk type not found")
-                val id = item["id"]?.jsonPrimitive?.content ?: error("chunk id not found")
+                val item = jsonObject["item"]?.jsonObject ?: return null
+                val type = item["type"]?.jsonPrimitive?.content ?: return null
+                val id = item["id"]?.jsonPrimitive?.content ?: return null
                 if (type == "reasoning") {
                     val encryptedContent = item["encrypted_content"]?.jsonPrimitive?.content
                     return MessageChunk(
@@ -664,10 +667,15 @@ class ResponseAPI(
                     usage = parseTokenUsage(jsonObject["response"]?.jsonObject?.get("usage")?.jsonObject)
                 )
             }
+
+            else -> {
+                Log.d(TAG, "parseResponseDelta: unhandled event type='$chunkType', ignoring")
+            }
         }
 
         return null
     }
+
 
     private fun parseResponseOutput(jsonObject: JsonObject): MessageChunk {
         println(jsonObject)
