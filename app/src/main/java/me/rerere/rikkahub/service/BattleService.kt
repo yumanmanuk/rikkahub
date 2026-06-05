@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.onCompletion
 import kotlinx.serialization.json.jsonObject
 import me.rerere.ai.core.MessageRole
+import me.rerere.ai.core.ReasoningLevel
 import me.rerere.ai.core.Tool
 import me.rerere.ai.provider.Model
 import me.rerere.ai.ui.UIMessage
@@ -161,6 +162,9 @@ class BattleService(
                             getConversation = getConversation,
                             updateConversationState = updateConversationState,
                             processingStatus = processingStatus,
+                            // [FORK] Battle Mode：每个模型使用独立的思考深度
+                            reasoningLevel = conversation.conversationParams.battleModelReasoningLevels[model.id]
+                                ?: assistant.reasoningLevel,
                         )
                     }.onFailure { e ->
                         if (e is CancellationException) throw e
@@ -272,6 +276,9 @@ class BattleService(
                 getConversation = getConversation,
                 updateConversationState = updateConversationState,
                 processingStatus = processingStatus,
+                // [FORK] Battle Mode：重试时同样应用该模型独立的思考深度
+                reasoningLevel = conversation.conversationParams.battleModelReasoningLevels[modelId]
+                    ?: assistant.reasoningLevel,
             )
         }.onFailure { e ->
             if (e is CancellationException) throw e
@@ -309,6 +316,8 @@ class BattleService(
         retryCount: Int = 0,
         // [FORK] 对话专属记忆 key
         conversationMemoryKey: String? = null,
+        // [FORK] Battle Mode：该模型独立的思考深度
+        reasoningLevel: ReasoningLevel,
     ) {
         val maxRetries = 3
         val retryDelayMs = 2000L
@@ -334,6 +343,8 @@ class BattleService(
                 processingStatus = processingStatus,
                 // [FORK] 对话专属记忆
                 conversationMemoryKey = conversationMemoryKey,
+                // [FORK] Battle Mode：传入该模型独立的思考深度
+                reasoningLevelOverride = reasoningLevel,
             ).onCompletion {
                 // 生成结束后确保 reasoning 状态归位
                 updateConversationState(conversationId) { conv ->
@@ -379,6 +390,8 @@ class BattleService(
                     retryCount = retryCount + 1,
                     // [FORK] 对话专属记忆 key 传递给重试
                     conversationMemoryKey = conversationMemoryKey,
+                    // [FORK] Battle Mode：重试时保持相同的思考深度
+                    reasoningLevel = reasoningLevel,
                 )
             } else {
                 // 超过重试次数或 429，向上抛出让外层显示最终错误

@@ -422,7 +422,8 @@ class GenerationHandler(
             topP = effectiveTopP,
             maxTokens = assistant.maxTokens,
             tools = tools,
-            reasoningLevel = assistant.reasoningLevel,
+            // [FORK] Battle Mode：优先使用按模型覆盖的思考深度
+            reasoningLevel = reasoningLevelOverride ?: assistant.reasoningLevel,
             customHeaders = buildList {
                 addAll(assistant.customHeaders)
                 addAll(model.customHeaders)

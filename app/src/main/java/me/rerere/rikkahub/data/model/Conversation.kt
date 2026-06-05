@@ -8,6 +8,7 @@ import me.rerere.ai.core.MessageRole
 import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.ai.util.InstantSerializer
+import me.rerere.ai.core.ReasoningLevel
 import me.rerere.rikkahub.data.datastore.DEFAULT_ASSISTANT_ID
 import java.time.Instant
 import kotlin.uuid.Uuid
@@ -39,6 +40,8 @@ data class ConversationParams(
     val battleModelIds: List<Uuid> = emptyList(),
     // [FORK] Battle Mode: 各模型是否使用独立上下文（true = 每个模型看到自己之前的回答作为上下文）
     val battleIndependentContext: Boolean = false,
+    // [FORK] Battle Mode: 每个模型对应的思考深度，key=modelId；未设置则继承 assistant.reasoningLevel
+    val battleModelReasoningLevels: Map<Uuid, ReasoningLevel> = emptyMap(),
     // [FORK] 对话专属记忆：开启后记忆以 conversation.id 为 key 存储，与其他对话完全隔离
     val enableConversationMemory: Boolean = false,
 )
