@@ -110,29 +110,28 @@ data class Conversation(
     fun updateCurrentMessages(messages: List<UIMessage>): Conversation {
         val newNodes = this.messageNodes.toMutableList()
 
-        messages.forEachIndexed { index, message ->
-            val node = newNodes
-                .getOrElse(index) { message.toMessageNode() }
-
-            val newMessages = node.messages.toMutableList()
-            var newMessageIndex = node.selectIndex
-            if (newMessages.any { it.id == message.id }) {
-                newMessages[newMessages.indexOfFirst { it.id == message.id }] = message
-            } else {
-                newMessages.add(message)
-                newMessageIndex = newMessages.lastIndex
+        // 预构建 messageId -> nodeIndex 查找表，O(N)，避免嵌套线性扫描
+        val msgIdToNodeIndex = HashMap<Uuid, Int>(newNodes.size * 2)
+        newNodes.forEachIndexed { nodeIndex, node ->
+            node.messages.forEach { msg ->
+                msgIdToNodeIndex[msg.id] = nodeIndex
             }
+        }
 
-            val newNode = node.copy(
-                messages = newMessages,
-                selectIndex = newMessageIndex
-            )
-
-            // 更新newNodes
-            if (index > newNodes.lastIndex) {
-                newNodes.add(newNode)
+        messages.forEach { message ->
+            val existingNodeIndex = msgIdToNodeIndex[message.id]
+            if (existingNodeIndex != null) {
+                // 已有消息：在正确的 node 中原地更新，不改变 selectIndex
+                val node = newNodes[existingNodeIndex]
+                val msgIdx = node.messages.indexOfFirst { it.id == message.id }
+                val updatedMessages = node.messages.toMutableList()
+                updatedMessages[msgIdx] = message
+                newNodes[existingNodeIndex] = node.copy(messages = updatedMessages)
             } else {
-                newNodes[index] = newNode
+                // 新消息（如 assistant 回复）：追加为新 node
+                val newNode = message.toMessageNode()
+                newNodes.add(newNode)
+                msgIdToNodeIndex[message.id] = newNodes.lastIndex
             }
         }
 
