@@ -34,6 +34,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.jsonObject
 import me.rerere.ai.core.MessageRole
+import me.rerere.ai.core.ReasoningLevel
 import me.rerere.ai.core.Tool
 import me.rerere.ai.provider.Model
 import me.rerere.ai.provider.ModelAbility
@@ -649,9 +650,7 @@ class ChatService(
                     }
 
                     // [FORK] 固定到上下文保护：受保护节点（isPinned / isFavorite）不被 limitContext 截断
-                    // limitContext 策略是保留末尾 N 条，因此受保护节点必须放在头部
-                    // 同时对普通消息预先截断，使总长度 ≤ contextMessageSize，
-                    // 这样 generateText 内部的 limitContext 就不会再截掉任何东西
+                    // 保持 allMessages 原始时序过滤，确保 AI 看到顺序正确的对话
                     val nodes = conv.messageNodes
                     val protectedNodeIds = nodes
                         .filter { it.isPinned || it.isFavorite }
@@ -664,22 +663,30 @@ class ChatService(
                     val selectMsgIdToNodeId = nodes.associate { node ->
                         node.messages.getOrNull(node.selectIndex)?.id to node.id
                     }
-                    val (protectedMsgs, normalMsgs) = allMessages.partition { msg ->
-                        selectMsgIdToNodeId[msg.id]?.let { it in protectedNodeIds } == true
-                    }
-                    if (protectedMsgs.isEmpty()) return@let allMessages
 
-                    // 对普通消息预先截断，保证 protectedMsgs + limitedNormalMsgs 总长 ≤ effectiveContextSize
+                    // 区分受保护消息 ID 集合和普通消息
+                    val protectedMsgIds = allMessages
+                        .filter { msg -> selectMsgIdToNodeId[msg.id]?.let { it in protectedNodeIds } == true }
+                        .map { it.id }
+                        .toSet()
+                    if (protectedMsgIds.isEmpty()) return@let allMessages
+
+                    val normalMsgs = allMessages.filter { msg -> msg.id !in protectedMsgIds }
+
+                    // 对普通消息预先截断，保证总长度 ≤ effectiveContextSize
                     val effectiveContextSize = resolved.contextMessageSize
                     val limitedNormalMsgs = if (effectiveContextSize > 0) {
-                        val maxNormal = (effectiveContextSize - protectedMsgs.size).coerceAtLeast(0)
+                        val maxNormal = (effectiveContextSize - protectedMsgIds.size).coerceAtLeast(0)
                         normalMsgs.takeLast(maxNormal)
                     } else {
                         normalMsgs
                     }
 
-                    // 受保护消息放头部（长期上下文锚点），普通消息按时序在后
-                    protectedMsgs + limitedNormalMsgs
+                    // 从 allMessages 中过滤保留，维持原始时序（受保护消息 + 未截断的普通消息）
+                    val limitedNormalMsgIds = limitedNormalMsgs.map { it.id }.toSet()
+                    allMessages.filter { msg ->
+                        msg.id in protectedMsgIds || msg.id in limitedNormalMsgIds
+                    }
                 },
                 assistant = assistant,
                 conversationSystemPrompt = conversation.customSystemPrompt,
