@@ -724,6 +724,17 @@ private fun ChatListPreview(
         Triple(rounds, questionChars, answerChars)
     }
 
+    // 统计收藏和固定到上下文的数量
+    val favoriteAndPinnedStats = remember(conversation.messageNodes) {
+        var favoriteCount = 0
+        var pinnedCount = 0
+        conversation.messageNodes.forEach { node ->
+            if (node.isFavorite) favoriteCount++
+            if (node.isPinned) pinnedCount++
+        }
+        Pair(favoriteCount, pinnedCount)
+    }
+
     // 过滤消息，同时保留原始 index 避免后续 O(n) indexOf 查找
     val filteredMessages = remember(conversation.messageNodes, searchQuery, showOnlyFavorites) {
         var messages = conversation.messageNodes.mapIndexed { index, node -> index to node }
@@ -787,9 +798,13 @@ private fun ChatListPreview(
             .fillMaxSize()
             .hazeSource(state = hazeState),
     ) {
-        // 统计信息
+        // 统计信息：普通模式显示轮次/字数，收藏模式显示收藏/固定数量
         Text(
-            text = "${conversationStats.first}轮  提问${"%,d".format(conversationStats.second)}字  回答${"%,d".format(conversationStats.third)}字",
+            text = if (showOnlyFavorites) {
+                "收藏 ${favoriteAndPinnedStats.first}条，固定 ${favoriteAndPinnedStats.second}条"
+            } else {
+                "${conversationStats.first}轮  提问${"%,d".format(conversationStats.second)}字  回答${"%,d".format(conversationStats.third)}字"
+            },
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
             modifier = Modifier
