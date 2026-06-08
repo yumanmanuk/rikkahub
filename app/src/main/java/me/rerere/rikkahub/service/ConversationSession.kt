@@ -73,9 +73,13 @@ class ConversationSession(
         _generationJob.value?.cancel()
         _generationJob.value = job
         job?.invokeOnCompletion {
-            _generationJob.value = null
-            if (refCount.get() <= 0) {
-                scheduleIdleCheck()
+            // 只有当前 job 仍是同一实例时才清空
+            // 防止旧 job 的 cancel 回调覆盖已经设置好的新 job
+            if (_generationJob.value === job) {
+                _generationJob.value = null
+                if (refCount.get() <= 0) {
+                    scheduleIdleCheck()
+                }
             }
         }
     }
