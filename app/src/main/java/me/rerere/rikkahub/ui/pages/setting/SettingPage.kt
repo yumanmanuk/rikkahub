@@ -349,6 +349,12 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
                         headlineContent = { Text(stringResource(R.string.setting_page_request_logs)) },
                     )
                     item(
+                        onClick = { navController.navigate(Screen.ErrorLog) },
+                        leadingContent = { Icon(HugeIcons.Alert01, null) },
+                        supportingContent = { Text("查看运行时错误日志") },
+                        headlineContent = { Text("错误日志") },
+                    )
+                    item(
                         onClick = { navController.navigate(Screen.SettingDonate) },
                         leadingContent = { Icon(HugeIcons.InLove, null) },
                         supportingContent = { Text(stringResource(R.string.setting_page_donate_desc)) },

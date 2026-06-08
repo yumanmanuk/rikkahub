@@ -36,6 +36,16 @@ sealed class LogEntry {
         val durationMs: Long? = null,
         val error: String? = null
     ) : LogEntry()
+
+    @Serializable
+    data class ErrorLog(
+        override val id: Uuid = Uuid.random(),
+        override val timestamp: Long = System.currentTimeMillis(),
+        override val tag: String,
+        val title: String? = null,
+        val message: String,
+        val stackTrace: String? = null
+    ) : LogEntry()
 }
 
 object Logging {
@@ -75,7 +85,14 @@ object Logging {
     fun getRequestLogs(): List<LogEntry.RequestLog> =
         _logsFlow.value.filterIsInstance<LogEntry.RequestLog>()
 
+    fun getErrorLogs(): List<LogEntry.ErrorLog> =
+        _logsFlow.value.filterIsInstance<LogEntry.ErrorLog>()
+
     fun clear() {
         _logsFlow.value = emptyList()
+    }
+
+    fun clearErrorLogs() {
+        _logsFlow.value = _logsFlow.value.filter { it !is LogEntry.ErrorLog }
     }
 }

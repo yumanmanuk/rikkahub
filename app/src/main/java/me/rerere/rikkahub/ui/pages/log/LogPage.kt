@@ -127,6 +127,8 @@ private fun UnifiedLogList(
                 )
 
                 is LogEntry.TextLog -> TextLogCard(log = log)
+
+                else -> {}
             }
         }
     }
