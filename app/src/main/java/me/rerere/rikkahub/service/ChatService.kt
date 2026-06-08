@@ -195,6 +195,12 @@ class ChatService(
         _errors.update {
             it + ChatError(title = title, error = error, conversationId = conversationId, solution = solution)
         }
+        Logging.logError(
+            tag = TAG,
+            title = title,
+            message = error.message ?: "Unknown error",
+            throwable = error,
+        )
     }
 
     fun dismissError(id: Uuid) {
@@ -298,6 +304,10 @@ class ChatService(
         return session.generationJob
     }
 
+    fun getActiveSlotCountFlow(conversationId: Uuid): Flow<Int> {
+        return battleService.activeSlotCounts.map { it[conversationId] ?: 0 }
+    }
+
     fun getProcessingStatusFlow(conversationId: Uuid): StateFlow<String?> {
         val session = sessions[conversationId] ?: return MutableStateFlow(null)
         return session.processingStatus
@@ -345,6 +355,7 @@ class ChatService(
         if (content.isEmptyInputMessage()) return
 
         val session = getOrCreateSession(conversationId)
+        battleService.cancelAllSlots(conversationId)
         val previousJob = session.getJob()
         previousJob?.cancel()
 
@@ -412,10 +423,49 @@ class ChatService(
         regenerateAssistantMsg: Boolean = true
     ) {
         val session = getOrCreateSession(conversationId)
-        session.getJob()?.cancel()
+
+        // 先判断是否为 Battle 单 slot 重试（不取消主 Job）
+        val snapshot = session.state.value
+        val node = snapshot.getMessageNodeByMessageId(message.id)
+        val isSingleSlotRetry = node?.isBattleNode == true &&
+                message.role == MessageRole.ASSISTANT &&
+                regenerateAssistantMsg
+
+        if (isSingleSlotRetry) {
+            // Battle 单 slot 重试：不取消主 Job，直接委托 BattleService
+            val currentModelId = node.messages
+                .firstOrNull { it.id == message.id }?.modelId ?: message.modelId
+            val nodeIndex = snapshot.messageNodes.indexOf(node)
+            val contextConversation = snapshot.copy(
+                messageNodes = snapshot.messageNodes.subList(0, nodeIndex)
+            )
+
+            appScope.launch {
+                battleService.rerunSlot(
+                    conversationId = conversationId,
+                    battleNodeId = node.id,
+                    messageId = message.id,
+                    modelId = currentModelId ?: return@launch,
+                    conversation = contextConversation,
+                    getConversation = { getConversationFlow(conversationId).value },
+                    updateConversationState = ::updateConversationState,
+                    saveConversation = ::saveConversation,
+                    processingStatus = session.processingStatus,
+                )
+            }
+            return  // 不调用 session.setJob()，不干扰主 Battle Job
+        }
+
+        // 非 Battle 单 slot 重试：全量重试逻辑
+        battleService.cancelAllSlots(conversationId)
+        val previousJob = session.getJob()
+        previousJob?.cancel()
 
         val job = appScope.launch {
             try {
+                runCatching { previousJob?.join() }
+                finishInterruptedPendingTools(conversationId)
+
                 val conversation = session.state.value
                 // [FORK] Battle Mode: 提前读取参数，以便在各分支判断
                 val battleParams = conversation.conversationParams
@@ -423,8 +473,8 @@ class ChatService(
 
                 if (message.role == MessageRole.USER) {
                     // 用 id 查找节点，避免异步更新导致 equals 失效
-                    val node = conversation.getMessageNodeByMessageId(message.id)
-                    val indexAt = conversation.messageNodes.indexOf(node)
+                    val nodeInner = conversation.getMessageNodeByMessageId(message.id)
+                    val indexAt = conversation.messageNodes.indexOf(nodeInner)
                     val newConversation = conversation.copy(
                         messageNodes = conversation.messageNodes.subList(0, indexAt + 1)
                     )
@@ -440,19 +490,19 @@ class ChatService(
                         // 用 message.id 查找 node，而不是 equals（因为 cancel 后 onCompletion 会
                         // 调用 finishReasoning 修改消息内容，导致快照对象与最新状态不 equals，
                         // getMessageNodeByMessage 返回 null，从而错误地触发全量重试所有模型）
-                        val node = conversation.getMessageNodeByMessageId(message.id)
-                        val nodeIndex = conversation.messageNodes.indexOf(node)
+                        val nodeInner = conversation.getMessageNodeByMessageId(message.id)
+                        val nodeIndex = conversation.messageNodes.indexOf(nodeInner)
                         // 从最新状态的 node 中取 modelId，而非依赖已过期的快照消息
-                        val currentModelId = node?.messages?.firstOrNull { it.id == message.id }?.modelId
+                        val currentModelId = nodeInner?.messages?.firstOrNull { it.id == message.id }?.modelId
                             ?: message.modelId
-                        if (node != null && node.isBattleNode && currentModelId != null) {
+                        if (nodeInner != null && nodeInner.isBattleNode && currentModelId != null) {
                             // [FORK] Battle Mode: 消息属于 battle 节点，只重试当前显示的模型
                             val contextConversation = conversation.copy(
                                 messageNodes = conversation.messageNodes.subList(0, nodeIndex)
                             )
                             battleService.rerunSlot(
                                 conversationId = conversationId,
-                                battleNodeId = node.id,
+                                battleNodeId = nodeInner.id,
                                 messageId = message.id,
                                 modelId = currentModelId,
                                 conversation = contextConversation,
@@ -498,10 +548,15 @@ class ChatService(
         answer: String? = null,
     ) {
         val session = getOrCreateSession(conversationId)
-        session.getJob()?.cancel()
+        battleService.cancelAllSlots(conversationId)
+        val previousJob = session.getJob()
+        previousJob?.cancel()
 
         val job = appScope.launch {
             try {
+                runCatching { previousJob?.join() }
+                finishInterruptedPendingTools(conversationId)
+
                 val conversation = session.state.value
                 val newApprovalState = when {
                     answer != null -> ToolApprovalState.Answered(answer)
@@ -792,8 +847,6 @@ class ChatService(
             cancelLiveUpdateNotification(conversationId)
 
             it.printStackTrace()
-            Logging.log(TAG, "handleMessageComplete: $it")
-            Logging.log(TAG, it.stackTraceToString())
 
             // 自动重试：非429错误、非取消、未达最大重试次数时自动重试
             val is429 = it.message?.contains("429") == true
@@ -1597,6 +1650,7 @@ class ChatService(
 
     // 停止当前会话生成任务（不清理会话缓存）
     suspend fun stopGeneration(conversationId: Uuid) {
+        battleService.cancelAllSlots(conversationId)
         val job = sessions[conversationId]?.getJob() ?: return
         job.cancel()
         runCatching { job.join() }
