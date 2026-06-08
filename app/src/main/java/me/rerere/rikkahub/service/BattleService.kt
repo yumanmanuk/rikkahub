@@ -2,13 +2,21 @@ package me.rerere.rikkahub.service
 
 import android.util.Log
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.onCompletion
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 import kotlinx.serialization.json.jsonObject
+import java.util.concurrent.ConcurrentHashMap
 import me.rerere.ai.core.MessageRole
 import me.rerere.ai.core.ReasoningLevel
 import me.rerere.ai.core.Tool
@@ -42,6 +50,7 @@ import me.rerere.rikkahub.data.model.MessageNode
 import me.rerere.rikkahub.data.repository.MemoryRepository
 import java.time.Instant
 import kotlin.uuid.Uuid
+import me.rerere.common.android.Logging
 
 private const val BATTLE_TAG = "BattleService"
 
@@ -60,6 +69,32 @@ class BattleService(
     private val skillManager: SkillManager,
     private val mcpManager: McpManager,
 ) {
+    // Per-slot Job 追踪: key = "${conversationId}_${messageId}"
+    private val slotJobs = ConcurrentHashMap<String, Job>()
+    // Battle 专用作用域: key = conversationId，SupervisorJob 防止单个 slot 失败影响其他
+    private val battleScopes = ConcurrentHashMap<Uuid, CoroutineScope>()
+    // 活跃 slot 计数: key = conversationId
+    private val _activeSlotCounts = MutableStateFlow<Map<Uuid, Int>>(emptyMap())
+    val activeSlotCounts: StateFlow<Map<Uuid, Int>> get() = _activeSlotCounts.asStateFlow()
+
+    private fun incrementSlotCount(conversationId: Uuid) {
+        _activeSlotCounts.update { map ->
+            map + (conversationId to (map[conversationId] ?: 0) + 1)
+        }
+    }
+
+    private fun decrementSlotCount(conversationId: Uuid) {
+        _activeSlotCounts.update { map ->
+            val newCount = (map[conversationId] ?: 1) - 1
+            if (newCount <= 0) {
+                // 所有 slot 已完成，清理临时作用域（runBattle 的 scope 由 runBattle 自行清理）
+                battleScopes.remove(conversationId)?.cancel()
+                map - conversationId
+            } else {
+                map + (conversationId to newCount)
+            }
+        }
+    }
     /**
      * 执行 Battle Mode 生成。
      *
@@ -129,15 +164,22 @@ class BattleService(
         val independentContext = conversation.conversationParams.battleIndependentContext
         Log.d(BATTLE_TAG, "runBattle: independentContext=$independentContext, models=${battleModels.map { it.displayName }}")
 
-        // 并发为每个模型生成回答
+        // 创建 Battle 专用作用域（SupervisorJob 防止单个 slot 失败影响其他）
+        val battleScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        battleScopes[conversationId] = battleScope
+
+        // 并发为每个模型生成回答（per-slot 独立 Job，可单独取消/重试）
         val totalCount = battleModels.size
         val completedCount = java.util.concurrent.atomic.AtomicInteger(0)
         processingStatus.value = "⚔️ Battle: 0/$totalCount 完成"
 
-        coroutineScope {
-            val deferreds = battleModels.mapIndexed { index, model ->
-                async {
-                    val placeholderMsgId = placeholderMessages[index].id
+        battleModels.forEachIndexed { index, model ->
+            val placeholderMsgId = placeholderMessages[index].id
+            val key = "${conversationId}_${placeholderMsgId}"
+
+            val job = battleScope.launch {
+                incrementSlotCount(conversationId)
+                try {
                     // [FORK] Battle Mode: 根据开关决定上下文取法
                     val modelContextMessages = if (independentContext) {
                         conversation.getMessagesForModel(model.id).also {
@@ -169,6 +211,12 @@ class BattleService(
                     }.onFailure { e ->
                         if (e is CancellationException) throw e
                         Log.e(BATTLE_TAG, "Model '${model.displayName}' failed: ${e.message}", e)
+                        Logging.logError(
+                            tag = BATTLE_TAG,
+                            title = "Battle: ${model.displayName} 生成失败",
+                            message = e.message ?: "Unknown error",
+                            throwable = e,
+                        )
                         updateConversationState(conversationId) { conv ->
                             updateMessageInBattleNode(conv, battleNode.id, placeholderMsgId) {
                                 // 保留 modelId，确保失败后单独重试时能识别目标模型
@@ -182,13 +230,23 @@ class BattleService(
                     // 无论成功或失败，该模型完成后递增并更新进度
                     val done = completedCount.incrementAndGet()
                     processingStatus.value = "⚔️ Battle: $done/$totalCount 完成"
+                } finally {
+                    decrementSlotCount(conversationId)
                 }
             }
-            deferreds.forEach { it.await() }
+            slotJobs[key] = job
         }
+
+        // 等待所有 slot 完成
+        slotJobs.entries
+            .filter { it.key.startsWith("${conversationId}_") }
+            .forEach { runCatching { it.value.join() } }
 
         // 全部完成后重置进度文案，避免下次普通提问时残留 Battle loading 文案
         processingStatus.value = null
+
+        // 清理 Battle 作用域
+        battleScopes.remove(conversationId)?.cancel()
 
         // 全部完成后更新时间戳并保存
         val finalConversation = getConversation().copy(updateAt = Instant.now())
@@ -199,6 +257,7 @@ class BattleService(
 
     /**
      * 对已有 Battle 节点中的某个 slot（message）重新生成，不影响其他模型的回答。
+     * 只取消目标 slot 的 Job，在 Battle 作用域内重新启动该 slot 的生成。
      *
      * @param conversationId 对话 ID
      * @param battleNodeId 目标 battle 节点 ID
@@ -221,6 +280,13 @@ class BattleService(
         saveConversation: suspend (Uuid, Conversation) -> Unit,
         processingStatus: MutableStateFlow<String?>,
     ) {
+        val key = "${conversationId}_${messageId}"
+
+        // 只取消该 slot 的 Job（先捕获旧引用，避免竞态）
+        val oldJob = slotJobs[key]
+        oldJob?.cancel()
+        runCatching { oldJob?.join() }
+
         val settings = settingsStore.settingsFlow.first()
         val model = settings.providers.findModelById(modelId)
         if (model == null) {
@@ -256,47 +322,81 @@ class BattleService(
         // 清空当前 slot 内容，给用户即时反馈
         updateConversationState(conversationId) { conv ->
             updateMessageInBattleNode(conv, battleNodeId, messageId) { msg ->
-                msg.copy(parts = emptyList())
+                msg.copy(parts = emptyList(), finishedAt = null)
             }
         }
 
         processingStatus.value = "⚔️ 重试中..."
 
-        runCatching {
-            generateForModel(
-                model = model,
-                contextMessages = contextMessages,
-                conversationId = conversationId,
-                battleNodeId = battleNodeId,
-                placeholderMsgId = messageId,
-                memories = memories,
-                // [FORK] 对话专属记忆
-                conversationMemoryKey = conversationMemoryKey,
-                tools = tools,
-                getConversation = getConversation,
-                updateConversationState = updateConversationState,
-                processingStatus = processingStatus,
-                // [FORK] Battle Mode：重试时同样应用该模型独立的思考深度
-                reasoningLevel = conversation.conversationParams.battleModelReasoningLevels[modelId]
-                    ?: assistant.reasoningLevel,
-            )
-        }.onFailure { e ->
-            if (e is CancellationException) throw e
-            Log.e(BATTLE_TAG, "rerunSlot '${model.displayName}' failed: ${e.message}", e)
-            updateConversationState(conversationId) { conv ->
-                updateMessageInBattleNode(conv, battleNodeId, messageId) {
-                    // 保留 modelId，确保失败后再次单独重试时能识别目标模型
-                    it.copy(
-                        modelId = model.id,
-                        parts = listOf(UIMessagePart.Text("❌ ${model.displayName} 重试失败：${e.message}")),
-                    )
-                }
+        // 复用 Battle 作用域（若 Battle 仍在）或创建临时作用域（若 Battle 已结束）
+        val battleScope = battleScopes[conversationId]
+        val scope = if (battleScope != null) {
+            battleScope
+        } else {
+            // Battle 已结束，创建临时作用域
+            CoroutineScope(SupervisorJob() + Dispatchers.IO).also {
+                battleScopes[conversationId] = it
             }
         }
 
-        processingStatus.value = null
-        val finalConversation = getConversation().copy(updateAt = Instant.now())
-        saveConversation(conversationId, finalConversation)
+        val job = scope.launch {
+            incrementSlotCount(conversationId)
+            try {
+                runCatching {
+                    generateForModel(
+                        model = model,
+                        contextMessages = contextMessages,
+                        conversationId = conversationId,
+                        battleNodeId = battleNodeId,
+                        placeholderMsgId = messageId,
+                        memories = memories,
+                        // [FORK] 对话专属记忆
+                        conversationMemoryKey = conversationMemoryKey,
+                        tools = tools,
+                        getConversation = getConversation,
+                        updateConversationState = updateConversationState,
+                        processingStatus = processingStatus,
+                        // [FORK] Battle Mode：重试时同样应用该模型独立的思考深度
+                        reasoningLevel = conversation.conversationParams.battleModelReasoningLevels[modelId]
+                            ?: assistant.reasoningLevel,
+                    )
+                }.onFailure { e ->
+                    if (e is CancellationException) throw e
+                    Log.e(BATTLE_TAG, "rerunSlot '${model.displayName}' failed: ${e.message}", e)
+                    Logging.logError(
+                        tag = BATTLE_TAG,
+                        title = "Battle 重试: ${model.displayName} 生成失败",
+                        message = e.message ?: "Unknown error",
+                        throwable = e,
+                    )
+                    updateConversationState(conversationId) { conv ->
+                        updateMessageInBattleNode(conv, battleNodeId, messageId) {
+                            // 保留 modelId，确保失败后再次单独重试时能识别目标模型
+                            it.copy(
+                                modelId = model.id,
+                                parts = listOf(UIMessagePart.Text("❌ ${model.displayName} 重试失败：${e.message}")),
+                            )
+                        }
+                    }
+                }
+                processingStatus.value = null
+                val finalConversation = getConversation().copy(updateAt = Instant.now())
+                saveConversation(conversationId, finalConversation)
+            } finally {
+                decrementSlotCount(conversationId)
+            }
+        }
+        slotJobs[key] = job
+    }
+
+    /**
+     * 取消指定对话的所有 slot Job（供"停止生成"调用）。
+     */
+    fun cancelAllSlots(conversationId: Uuid) {
+        slotJobs.entries
+            .filter { it.key.startsWith("${conversationId}_") }
+            .forEach { it.value.cancel() }
+        battleScopes.remove(conversationId)?.cancel()
     }
 
     // --- 单模型生成 ---
