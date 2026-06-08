@@ -140,6 +140,7 @@ fun ChatPage(id: Uuid, text: String?, files: List<Uri>, nodeId: Uuid? = null) {
     val setting by vm.settings.collectAsStateWithLifecycle()
     val conversation by vm.conversation.collectAsStateWithLifecycle()
     val loadingJob by vm.conversationJob.collectAsStateWithLifecycle()
+    val hasActiveSlots by vm.hasActiveSlots.collectAsStateWithLifecycle()
     val processingStatus by vm.processingStatus.collectAsStateWithLifecycle()
     val currentChatModel by vm.currentChatModel.collectAsStateWithLifecycle()
     val enableWebSearch by vm.enableWebSearch.collectAsStateWithLifecycle()
@@ -239,6 +240,7 @@ fun ChatPage(id: Uuid, text: String?, files: List<Uri>, nodeId: Uuid? = null) {
                 ChatPageContent(
                     inputState = inputState,
                     loadingJob = loadingJob,
+                    hasActiveSlots = hasActiveSlots,
                     processingStatus = processingStatus,
                     setting = setting,
                     conversation = conversation,
@@ -272,6 +274,7 @@ fun ChatPage(id: Uuid, text: String?, files: List<Uri>, nodeId: Uuid? = null) {
                 ChatPageContent(
                     inputState = inputState,
                     loadingJob = loadingJob,
+                    hasActiveSlots = hasActiveSlots,
                     processingStatus = processingStatus,
                     setting = setting,
                     conversation = conversation,
@@ -298,6 +301,7 @@ fun ChatPage(id: Uuid, text: String?, files: List<Uri>, nodeId: Uuid? = null) {
 private fun ChatPageContent(
     inputState: ChatInputState,
     loadingJob: Job?,
+    hasActiveSlots: Boolean = false,
     processingStatus: String? = null,
     setting: Settings,
     bigScreen: Boolean,
@@ -375,7 +379,7 @@ private fun ChatPageContent(
             bottomBar = {
                 ChatInput(
                     state = inputState,
-                    loading = loadingJob != null,
+                    loading = loadingJob != null || hasActiveSlots,
                     settings = setting,
                     hazeState = hazeState,
                     completionProviders = completionProviders,
@@ -454,7 +458,7 @@ private fun ChatPageContent(
                 innerPadding = innerPadding,
                 conversation = conversation,
                 state = chatListState,
-                loading = loadingJob != null,
+                loading = loadingJob != null || hasActiveSlots,
                 processingStatus = processingStatus,
                 previewMode = previewMode,
                 settings = setting,
@@ -479,21 +483,21 @@ private fun ChatPageContent(
                     }
                 },
                 onDelete = {
-                    if (loadingJob != null) {
+                    if (loadingJob != null || hasActiveSlots) {
                         vm.showDeleteBlockedWhileGeneratingError()
                     } else {
                         vm.deleteMessage(it)
                     }
                 },
                 onDeleteBeforeMessage = {
-                    if (loadingJob != null) {
+                    if (loadingJob != null || hasActiveSlots) {
                         vm.showDeleteBlockedWhileGeneratingError()
                     } else {
                         vm.deleteMessagesBeforeMessage(it)
                     }
                 },
                 onDeleteAfterMessage = {
-                    if (loadingJob != null) {
+                    if (loadingJob != null || hasActiveSlots) {
                         vm.showDeleteBlockedWhileGeneratingError()
                     } else {
                         vm.deleteMessagesAfterMessage(it)

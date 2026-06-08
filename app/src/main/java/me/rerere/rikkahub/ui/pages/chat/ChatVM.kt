@@ -96,6 +96,13 @@ class ChatVM(
         chatService
             .getProcessingStatusFlow(_conversationId)
 
+    // Battle Mode: 活跃 slot 计数，用于单独重试 slot 时维持全局 loading
+    val hasActiveSlots: StateFlow<Boolean> =
+        chatService
+            .getActiveSlotCountFlow(_conversationId)
+            .map { it > 0 }
+            .stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
     val conversationJobs = chatService
         .getConversationJobs()
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
