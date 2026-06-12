@@ -26,6 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import android.widget.Toast
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.ArrowLeft01
 import me.rerere.hugeicons.stroke.ArrowRight01
@@ -33,6 +34,7 @@ import me.rerere.hugeicons.stroke.Cancel01
 import me.rerere.hugeicons.stroke.Forward02
 import me.rerere.hugeicons.stroke.Pause
 import me.rerere.hugeicons.stroke.Play
+import me.rerere.hugeicons.stroke.Refresh01
 import me.rerere.rikkahub.ui.context.LocalTTSState
 import me.rerere.rikkahub.ui.hooks.CustomTtsState
 import me.rerere.tts.model.PlaybackState
@@ -93,6 +95,11 @@ fun TTSController() {
                         SpeedButton(playbackState, ttsState)
 
                         FastForwardButton(ttsState = ttsState)
+
+                        // 仅在使用 SystemTTS 时显示"重建引擎"按钮
+                        if (ttsState.isSystemTtsActive()) {
+                            ResetEngineButton(ttsState = ttsState)
+                        }
                     }
                 }
 
@@ -212,5 +219,32 @@ private fun SpeedButton(
         }
     ) {
         Text(text = "x${"%.1f".format(playbackState.speed)}")
+    }
+}
+
+/**
+ * 重建 SystemTTS 引擎按钮。
+ * 用于消除累积的 vocoder 漂移 / 偶发杂音 — 点一下立即 markNeedsRebuild,
+ * 当前 chunk 播完后下一次 speak 时自动 recycleEngine。
+ *
+ * 仅在 SystemTTS provider 激活时显示(由调用方通过 isSystemTtsActive() 控制)。
+ */
+@Composable
+private fun ResetEngineButton(ttsState: CustomTtsState) {
+    val context = LocalContext.current
+    IconButton(
+        onClick = {
+            ttsState.resetEngine()
+            Toast.makeText(
+                context,
+                "已请求重建 TTS 引擎,下一段生效",
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+    ) {
+        Icon(
+            imageVector = HugeIcons.Refresh01,
+            contentDescription = "重建 TTS 引擎",
+        )
     }
 }

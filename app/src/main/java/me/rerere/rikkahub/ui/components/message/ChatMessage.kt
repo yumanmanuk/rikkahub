@@ -148,7 +148,7 @@ fun ChatMessage(
     Column(
         modifier = modifier.fillMaxWidth(),
         horizontalAlignment = if (message.role == MessageRole.USER) Alignment.End else Alignment.Start,
-        verticalArrangement = Arrangement.spacedBy(4.dp)
+        verticalArrangement = Arrangement.spacedBy(5.dp)
     ) {
         if (!message.parts.isEmptyUIMessage()) {
             Row(
@@ -175,7 +175,10 @@ fun ChatMessage(
         // [FORK] 固定到上下文：USER 消息被 pin 时，在气泡右上角显示锁徽章
         // Box 提供 overlay 能力；内部必须有 Column 保证 MessagePartsBlock 的多个子项纵向排列
         Box {
-            Column {
+            Column(
+                horizontalAlignment = if (message.role == MessageRole.USER) Alignment.End else Alignment.Start,
+                verticalArrangement = Arrangement.spacedBy(1.dp),
+            ) {
                 ProvideTextStyle(textStyle) {
                     MessagePartsBlock(
                         assistant = assistant,
