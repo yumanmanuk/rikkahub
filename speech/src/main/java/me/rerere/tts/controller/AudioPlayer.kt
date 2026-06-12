@@ -3,7 +3,10 @@ package me.rerere.tts.controller
 import android.content.Context
 import android.net.Uri
 import androidx.annotation.OptIn
+import androidx.media3.common.AudioAttributes
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
@@ -32,7 +35,18 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
 class AudioPlayer(context: Context) {
-    private val player = ExoPlayer.Builder(context).build()
+    private val player = ExoPlayer.Builder(context)
+        .setAudioAttributes(
+            AudioAttributes.Builder()
+                .setUsage(C.USAGE_MEDIA)
+                .setContentType(C.AUDIO_CONTENT_TYPE_SPEECH)
+                .build(),
+            // true：让 ExoPlayer 自动管理 AudioFocus
+            // 切到其他 App 时自动暂停/duck，避免音频流冲突产生混叠杂音
+            /* handleAudioFocus = */ true
+        )
+        .setHandleAudioBecomingNoisy(true)  // 拔耳机时自动暂停
+        .build()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     private val _playbackState = MutableStateFlow(PlaybackState())
@@ -62,8 +76,21 @@ class AudioPlayer(context: Context) {
         player.clearMediaItems()
 
         val dataSourceFactory = DataSource.Factory { ByteArrayDataSource(bytes) }
+        // 按格式显式声明 MIME，避免 ExoPlayer 在小米 codec 上嗅探失败
+        val mimeType = when (response.format) {
+            AudioFormat.WAV, AudioFormat.PCM -> MimeTypes.AUDIO_WAV
+            AudioFormat.MP3 -> MimeTypes.AUDIO_MPEG
+            AudioFormat.OGG -> MimeTypes.AUDIO_OGG
+            AudioFormat.OPUS -> MimeTypes.AUDIO_OPUS
+            AudioFormat.AAC -> MimeTypes.AUDIO_AAC
+            else -> MimeTypes.AUDIO_WAV
+        }
+        val mediaItem = MediaItem.Builder()
+            .setUri(Uri.EMPTY)
+            .setMimeType(mimeType)
+            .build()
         val mediaSource = ProgressiveMediaSource.Factory(dataSourceFactory)
-            .createMediaSource(MediaItem.fromUri(Uri.EMPTY))
+            .createMediaSource(mediaItem)
 
         player.setMediaSource(mediaSource)
         player.prepare()

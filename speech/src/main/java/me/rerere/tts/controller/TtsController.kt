@@ -22,6 +22,7 @@ import me.rerere.tts.model.PlaybackStatus
 import me.rerere.tts.model.TTSResponse
 import me.rerere.tts.provider.TTSManager
 import me.rerere.tts.provider.TTSProviderSetting
+import me.rerere.tts.provider.providers.SystemTTSProvider
 import java.util.UUID
 
 private const val TAG = "TtsController"
@@ -41,6 +42,7 @@ class TtsController(
     // 组件
     private val synthesizer = TtsSynthesizer(ttsManager)
     private val audio = AudioPlayer(context)
+    private val systemTtsProvider = SystemTTSProvider()  // 单例,供 resetSystemTtsEngine 用
 
     // Provider & 作业
     private var currentProvider: TTSProviderSetting? = null
@@ -97,6 +99,22 @@ class TtsController(
         currentProvider = provider
         _isAvailable.update { provider != null }
         if (provider == null) stop()
+    }
+
+    /**
+     * 当前 provider 是否是 SystemTTS(决定是否在浮窗显示"重建引擎"按钮)
+     */
+    fun isSystemTtsActive(): Boolean = currentProvider is TTSProviderSetting.SystemTTS
+
+    /**
+     * 主动请求重建 SystemTTS 引擎(用于消除累积的 vocoder 漂移 / 偶发杂音)。
+     * 通过 markNeedsRebuild() 让下次 generateSpeech 时自动 recycleEngine,
+     * 避免在播放进行中重建导致当前 chunk 被中断。
+     */
+    fun resetSystemTtsEngine() {
+        if (currentProvider is TTSProviderSetting.SystemTTS) {
+            systemTtsProvider.markNeedsRebuild()
+        }
     }
 
     /**
