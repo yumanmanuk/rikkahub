@@ -61,11 +61,13 @@ import me.rerere.hugeicons.stroke.ComputerTerminal01
 import me.rerere.hugeicons.stroke.Files02
 import me.rerere.hugeicons.stroke.Folder01
 import me.rerere.hugeicons.stroke.Image02
+import me.rerere.hugeicons.stroke.Mic01
 import me.rerere.hugeicons.stroke.MusicNote03
 import me.rerere.hugeicons.stroke.Package
 import me.rerere.hugeicons.stroke.Package01
 import me.rerere.hugeicons.stroke.Settings02
 import me.rerere.hugeicons.stroke.Video01
+import androidx.compose.material3.Switch
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.Screen
 import me.rerere.rikkahub.data.ai.mcp.McpManager
@@ -106,6 +108,7 @@ internal fun FilesPicker(
     onPickVideo: () -> Unit,
     onPickAudio: () -> Unit,
     onPickFile: () -> Unit,
+    onToggleAsr: (() -> Unit)? = null,
 ) {
     val settings = LocalSettings.current
     val provider = settings.getCurrentChatModel()?.findProvider(providers = settings.providers)
@@ -139,6 +142,33 @@ internal fun FilesPicker(
         HorizontalDivider(
             modifier = Modifier.fillMaxWidth()
         )
+
+        // ASR 语音识别开关（仅在配置了 provider 时显示）
+        if (settings.asrProviders.isNotEmpty() && onToggleAsr != null) {
+            ListItem(
+                leadingContent = {
+                    Icon(
+                        imageVector = HugeIcons.Mic01,
+                        contentDescription = null,
+                    )
+                },
+                headlineContent = {
+                    Text("语音识别")
+                },
+                trailingContent = {
+                    Switch(
+                        checked = settings.asrEnabled,
+                        onCheckedChange = { onToggleAsr() },
+                    )
+                },
+                colors = ListItemDefaults.colors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainer
+                ),
+                modifier = Modifier
+                    .clip(MaterialTheme.shapes.large)
+                    .clickable { onToggleAsr() },
+            )
+        }
 
         if (workspaces.isNotEmpty()) {
             WorkspacePickerListItem(
