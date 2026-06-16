@@ -15,6 +15,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -25,6 +26,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
@@ -32,7 +34,7 @@ import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MotionScheme
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
+
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -43,13 +45,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import me.rerere.asr.ASRState
-import me.rerere.rikkahub.R
 import me.rerere.asr.ASRStatus
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Voice
+import me.rerere.rikkahub.R
 
 private enum class AsrDisplayState {
-    Idle, Connecting, Active
+    Idle, Connecting, Listening, Stopping
 }
 
 @Composable
@@ -86,7 +88,8 @@ internal fun AsrButton(
     val displayState = when (state.status) {
         ASRStatus.Idle, ASRStatus.Error -> AsrDisplayState.Idle
         ASRStatus.Connecting -> AsrDisplayState.Connecting
-        ASRStatus.Listening, ASRStatus.Stopping -> AsrDisplayState.Active
+        ASRStatus.Listening -> AsrDisplayState.Listening
+        ASRStatus.Stopping -> AsrDisplayState.Stopping
     }
 
     Surface(
@@ -146,23 +149,30 @@ internal fun AsrButton(
                     }
                 }
 
-                AsrDisplayState.Active -> {
-                    Row(
+                AsrDisplayState.Listening -> {
+                    Box(
                         modifier = Modifier
                             .fillMaxHeight()
-                            .padding(horizontal = 12.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                            .padding(horizontal = 14.dp)
+                            .wrapContentSize(),
+                        contentAlignment = Alignment.Center
                     ) {
                         AudioLevelDots(
                             amplitudes = state.amplitudes,
                             color = contentColor,
                         )
-                        Text(
-                            text = stringResource(R.string.asr_button_stop),
+                    }
+                }
+
+                AsrDisplayState.Stopping -> {
+                    Box(
+                        modifier = Modifier.size(36.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
                             color = contentColor,
-                            style = MaterialTheme.typography.labelLarge,
-                            maxLines = 1
+                            strokeWidth = 2.dp,
                         )
                     }
                 }

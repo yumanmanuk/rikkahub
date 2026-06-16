@@ -417,6 +417,8 @@ private fun ASRProviderList(
                         }
                     },
                     isSelected = settings.selectedASRProviderId == provider.id,
+                    // 只有多于一个 provider 时才允许删除，防止删掉唯一 provider 导致 ASR 不可用
+                    canDelete = settings.asrProviders.size > 1,
                     onSelect = {
                         onUpdateSettings(settings.copy(selectedASRProviderId = provider.id))
                     },
@@ -789,6 +791,7 @@ private fun ASRProviderItem(
     provider: ASRProviderSetting,
     modifier: Modifier = Modifier,
     isSelected: Boolean = false,
+    canDelete: Boolean = true,
     dragHandle: @Composable () -> Unit,
     onSelect: () -> Unit,
     onEdit: () -> Unit,
@@ -894,7 +897,8 @@ private fun ASRProviderItem(
                             },
                             leadingIcon = {
                                 Icon(HugeIcons.Delete01, contentDescription = null)
-                            }
+                            },
+                            enabled = canDelete
                         )
                     }
                 }

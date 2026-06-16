@@ -174,6 +174,7 @@ fun ChatInput(
     }
     val asrPermission = rememberPermissionState(PermissionRecordAudio)
     PermissionManager(permissionState = asrPermission)
+    // ASR 启动时快照原有文字，回调中用 transcript 追加到其后
     var asrBaseText by remember { mutableStateOf("") }
     LaunchedEffect(asrState.status) {
         when (asrState.status) {
@@ -316,14 +317,18 @@ fun ChatInput(
                                 onClick = {
                                     when (asrState.status) {
                                         ASRStatus.Listening -> asr.stop()
-                                        ASRStatus.Idle, ASRStatus.Error -> {
+                                        // Error 状态：先 stop() 重置到 Idle，避免再次 start() 导致重复报错
+                                        ASRStatus.Error -> asr.stop()
+                                        ASRStatus.Idle -> {
                                             if (!asrPermission.allRequiredPermissionsGranted) {
                                                 asrPermission.requestPermissions()
                                             } else {
                                                 asrBaseText = state.textContent.text.toString()
                                                 asr.start { transcript ->
-                                                    val spacer =
-                                                        if (asrBaseText.isBlank() || transcript.isBlank()) "" else " "
+                                                    // Chirp3 provider 内部已通过 completedTexts + partialText 保证
+                                                    // transcript 是本次会话从开始到现在的全量文字（单调递增），
+                                                    // 直接用启动时快照 + transcript 更新输入框即可
+                                                    val spacer = if (asrBaseText.isBlank() || transcript.isBlank()) "" else " "
                                                     state.setMessageText(asrBaseText + spacer + transcript)
                                                 }
                                             }

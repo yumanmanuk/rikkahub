@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.StateFlow
 import me.rerere.asr.ASRController
 import me.rerere.asr.ASRProviderSetting
 import me.rerere.asr.ASRState
+import me.rerere.asr.providers.Chirp3ASRController
 import me.rerere.asr.providers.DashScopeASRController
 import me.rerere.asr.providers.MiMoASRController
 import me.rerere.asr.providers.OpenAIRealtimeASRController
@@ -36,7 +37,7 @@ fun rememberCustomAsrState(): CustomAsrState {
         CustomAsrStateImpl(context.applicationContext, httpClient)
     }
 
-    DisposableEffect(settings.selectedASRProviderId, settings.asrProviders) {
+    DisposableEffect(settings.selectedASRProviderId, settings.asrProviders, settings.asrEnabled) {
         asrState.updateProvider(settings.getSelectedASRProvider())
         onDispose { }
     }
