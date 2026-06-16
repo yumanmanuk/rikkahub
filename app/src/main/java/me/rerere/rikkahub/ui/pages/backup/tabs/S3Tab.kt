@@ -55,6 +55,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.dokar.sonner.ToastType
 import kotlinx.coroutines.launch
+import me.rerere.common.android.Logging
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.sync.S3BackupItem
 import me.rerere.rikkahub.data.sync.s3.S3Config
@@ -259,6 +260,12 @@ fun S3Tab(
                             )
                         } catch (e: Exception) {
                             e.printStackTrace()
+                            Logging.logError(
+                                tag = "S3Tab",
+                                title = "S3 connection test failed",
+                                message = e.message ?: "Unknown error",
+                                throwable = e
+                            )
                             toaster.show(
                                 context.getString(
                                     R.string.backup_page_connection_failed,
@@ -294,6 +301,12 @@ fun S3Tab(
                             )
                         }.onFailure {
                             it.printStackTrace()
+                            Logging.logError(
+                                tag = "S3Tab",
+                                title = "S3 backup failed",
+                                message = it.message ?: "Unknown error",
+                                throwable = it
+                            )
                             toaster.show(
                                 it.message ?: context.getString(R.string.backup_page_unknown_error),
                                 type = ToastType.Error
@@ -363,6 +376,12 @@ fun S3Tab(
                                             vm.loadS3BackupFileItems()
                                         }.onFailure { err ->
                                             err.printStackTrace()
+                                            Logging.logError(
+                                                tag = "S3Tab",
+                                                title = "S3 delete backup failed",
+                                                message = err.message ?: "Unknown error",
+                                                throwable = err
+                                            )
                                             toaster.show(
                                                 context.getString(
                                                     R.string.backup_page_delete_failed,
@@ -386,6 +405,12 @@ fun S3Tab(
                                             onShowRestartDialog()
                                         }.onFailure { err ->
                                             err.printStackTrace()
+                                            Logging.logError(
+                                                tag = "S3Tab",
+                                                title = "S3 restore failed",
+                                                message = err.message ?: "Unknown error",
+                                                throwable = err
+                                            )
                                             toaster.show(
                                                 context.getString(
                                                     R.string.backup_page_restore_failed,

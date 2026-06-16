@@ -54,6 +54,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.dokar.sonner.ToastType
 import kotlinx.coroutines.launch
+import me.rerere.common.android.Logging
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.datastore.WebDavConfig
 import me.rerere.rikkahub.data.sync.webdav.WebDavBackupItem
@@ -241,6 +242,12 @@ fun WebDavTab(
                             )
                         } catch (e: Exception) {
                             e.printStackTrace()
+                            Logging.logError(
+                                tag = "WebDavTab",
+                                title = "WebDAV connection test failed",
+                                message = e.message ?: "Unknown error",
+                                throwable = e
+                            )
                             toaster.show(
                                 context.getString(
                                     R.string.backup_page_connection_failed,
@@ -275,6 +282,12 @@ fun WebDavTab(
                             )
                         }.onFailure {
                             it.printStackTrace()
+                            Logging.logError(
+                                tag = "WebDavTab",
+                                title = "WebDAV backup failed",
+                                message = it.message ?: "Unknown error",
+                                throwable = it
+                            )
                             toaster.show(
                                 it.message ?: context.getString(R.string.backup_page_unknown_error),
                                 type = ToastType.Error
@@ -344,6 +357,12 @@ fun WebDavTab(
                                             vm.loadBackupFileItems()
                                         }.onFailure { err ->
                                             err.printStackTrace()
+                                            Logging.logError(
+                                                tag = "WebDavTab",
+                                                title = "WebDAV delete backup failed",
+                                                message = err.message ?: "Unknown error",
+                                                throwable = err
+                                            )
                                             toaster.show(
                                                 context.getString(
                                                     R.string.backup_page_delete_failed,
@@ -367,6 +386,12 @@ fun WebDavTab(
                                             onShowRestartDialog()
                                         }.onFailure { err ->
                                             err.printStackTrace()
+                                            Logging.logError(
+                                                tag = "WebDavTab",
+                                                title = "WebDAV restore failed",
+                                                message = err.message ?: "Unknown error",
+                                                throwable = err
+                                            )
                                             toaster.show(
                                                 context.getString(
                                                     R.string.backup_page_restore_failed,

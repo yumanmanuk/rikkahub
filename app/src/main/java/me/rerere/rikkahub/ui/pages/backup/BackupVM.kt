@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.SettingsStore
+import me.rerere.rikkahub.data.datastore.WebDavConfig
 import me.rerere.rikkahub.data.repository.ConversationRepository
 import me.rerere.rikkahub.data.sync.importer.ChatboxImporter
 import me.rerere.rikkahub.data.sync.importer.CherryStudioProviderImporter
@@ -16,6 +17,7 @@ import me.rerere.rikkahub.data.sync.importer.GoogleAiStudioImporter
 import me.rerere.rikkahub.data.sync.importer.GoogleAiStudioExport
 import me.rerere.rikkahub.data.sync.webdav.WebDavBackupItem
 import me.rerere.rikkahub.data.sync.webdav.WebDavSync
+import me.rerere.common.android.Logging
 import me.rerere.rikkahub.data.sync.S3BackupItem
 import me.rerere.rikkahub.data.sync.S3Sync
 import me.rerere.rikkahub.utils.UiState
@@ -63,6 +65,12 @@ class BackupVM(
                 )
             }.onFailure {
                 webDavBackupItems.emit(UiState.Error(it))
+                Logging.logError(
+                    tag = TAG,
+                    title = "Failed to load WebDAV backup list",
+                    message = it.message ?: "Unknown error",
+                    throwable = it
+                )
             }
         }
     }
@@ -85,13 +93,20 @@ class BackupVM(
     }
 
     suspend fun exportToFile(): File {
-        val file = webDavSync.prepareBackupFile(settings.value.webDavConfig.copy())
-        recordBackupTime()
-        return file
+        // 本地导出始终备份全部内容（DATABASE + FILES），不受 WebDav items 配置影响
+        val fullConfig = settings.value.webDavConfig.copy(
+            items = WebDavConfig.BackupItem.entries
+        )
+        // 注意：recordBackupTime() 由调用方在文件真正写入用户存储后调用
+        return webDavSync.prepareBackupFile(fullConfig)
     }
 
     suspend fun restoreFromLocalFile(file: File) {
-        webDavSync.restoreFromLocalFile(file, settings.value.webDavConfig)
+        // 本地恢复始终还原全部内容（DATABASE + FILES），不受 WebDav items 配置影响
+        val fullConfig = settings.value.webDavConfig.copy(
+            items = WebDavConfig.BackupItem.entries
+        )
+        webDavSync.restoreFromLocalFile(file, fullConfig)
     }
 
     suspend fun restoreFromChatBox(file: File): ChatboxRestoreResult {
@@ -219,6 +234,12 @@ class BackupVM(
                 )
             }.onFailure {
                 s3BackupItems.emit(UiState.Error(it))
+                Logging.logError(
+                    tag = TAG,
+                    title = "Failed to load S3 backup list",
+                    message = it.message ?: "Unknown error",
+                    throwable = it
+                )
             }
         }
     }
@@ -240,7 +261,8 @@ class BackupVM(
         s3Sync.deleteS3BackupFile(settings.value.s3Config, item)
     }
 
-    private suspend fun recordBackupTime() {
+    // internal：让 UI 层在 SAF 写入真正成功后调用，确保 lastBackupTime 准确
+    internal suspend fun recordBackupTime() {
         settingsStore.update { settings ->
             settings.copy(
                 backupReminderConfig = settings.backupReminderConfig.copy(

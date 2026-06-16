@@ -1,6 +1,7 @@
 package me.rerere.rikkahub.data.sync
 
 import android.content.Context
+import android.database.sqlite.SQLiteDatabase
 import android.util.Log
 import io.ktor.client.HttpClient
 import kotlinx.coroutines.Dispatchers
@@ -128,6 +129,19 @@ class S3Sync(
             if (config.items.contains(S3Config.BackupItem.DATABASE)) {
                 val dbFile = context.getDatabasePath("rikka_hub")
                 if (dbFile.exists()) {
+                    // 备份前先执行 WAL checkpoint，将 WAL 数据写入主 db 文件
+                    // 确保备份的 .db 包含完整数据且 user_version 准确
+                    try {
+                        SQLiteDatabase.openDatabase(
+                            dbFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE
+                        ).use { db ->
+                            db.execSQL("PRAGMA wal_checkpoint(FULL)")
+                            Log.i(TAG, "prepareBackupFile: WAL checkpoint completed")
+                        }
+                    } catch (e: Exception) {
+                        Log.w(TAG, "prepareBackupFile: WAL checkpoint failed (non-fatal)", e)
+                    }
+
                     addFileToZip(zipOut, dbFile, "rikka_hub.db")
                 }
 
@@ -309,7 +323,39 @@ class S3Sync(
             }
         }
 
+        if (config.items.contains(S3Config.BackupItem.DATABASE)) {
+            fixRestoredDbSchema(context)
+        }
+
         Log.i(TAG, "restoreFromBackupFile: Restore completed successfully")
+    }
+
+    private fun fixRestoredDbSchema(context: Context) {
+        val dbPath = context.getDatabasePath("rikka_hub")
+        if (!dbPath.exists()) return
+        try {
+            SQLiteDatabase.openDatabase(dbPath.absolutePath, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+                // WAL checkpoint 确保所有数据写入主 db 文件
+                try { db.execSQL("PRAGMA wal_checkpoint(FULL)") } catch (_: Exception) {}
+
+                // 读取备份数据库的实际版本号
+                val currentVersion = db.rawQuery("PRAGMA user_version", null)
+                    .use { c -> if (c.moveToFirst()) c.getInt(0) else 0 }
+                Log.i(TAG, "fixRestoredDbSchema: backup DB user_version = $currentVersion")
+
+                val targetVersion = me.rerere.rikkahub.data.db.AppDatabase.VERSION
+                if (currentVersion >= targetVersion) {
+                    // 备份已是最新版本，强制标记为当前版本
+                    db.execSQL("PRAGMA user_version = $targetVersion")
+                    Log.i(TAG, "fixRestoredDbSchema: already up-to-date, set to $targetVersion")
+                } else {
+                    // 保持原始 user_version，让 Room 从 currentVersion 逐步迁移到 targetVersion
+                    Log.i(TAG, "fixRestoredDbSchema: backup at v$currentVersion, Room will run all migrations up to v$targetVersion")
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "fixRestoredDbSchema: failed (non-fatal)", e)
+        }
     }
 
     private fun addFileToZip(zipOut: ZipOutputStream, file: File, entryName: String) {

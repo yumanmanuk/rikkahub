@@ -29,6 +29,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.dokar.sonner.ToastType
 import kotlinx.coroutines.launch
+import me.rerere.common.android.Logging
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.ui.components.ui.CardGroup
 import me.rerere.rikkahub.ui.components.ui.StickyHeader
@@ -85,18 +86,24 @@ fun ImportExportTab(
             scope.launch {
                 isExporting = true
                 runCatching {
-                    // 导出文件
+                    // 导出文件到临时缓存
                     val exportFile = vm.exportToFile()
 
-                    // 复制到用户选择的位置
-                    context.contentResolver.openOutputStream(targetUri)?.use { outputStream ->
-                        FileInputStream(exportFile).use { inputStream ->
-                            inputStream.copyTo(outputStream)
+                    // 无论成功失败，都清理临时文件
+                    try {
+                        // 复制到用户选择的位置
+                        context.contentResolver.openOutputStream(targetUri)?.use { outputStream ->
+                            FileInputStream(exportFile).use { inputStream ->
+                                inputStream.copyTo(outputStream)
+                            }
                         }
+                    } finally {
+                        exportFile.delete()
                     }
 
-                    // 清理临时文件
-                    exportFile.delete()
+                    // 文件真正写入用户存储成功后，才记录备份时间
+                    // 避免 SAF 写失败时 lastBackupTime 被错误更新导致备份提醒不再弹出
+                    vm.recordBackupTime()
 
                     toaster.show(
                         context.getString(R.string.backup_page_backup_success),
@@ -104,6 +111,12 @@ fun ImportExportTab(
                     )
                 }.onFailure { e ->
                     e.printStackTrace()
+                    Logging.logError(
+                        tag = "ImportExportTab",
+                        title = "Local export failed",
+                        message = e.message ?: "Unknown error",
+                        throwable = e
+                    )
                     toaster.show(
                         context.getString(R.string.backup_page_restore_failed, e.message ?: ""),
                         type = ToastType.Error
@@ -134,11 +147,12 @@ fun ImportExportTab(
                                 }
                             }
 
-                            // 从临时文件恢复
-                            vm.restoreFromLocalFile(tempFile)
-
-                            // 清理临时文件
-                            tempFile.delete()
+                            // 无论成功失败，都清理临时文件
+                            try {
+                                vm.restoreFromLocalFile(tempFile)
+                            } finally {
+                                tempFile.delete()
+                            }
                         }
 
                         "chatbox" -> {
@@ -185,6 +199,12 @@ fun ImportExportTab(
                     onShowRestartDialog()
                 }.onFailure { e ->
                     e.printStackTrace()
+                    Logging.logError(
+                        tag = "ImportExportTab",
+                        title = "Local restore failed",
+                        message = e.message ?: "Unknown error",
+                        throwable = e
+                    )
                     toaster.show(
                         context.getString(R.string.backup_page_restore_failed, e.message ?: ""),
                         type = ToastType.Error
@@ -235,6 +255,12 @@ fun ImportExportTab(
                     imported++
                 }.onFailure { e ->
                     e.printStackTrace()
+                    Logging.logError(
+                        tag = "ImportExportTab",
+                        title = "Google AI Studio import failed",
+                        message = e.message ?: "Unknown error",
+                        throwable = e
+                    )
                     failed++
                 }
             }
