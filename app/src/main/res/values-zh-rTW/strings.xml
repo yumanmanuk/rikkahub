@@ -955,6 +955,8 @@
   <string name="setting_tts_page_emotion_description">語音合成的情感風格</string>
   <string name="setting_tts_page_model">模型</string>
   <string name="setting_tts_page_model_description">要使用的TTS模型</string>
+  <string name="setting_tts_page_stream_description">為相容的模型使用流式合成（如 speech-2.6-turbo）；speech-2.8 系列請關閉。</string>
+  <string name="setting_tts_page_stream">流式輸出</string>
   <string name="setting_tts_page_model_placeholder_gemini">gemini-2.5-flash-preview-tts</string>
   <string name="setting_tts_page_model_placeholder_openai">gpt-4o-mini-tts</string>
   <string name="setting_tts_page_more_options_content_description">更多選項</string>

@@ -1017,6 +1017,8 @@
   <string name="setting_tts_page_emotion_description">Emotion style for speech synthesis</string>
   <string name="setting_tts_page_model">Model</string>
   <string name="setting_tts_page_model_description">TTS model to use</string>
+  <string name="setting_tts_page_stream_description">Use streaming synthesis for compatible models (e.g. speech-2.6-turbo); disable for speech-2.8 series.</string>
+  <string name="setting_tts_page_stream">Stream</string>
   <string name="setting_tts_page_model_placeholder_gemini">gemini-2.5-flash-preview-tts</string>
   <string name="setting_tts_page_model_placeholder_openai">gpt-4o-mini-tts</string>
   <string name="setting_tts_page_more_options_content_description">More options</string>

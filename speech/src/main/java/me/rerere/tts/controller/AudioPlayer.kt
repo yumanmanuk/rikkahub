@@ -192,11 +192,19 @@ class AudioPlayer(context: Context) {
         channels: Int = 1,
         bitsPerSample: Int = 16
     ): ByteArray {
+        // 在 PCM 末尾追加 60ms 静音：
+        // 1. Gemini TTS API 返回的 PCM 无尾部衰减，直接播放最后一字会被"咬掉"
+        // 2. 部分设备 AudioTrack.getPlaybackHeadPosition() 会在硬件 buffer drain 完毕前
+        //    提前到达终点值，导致 ExoPlayer STATE_ENDED 过早触发
+        // 追加静音后，即使 STATE_ENDED 提前触发，被截断的是静音而非语音
+        val silenceBytes = (sampleRate * 0.06).toInt() * channels * (bitsPerSample / 8)
+        val paddedPcm = pcm + ByteArray(silenceBytes)
+
         val byteRate = sampleRate * channels * bitsPerSample / 8
         val out = ByteArrayOutputStream()
         with(out) {
             write("RIFF".toByteArray())
-            write(intToBytes(36 + pcm.size))
+            write(intToBytes(36 + paddedPcm.size))
             write("WAVE".toByteArray())
             write("fmt ".toByteArray())
             write(intToBytes(16))
@@ -207,8 +215,8 @@ class AudioPlayer(context: Context) {
             write(shortToBytes((channels * bitsPerSample / 8).toShort()))
             write(shortToBytes(bitsPerSample.toShort()))
             write("data".toByteArray())
-            write(intToBytes(pcm.size))
-            write(pcm)
+            write(intToBytes(paddedPcm.size))
+            write(paddedPcm)
         }
         return out.toByteArray()
     }

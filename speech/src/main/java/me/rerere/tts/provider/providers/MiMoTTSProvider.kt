@@ -70,6 +70,7 @@ class MiMoTTSProvider : TTSProvider<TTSProviderSetting.MiMo> {
                 // 非流式使用 wav 格式，更稳定；音色由设置决定
                 put("format", "wav")
                 put("voice", providerSetting.voice)
+                put("speed", providerSetting.speed)
             })
         }
 

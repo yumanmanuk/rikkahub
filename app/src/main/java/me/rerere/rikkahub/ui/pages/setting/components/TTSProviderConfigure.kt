@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.dp
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.ui.components.ui.FormItem
 import me.rerere.rikkahub.ui.components.ui.OutlinedNumberInput
+import me.rerere.rikkahub.ui.components.ui.Switch
 import me.rerere.tts.provider.TTSProviderSetting
 
 @Composable
@@ -405,8 +406,24 @@ private fun MiMoTTSConfiguration(
             }
         }
     }
-}
 
+    // Speed
+    FormItem(
+        label = { Text(stringResource(R.string.setting_tts_page_speed)) },
+        description = { Text(stringResource(R.string.setting_tts_page_speed_description)) }
+    ) {
+        OutlinedNumberInput(
+            value = setting.speed,
+            onValueChange = { newSpeed ->
+                if (newSpeed in 0.5f..2.0f) {
+                    onValueChange(setting.copy(speed = newSpeed))
+                }
+            },
+            modifier = Modifier.fillMaxWidth(),
+            label = stringResource(R.string.setting_tts_page_speed)
+        )
+    }
+}
 
 @Composable
 private fun MiniMaxTTSConfiguration(
@@ -453,9 +470,23 @@ private fun MiniMaxTTSConfiguration(
                 onValueChange(setting.copy(model = newModel))
             },
             modifier = Modifier.fillMaxWidth(),
-            placeholder = { Text("speech-2.5-hd-preview") }
+            placeholder = { Text("speech-2.6-turbo") }
         )
     }
+
+    // Stream
+    FormItem(
+        label = { Text(stringResource(R.string.setting_tts_page_stream)) },
+        description = { Text(stringResource(R.string.setting_tts_page_stream_description)) },
+        tail = {
+            Switch(
+                checked = setting.stream,
+                onCheckedChange = { newStream ->
+                    onValueChange(setting.copy(stream = newStream))
+                }
+            )
+        }
+    ) {}
 
     // Voice ID
     var voiceIdExpanded by remember { mutableStateOf(false) }

@@ -76,6 +76,13 @@ fun String.stripMarkdownForTts(): String {
         // 将多个换行符压缩,以保留段落
         .replace(Regex("\n{3,}"), "\n\n")
         .trim()
+        // 4) 转义 XML/SSML 保留字符，防止 Google Cloud TTS 将其当 SSML 标签解析触发 400
+        // 必须先转义 & 再转义其余字符，否则会对已转义内容二次转义
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace("\"", "&quot;")
+        .replace("'", "&apos;")
 }
 
 fun String.extractThinkingTitle(): String? {

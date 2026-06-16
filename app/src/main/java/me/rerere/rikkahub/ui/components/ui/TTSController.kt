@@ -188,6 +188,9 @@ private fun PlayPauseButton(
     }
 }
 
+// 播放速度档位：0.8x ~ 2.0x，每隔 0.1 一档
+private val SPEED_STEPS = (8..20).map { it / 10f }
+
 @Composable
 private fun SpeedButton(
     playbackState: PlaybackState,
@@ -195,30 +198,20 @@ private fun SpeedButton(
 ) {
     TextButton(
         onClick = {
-            when (playbackState.speed) {
-                0.8f -> {
-                    ttsState.setSpeed(1.0f)
-                }
-
-                1.0f -> {
-                    ttsState.setSpeed(1.2f)
-                }
-
-                1.2f -> {
-                    ttsState.setSpeed(1.5f)
-                }
-
-                1.5f -> {
-                    ttsState.setSpeed(0.8f)
-                }
-
-                else -> {
-                    ttsState.setSpeed(1.0f)
-                }
+            // 找到当前速度在档位列表中最近的索引，然后切换到下一档
+            val currentIndex = SPEED_STEPS.indexOfFirst {
+                kotlin.math.abs(it - playbackState.speed) < 0.01f
             }
+            val nextIndex = if (currentIndex < 0) {
+                // 当前速度不在列表中，回到默认 1.0
+                SPEED_STEPS.indexOf(1.0f)
+            } else {
+                (currentIndex + 1) % SPEED_STEPS.size
+            }
+            ttsState.setSpeed(SPEED_STEPS[nextIndex])
         }
     ) {
-        Text(text = "x${"%.1f".format(playbackState.speed)}")
+        Text(text = "x${"%.2f".format(playbackState.speed).trimEnd('0').trimEnd('.')}")
     }
 }
 

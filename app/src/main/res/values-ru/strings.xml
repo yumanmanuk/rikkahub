@@ -957,6 +957,8 @@
   <string name="setting_tts_page_emotion_description">Эмоциональный стиль для синтеза речи</string>
   <string name="setting_tts_page_model">Модель</string>
   <string name="setting_tts_page_model_description">Модель TTS для использования</string>
+  <string name="setting_tts_page_stream_description">Использовать потоковый синтез для совместимых моделей (например, speech-2.6-turbo); отключите для серии speech-2.8.</string>
+  <string name="setting_tts_page_stream">Потоковый режим</string>
   <string name="setting_tts_page_model_placeholder_gemini">gemini-2.5-flash-preview-tts</string>
   <string name="setting_tts_page_model_placeholder_openai">gpt-4o-mini-tts</string>
   <string name="setting_tts_page_more_options_content_description">Дополнительные параметры</string>

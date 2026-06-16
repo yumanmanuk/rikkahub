@@ -3,6 +3,7 @@ package me.rerere.tts.provider.providers
 import android.content.Context
 import android.util.Log
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.FlowCollector
 import kotlinx.coroutines.flow.flow
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -13,6 +14,7 @@ import me.rerere.common.http.sseFlow
 import me.rerere.tts.model.AudioChunk
 import me.rerere.tts.model.AudioFormat
 import me.rerere.tts.model.TTSRequest
+import me.rerere.tts.provider.TTSHttpException
 import me.rerere.tts.provider.TTSProvider
 import me.rerere.tts.provider.TTSProviderSetting
 import okhttp3.MediaType.Companion.toMediaType
@@ -25,14 +27,14 @@ private const val TAG = "MiniMaxTTSProvider"
 
 @Serializable
 private data class MiniMaxResponseData(
-    val audio: String,
-    val status: Int,
-    val ced: String
+    val audio: String? = null,
+    val status: Int = 0,
+    val ced: String? = null
 )
 
 @Serializable
 private data class MiniMaxResponse(
-    val data: MiniMaxResponseData
+    val data: MiniMaxResponseData? = null
 )
 
 class MiniMaxTTSProvider : TTSProvider<TTSProviderSetting.MiniMax> {
@@ -53,11 +55,13 @@ class MiniMaxTTSProvider : TTSProvider<TTSProviderSetting.MiniMax> {
         val requestBody = buildJsonObject {
             put("model", providerSetting.model)
             put("text", request.text)
-            put("stream", true)
+            put("stream", providerSetting.stream)
             put("output_format", "hex")
-            put("stream_options", buildJsonObject {
-                put("exclude_aggregated_audio", true)
-            })
+            if (providerSetting.stream) {
+                put("stream_options", buildJsonObject {
+                    put("exclude_aggregated_audio", true)
+                })
+            }
             put("voice_setting", buildJsonObject {
                 put("voice_id", providerSetting.voiceId)
                 put("emotion", providerSetting.emotion)
@@ -74,6 +78,17 @@ class MiniMaxTTSProvider : TTSProvider<TTSProviderSetting.MiniMax> {
             .post(json.encodeToString(requestBody).toRequestBody("application/json".toMediaType()))
             .build()
 
+        if (providerSetting.stream) {
+            emitStreaming(httpRequest, providerSetting)
+        } else {
+            emitSync(httpRequest, providerSetting)
+        }
+    }
+
+    private suspend fun FlowCollector<AudioChunk>.emitStreaming(
+        httpRequest: Request,
+        providerSetting: TTSProviderSetting.MiniMax
+    ) {
         var hasEmittedAudio = false
 
         httpClient.sseFlow(httpRequest).collect {
@@ -82,9 +97,10 @@ class MiniMaxTTSProvider : TTSProvider<TTSProviderSetting.MiniMax> {
                 is SseEvent.Event -> {
                     try {
                         val data = json.decodeFromString<MiniMaxResponse>(it.data)
+                        val audioHex = data.data?.audio ?: return@collect
 
                         // Convert hex string to bytes
-                        val audioBytes = hexStringToBytes(data.data.audio)
+                        val audioBytes = hexStringToBytes(audioHex)
 
                         emit(
                             AudioChunk(
@@ -96,8 +112,8 @@ class MiniMaxTTSProvider : TTSProvider<TTSProviderSetting.MiniMax> {
                                     "provider" to "minimax",
                                     "model" to providerSetting.model,
                                     "voice" to providerSetting.voiceId,
-                                    "status" to data.data.status.toString(),
-                                    "ced" to data.data.ced
+                                    "status" to (data.data?.status?.toString() ?: ""),
+                                    "ced" to (data.data?.ced ?: "")
                                 )
                             )
                         )
@@ -129,6 +145,57 @@ class MiniMaxTTSProvider : TTSProvider<TTSProviderSetting.MiniMax> {
                 }
             }
         }
+    }
+
+    private suspend fun FlowCollector<AudioChunk>.emitSync(
+        httpRequest: Request,
+        providerSetting: TTSProviderSetting.MiniMax
+    ) {
+        val response = httpClient.newCall(httpRequest).execute()
+        val errorBody = response.body?.string()
+
+        if (!response.isSuccessful) {
+            throw TTSHttpException(
+                httpCode = response.code,
+                retryAfterSec = response.header("Retry-After")?.toIntOrNull(),
+                providerName = "MiniMax",
+                errorBody = errorBody,
+                message = "MiniMax TTS request failed: ${response.code} ${response.message}"
+            )
+        }
+
+        val bodyString = errorBody
+            ?: throw Exception("MiniMax TTS response body is empty")
+
+        val parsedResponse = json.decodeFromString<MiniMaxResponse>(bodyString)
+        val responseData = parsedResponse.data
+        if (responseData == null) {
+            val trimmedBody = bodyString.take(2000)
+            Log.e(TAG, "MiniMax TTS response data is null, body: $trimmedBody")
+            throw Exception("MiniMax TTS response data is null: $trimmedBody")
+        }
+        val audioHex = responseData.audio
+        if (audioHex.isNullOrEmpty()) {
+            val trimmedBody = bodyString.take(2000)
+            Log.e(TAG, "MiniMax TTS response audio is null or empty, body: $trimmedBody")
+            throw Exception("MiniMax TTS response audio is null or empty: $trimmedBody")
+        }
+
+        emit(
+            AudioChunk(
+                data = hexStringToBytes(audioHex),
+                format = AudioFormat.MP3,
+                sampleRate = 32000,
+                isLast = true,
+                metadata = mapOf(
+                    "provider" to "minimax",
+                    "model" to providerSetting.model,
+                    "voice" to providerSetting.voiceId,
+                    "status" to responseData.status.toString(),
+                    "ced" to (responseData.ced ?: "")
+                )
+            )
+        )
     }
 }
 

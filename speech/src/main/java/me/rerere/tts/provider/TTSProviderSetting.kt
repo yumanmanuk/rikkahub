@@ -85,7 +85,8 @@ sealed class TTSProviderSetting {
         val model: String = "speech-2.6-turbo",
         val voiceId: String = "female-shaonv",
         val emotion: String = "calm",
-        val speed: Float = 1.0f
+        val speed: Float = 1.0f,
+        val stream: Boolean = true
     ) : TTSProviderSetting() {
         override fun copyProvider(
             id: Uuid,
@@ -172,7 +173,8 @@ sealed class TTSProviderSetting {
         val apiKey: String = "",
         val baseUrl: String = "https://api.xiaomimimo.com/v1",
         val model: String = "mimo-v2.5-tts",
-        val voice: String = "mimo_default"
+        val voice: String = "mimo_default",
+        val speed: Float = 1.0f
     ) : TTSProviderSetting() {
         override fun copyProvider(
             id: Uuid,

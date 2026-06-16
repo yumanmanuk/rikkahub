@@ -957,6 +957,8 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="setting_tts_page_emotion_description">音声合成の感情スタイル</string>
   <string name="setting_tts_page_model">モデル</string>
   <string name="setting_tts_page_model_description">使用するTTSモデル</string>
+  <string name="setting_tts_page_stream_description">互換性のあるモデルでストリーミング合成を使用します（例: speech-2.6-turbo）。speech-2.8 シリーズではオフにしてください。</string>
+  <string name="setting_tts_page_stream">ストリーミング</string>
   <string name="setting_tts_page_model_placeholder_gemini">gemini-2.5-flash-preview-tts</string>
   <string name="setting_tts_page_model_placeholder_openai">gpt-4o-mini-tts</string>
   <string name="setting_tts_page_more_options_content_description">その他のオプション</string>

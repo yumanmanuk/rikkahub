@@ -957,6 +957,8 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="setting_tts_page_emotion_description">음성 합성 감정 스타일</string>
   <string name="setting_tts_page_model">모델</string>
   <string name="setting_tts_page_model_description">사용할 TTS 모델</string>
+  <string name="setting_tts_page_stream_description">호환되는 모델에 대해 스트리밍 합성을 사용합니다(예: speech-2.6-turbo). speech-2.8 시리즈는 끄세요.</string>
+  <string name="setting_tts_page_stream">스트리밍</string>
   <string name="setting_tts_page_model_placeholder_gemini">gemini-2.5-flash-preview-tts</string>
   <string name="setting_tts_page_model_placeholder_openai">gpt-4o-mini-tts</string>
   <string name="setting_tts_page_more_options_content_description">추가 옵션</string>
