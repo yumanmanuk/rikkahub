@@ -133,6 +133,7 @@ class SettingsStore(
         // ASR
         val ASR_PROVIDERS = stringPreferencesKey("asr_providers")
         val SELECTED_ASR_PROVIDER = stringPreferencesKey("selected_asr_provider")
+        val ASR_ENABLED = booleanPreferencesKey("asr_enabled")
 
         // Web Server
         val WEB_SERVER_ENABLED = booleanPreferencesKey("web_server_enabled")
@@ -235,6 +236,7 @@ class SettingsStore(
                     JsonInstant.decodeFromString(it)
                 } ?: emptyList(),
                 selectedASRProviderId = preferences[SELECTED_ASR_PROVIDER]?.let { Uuid.parse(it) },
+                asrEnabled = preferences[ASR_ENABLED] != false,
                 modeInjections = preferences[MODE_INJECTIONS]?.let {
                     JsonInstant.decodeFromString(it)
                 } ?: emptyList(),
@@ -414,6 +416,7 @@ class SettingsStore(
             settings.selectedASRProviderId?.let {
                 preferences[SELECTED_ASR_PROVIDER] = it.toString()
             } ?: preferences.remove(SELECTED_ASR_PROVIDER)
+            preferences[ASR_ENABLED] = settings.asrEnabled
             preferences[MODE_INJECTIONS] = JsonInstant.encodeToString(settings.modeInjections)
             preferences[LOREBOOKS] = JsonInstant.encodeToString(settings.lorebooks)
             preferences[QUICK_MESSAGES] = JsonInstant.encodeToString(settings.quickMessages)
@@ -425,6 +428,9 @@ class SettingsStore(
             preferences[BACKUP_REMINDER_CONFIG] = JsonInstant.encodeToString(settings.backupReminderConfig)
             preferences[LAUNCH_COUNT] = settings.launchCount
             preferences[SPONSOR_ALERT_DISMISSED_AT] = settings.sponsorAlertDismissedAt
+            // 显式写入 DataStore 版本号，防止恢复 settings.json 后 VERSION 缺失
+            // 导致 PreferenceStoreV3Migration 在每次启动时反复执行
+            preferences[VERSION] = 3
         }
     }
 
@@ -548,6 +554,7 @@ data class Settings(
     val selectedTTSProviderId: Uuid = DEFAULT_SYSTEM_TTS_ID,
     val asrProviders: List<ASRProviderSetting> = emptyList(),
     val selectedASRProviderId: Uuid? = null,
+    val asrEnabled: Boolean = true,
     val modeInjections: List<PromptInjection.ModeInjection> = DEFAULT_MODE_INJECTIONS,
     val lorebooks: List<Lorebook> = emptyList(),
     val quickMessages: List<QuickMessage> = emptyList(),
@@ -685,6 +692,7 @@ fun Settings.getSelectedTTSProvider(): TTSProviderSetting? {
 }
 
 fun Settings.getSelectedASRProvider(): ASRProviderSetting? {
+    if (!asrEnabled) return null
     return selectedASRProviderId?.let { id ->
         asrProviders.find { it.id == id }
     } ?: asrProviders.firstOrNull()

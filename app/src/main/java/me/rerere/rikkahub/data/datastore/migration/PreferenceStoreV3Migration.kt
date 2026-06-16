@@ -9,7 +9,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonArray
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.utils.JsonInstant
-import kotlin.uuid.Uuid
+import java.util.UUID
 
 class PreferenceStoreV3Migration : DataMigration<Preferences> {
     override suspend fun shouldMigrate(currentData: Preferences): Boolean {
@@ -75,12 +75,15 @@ internal fun migrateAssistantsQuickMessages(
                 val oldQuickMessages = assistantObj["quickMessages"] as? JsonArray
                     ?: return@map assistant
 
-                // 为每条旧消息注入新生成的 id
-                val messagesWithIds = oldQuickMessages.map { element ->
-                    val obj = element as? JsonObject ?: return@map element
-                    val newId = Uuid.random().toString()
+                // 为每条旧消息使用稳定 UUID：基于 assistantId+索引+内容 hash 派生
+                // 同一份 assistant JSON 多次迁移得到完全相同的 id，避免重复恢复时产生重复条目
+                val assistantId = assistantObj["id"]?.toString()?.trim('"') ?: "unknown"
+                val messagesWithIds = oldQuickMessages.mapIndexed { index, element ->
+                    val obj = element as? JsonObject ?: return@mapIndexed element
+                    val contentText = obj["content"]?.toString() ?: ""
+                    val stableId = stableQuickMessageId(assistantId, index, contentText)
                     JsonObject(obj.toMutableMap().apply {
-                        put("id", JsonPrimitive(newId))
+                        put("id", JsonPrimitive(stableId))
                     })
                 }
 
@@ -105,4 +108,17 @@ internal fun migrateAssistantsQuickMessages(
 
         JsonInstant.encodeToString(migratedAssistants) to JsonArray(allQuickMessages)
     }.getOrElse { assistantsJson to JsonArray(emptyList()) }
+}
+
+/**
+ * 基于内容派生稳定 UUID，确保同一份数据多次迁移产生相同 id。
+ *
+ * 使用 UUID.nameUUIDFromBytes（UUID v3 / MD5）：
+ * - [assistantId] 前缀避免不同 assistant 的 id 冲突
+ * - [index] 保留消息顺序
+ * - [contentText] hashCode 提供内容熵
+ */
+internal fun stableQuickMessageId(assistantId: String, index: Int, contentText: String): String {
+    val raw = "$assistantId|$index|${contentText.hashCode()}"
+    return UUID.nameUUIDFromBytes(raw.toByteArray(Charsets.UTF_8)).toString()
 }
