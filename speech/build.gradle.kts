@@ -62,6 +62,14 @@ dependencies {
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.material3)
 
+    // Google Cloud Speech-to-Text V2 (Chirp 3 ASR) — pre-generated stub + gRPC
+    // 排除 grpc-netty-shaded（在 Android 上不可用），改用 grpc-okhttp 作为传输层
+    implementation(libs.google.cloud.speech) {
+        exclude(group = "io.grpc", module = "grpc-netty-shaded")
+    }
+    // Android 上 gRPC 必须显式依赖 okhttp 传输层，否则抛出 No functional channel service provider found
+    implementation(libs.grpc.okhttp)
+
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)

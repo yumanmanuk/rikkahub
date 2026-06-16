@@ -66,6 +66,9 @@ slf4j = "2.0.17"
 sqlite-android = "-SNAPSHOT"
 termux = "0.118.0"
 diffutils = "4.17"
+google-cloud-speech = "4.56.0"
+grpc-okhttp = "1.73.0"
+desugar-jdk-libs = "2.1.5"
 
 [libraries]
 androidx-camera-core = { module = "androidx.camera:camera-core", version.ref = "cameraCore" }
@@ -183,6 +186,9 @@ slf4j-android = { module = "uk.uuid.slf4j:slf4j-android", version = "2.0.17-0" }
 sqlite-android = { module = "com.github.rikkahub:sqlite-android", version.ref = "sqlite-android" }
 termux-terminal-view = { module = "com.termux.termux-app:terminal-view", version.ref = "termux" }
 guava-listenablefuture = { module = "com.google.guava:listenablefuture", version = "9999.0-empty-to-avoid-conflict-with-guava" }
+google-cloud-speech = { module = "com.google.cloud:google-cloud-speech", version.ref = "google-cloud-speech" }
+grpc-okhttp = { module = "io.grpc:grpc-okhttp", version.ref = "grpc-okhttp" }
+desugar-jdk-libs = { module = "com.android.tools:desugar_jdk_libs", version.ref = "desugar-jdk-libs" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
