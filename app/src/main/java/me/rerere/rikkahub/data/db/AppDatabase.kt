@@ -23,7 +23,7 @@ import me.rerere.rikkahub.data.db.entity.MemoryEntity
 import me.rerere.rikkahub.data.db.entity.MessageNodeEntity
 import me.rerere.rikkahub.data.db.entity.WorkspaceEntity
 import me.rerere.rikkahub.data.db.migrations.Migration_16_17
-import me.rerere.rikkahub.data.db.migrations.Migration_22_23
+import me.rerere.rikkahub.data.db.migrations.Migration_20_21
 import me.rerere.rikkahub.data.db.migrations.Migration_8_9
 import me.rerere.rikkahub.utils.JsonInstant
 
@@ -53,7 +53,7 @@ import me.rerere.rikkahub.utils.JsonInstant
         AutoMigration(from = 17, to = 18),
         AutoMigration(from = 18, to = 19),
         AutoMigration(from = 19, to = 20),
-        AutoMigration(from = 20, to = 21),
+        AutoMigration(from = 20, to = 21, spec = Migration_20_21::class),
         AutoMigration(from = 21, to = 22),
         AutoMigration(from = 22, to = 23, spec = Migration_22_23::class),
     ]
