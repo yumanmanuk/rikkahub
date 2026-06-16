@@ -27,6 +27,7 @@ import me.rerere.asr.ASRState
 import me.rerere.asr.ASRStatus
 import me.rerere.asr.appendAmplitude
 import me.rerere.asr.calculateRmsAmplitude
+import me.rerere.common.android.Logging
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -301,6 +302,11 @@ class VolcengineASRController(
 
     private fun setError(message: String) {
         _state.update { it.copy(status = ASRStatus.Error, errorMessage = message) }
+        Logging.logError(
+            tag = TAG,
+            title = "ASR error",
+            message = message
+        )
     }
 
     private fun releaseRecorder() {

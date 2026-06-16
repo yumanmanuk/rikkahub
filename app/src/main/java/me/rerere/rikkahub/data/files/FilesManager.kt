@@ -135,9 +135,11 @@ class FilesManager(
             }.onFailure {
                 it.printStackTrace()
                 Log.e(TAG, "createChatFilesByContents: Failed to save file from $uri", it)
-                Logging.log(
-                    TAG,
-                    "createChatFilesByContents: Failed to save file from $uri ${it.message} | ${it.stackTraceToString()}"
+                Logging.logError(
+                    tag = TAG,
+                    title = "createChatFilesByContents: Failed to save file",
+                    message = "Failed to save file from $uri: ${it.message}",
+                    throwable = it
                 )
             }
         }
@@ -413,9 +415,11 @@ class FilesManager(
                 )
             }.onFailure {
                 Log.e(TAG, "trackManagedFile: Failed to track file ${file.absolutePath}", it)
-                Logging.log(
-                    TAG,
-                    "trackManagedFile: Failed to track file ${file.absolutePath} ${it.message} | ${it.stackTraceToString()}"
+                Logging.logError(
+                    tag = TAG,
+                    title = "trackManagedFile: Failed to track file",
+                    message = "Failed to track file ${file.absolutePath}: ${it.message}",
+                    throwable = it
                 )
             }
         }

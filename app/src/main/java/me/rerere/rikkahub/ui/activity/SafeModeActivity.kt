@@ -55,6 +55,7 @@ import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.datastore.getCurrentAssistant
 import me.rerere.rikkahub.ui.hooks.writeStringPreference
 import me.rerere.rikkahub.ui.theme.RikkahubTheme
+import me.rerere.common.android.Logging
 import me.rerere.rikkahub.RouteActivity
 import me.rerere.rikkahub.utils.CrashHandler
 import org.koin.android.ext.android.inject
@@ -68,6 +69,14 @@ class SafeModeActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         val stackTrace = CrashHandler.getStackTrace(this)
         CrashHandler.clearCrashed(this)
+        // 安全模式下展示崩溃栈时，同时写入错误日志（崩溃时写入可能因进程终止而丢失）
+        stackTrace?.let {
+            Logging.logError(
+                tag = "CrashHandler",
+                title = "Crash recovered in safe mode",
+                message = it
+            )
+        }
         enableEdgeToEdge()
         setContent {
             RikkahubTheme {

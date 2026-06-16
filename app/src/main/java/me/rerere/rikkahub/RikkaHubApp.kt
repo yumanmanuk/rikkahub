@@ -25,6 +25,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.first
+import me.rerere.common.android.Logging
 import me.rerere.common.android.appTempFolder
 import com.whl.quickjs.android.QuickJSLoader
 import me.rerere.rikkahub.di.appModule
@@ -256,6 +257,12 @@ class AppScope : CoroutineScope by CoroutineScope(
         + Dispatchers.Main
         + CoroutineName("AppScope")
         + CoroutineExceptionHandler { _, e ->
-        Log.e(TAG, "AppScope exception", e)
-    }
+            Log.e(TAG, "AppScope exception", e)
+            Logging.logError(
+                tag = TAG,
+                title = "AppScope exception",
+                message = e.message ?: "Unknown exception",
+                throwable = e
+            )
+        }
 )
