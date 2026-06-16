@@ -113,6 +113,7 @@ import me.rerere.rikkahub.ui.context.LocalSettings
 import me.rerere.rikkahub.ui.context.LocalToaster
 import me.rerere.rikkahub.ui.hooks.ChatInputState
 import me.rerere.rikkahub.utils.SoundEffectPlayer
+import me.rerere.rikkahub.data.ai.mcp.McpManager
 import org.koin.compose.koinInject
 import kotlin.time.Duration.Companion.seconds
 
