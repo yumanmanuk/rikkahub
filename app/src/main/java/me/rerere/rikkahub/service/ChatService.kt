@@ -1063,6 +1063,11 @@ class ChatService(
             )
         }.onFailure {
             it.printStackTrace()
+            addError(
+                error = it,
+                conversationId = conversationId,
+                title = context.getString(R.string.error_title_generate_suggestion)
+            )
         }
     }
 

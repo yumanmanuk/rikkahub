@@ -517,14 +517,14 @@ class BattleService(
                 )
             )
         }
-        mcpManager.getAllAvailableTools().forEach { (serverId, mcpTool) ->
+        mcpManager.getAllAvailableTools().forEach { (serverId, serverName, tool) ->
             add(
                 Tool(
-                    name = "mcp__" + mcpTool.name,
-                    description = mcpTool.description ?: "",
-                    parameters = { mcpTool.inputSchema },
-                    needsApproval = mcpTool.needsApproval,
-                    execute = { mcpManager.callTool(serverId, mcpTool.name, it.jsonObject) },
+                    name = "mcp__${serverName}__${tool.name}",
+                    description = tool.description ?: "",
+                    parameters = { tool.inputSchema },
+                    needsApproval = { tool.needsApproval },
+                    execute = { mcpManager.callTool(serverId, tool.name, it.jsonObject) },
                 )
             )
         }
