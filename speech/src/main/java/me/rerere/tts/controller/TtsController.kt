@@ -448,7 +448,9 @@ class TtsController(
      * - SystemTTS: 大 chunk (200字) + 跨段落归并，减少 engine.stop()/synthesize 次数
      * - VertexCloud Chirp3/Studio: 极小 chunk (30字/90字节)，Chirp3-HD 单句硬限 ~100 byte
      * - VertexCloud 其他语音: 大 chunk (200字)，标准 voice 上限宽松
-     * - Gemini/GeminiVertex: 中等 chunk (100字)，减少请求次数除缓 429
+     * - Gemini/GeminiVertex: 中等 chunk (120字)，减少请求次数缓解 429
+     * - MiMo: 较大 chunk (120字)，限流额度充足，减少分片数量降低段落间等待
+     * - MiniMax: 较大 chunk (120字)，speech-2.8 系列限流宽松，降低分片数量
      * - 其他云端: 80字
      */
     private fun createChunker(provider: TTSProviderSetting): TextChunker {
@@ -467,7 +469,13 @@ class TtsController(
             }
             is TTSProviderSetting.Gemini,
             is TTSProviderSetting.GeminiVertex ->
-                // 100字/段：优先保证合成速度，减少首字延迟
+                // 120字/段：优先保证合成速度，减少首字延迟
+                TextChunker(maxChunkLength = 120)
+            is TTSProviderSetting.MiMo ->
+                // 限流额度充足，使用较大 chunk 降低分片总数，减少段落间等待
+                TextChunker(maxChunkLength = 120)
+            is TTSProviderSetting.MiniMax ->
+                // speech-2.8 系列限流宽松，使用较大 chunk 降低分片数量
                 TextChunker(maxChunkLength = 120)
             else ->
                 TextChunker(maxChunkLength = 80)
@@ -476,10 +484,16 @@ class TtsController(
 
     /**
      * 根据 Provider 类型返回预取窗口大小。
-     * GeminiVertex 降为 1 ，减少并发 HTTP 请求起到降低 429 概率的作用。
+     * - MiMo: 4，限流额度大，激进预取减少段落间等待
+     * - MiniMax: 5，ultra 套餐限流最宽松，激进预取最大化减少卡顿
+     * - Gemini/GeminiVertex: 1，并发控制降低 429 概率
+     * - 其他: 2
      */
     private fun getPrefetchCount(provider: TTSProviderSetting): Int {
         return when (provider) {
+            is TTSProviderSetting.MiMo -> 4
+            is TTSProviderSetting.MiniMax -> 5
+            is TTSProviderSetting.Gemini,
             is TTSProviderSetting.GeminiVertex -> 1
             else -> 2
         }

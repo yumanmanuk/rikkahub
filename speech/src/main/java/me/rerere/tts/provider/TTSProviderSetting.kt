@@ -82,10 +82,14 @@ sealed class TTSProviderSetting {
         override var name: String = "MiniMax TTS",
         val apiKey: String = "",
         val baseUrl: String = "https://api.minimaxi.com/v1",
-        val model: String = "speech-2.6-turbo",
+        val model: String = "speech-2.8-turbo",
         val voiceId: String = "female-shaonv",
         val emotion: String = "calm",
         val speed: Float = 1.0f,
+        // 音量，取值范围 (0, 10]，默认 1.0
+        val vol: Float = 1.0f,
+        // 语调，取值范围 [-12, 12]，默认 0
+        val pitch: Int = 0,
         val stream: Boolean = true
     ) : TTSProviderSetting() {
         override fun copyProvider(

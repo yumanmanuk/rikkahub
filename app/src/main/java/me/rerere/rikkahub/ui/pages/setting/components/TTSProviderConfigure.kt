@@ -460,18 +460,48 @@ private fun MiniMaxTTSConfiguration(
     }
 
     // Model
+    var modelExpanded by remember { mutableStateOf(false) }
+    val models = listOf(
+        "speech-2.8-turbo",
+        "speech-2.8-hd"
+    )
+
     FormItem(
         label = { Text(stringResource(R.string.setting_tts_page_model)) },
         description = { Text(stringResource(R.string.setting_tts_page_model_description)) }
     ) {
-        OutlinedTextField(
-            value = setting.model,
-            onValueChange = { newModel ->
-                onValueChange(setting.copy(model = newModel))
-            },
-            modifier = Modifier.fillMaxWidth(),
-            placeholder = { Text("speech-2.6-turbo") }
-        )
+        ExposedDropdownMenuBox(
+            expanded = modelExpanded,
+            onExpandedChange = { modelExpanded = !modelExpanded }
+        ) {
+            OutlinedTextField(
+                value = setting.model,
+                onValueChange = { newModel ->
+                    onValueChange(setting.copy(model = newModel))
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .menuAnchor(MenuAnchorType.PrimaryEditable),
+                placeholder = { Text("speech-2.8-turbo") },
+                trailingIcon = {
+                    ExposedDropdownMenuDefaults.TrailingIcon(expanded = modelExpanded)
+                }
+            )
+            ExposedDropdownMenu(
+                expanded = modelExpanded,
+                onDismissRequest = { modelExpanded = false }
+            ) {
+                models.forEach { model ->
+                    DropdownMenuItem(
+                        text = { Text(model) },
+                        onClick = {
+                            modelExpanded = false
+                            onValueChange(setting.copy(model = model))
+                        }
+                    )
+                }
+            }
+        }
     }
 
     // Stream
@@ -491,17 +521,28 @@ private fun MiniMaxTTSConfiguration(
     // Voice ID
     var voiceIdExpanded by remember { mutableStateOf(false) }
     val voiceIds = listOf(
-        "male-qn-qingse",
-        "male-qn-jingying",
-        "male-qn-badao",
-        "male-qn-daxuesheng",
-        "female-shaonv",
-        "female-yujie",
-        "female-chengshu",
-        "female-tianmei",
-        "audiobook_male_1",
-        "audiobook_female_1",
-        "cartoon_pig"
+        // 少女 / 甜美系
+        "female-shaonv" to "少女音色",
+        "female-shaonv-jingpin" to "少女音色-beta",
+        "female-tianmei" to "甜美女性",
+        "female-tianmei-jingpin" to "甜美女性-beta",
+        "Chinese (Mandarin)_Sweet_Lady" to "甜美女声",
+        "Chinese (Mandarin)_Warm_Girl" to "温暖少女",
+        "Chinese (Mandarin)_Crisp_Girl" to "清脆少女",
+        "Chinese (Mandarin)_Soft_Girl" to "柔和少女",
+        "Chinese (Mandarin)_Warm_Bestie" to "温暖闺蜜",
+        "tianxin_xiaoling" to "甜心小玲",
+        "qiaopi_mengmei" to "俏皮萌妹",
+        "diadia_xuemei" to "嗲嗲学妹",
+        // 御姐 / 气场系
+        "female-yujie" to "御姐音色",
+        "female-yujie-jingpin" to "御姐音色-beta",
+        "wumei_yujie" to "妩媚御姐",
+        "Chinese (Mandarin)_Mature_Woman" to "傲娇御姐",
+        "Arrogant_Miss" to "嚣张小姐",
+        // 知性 / 学姐系
+        "danya_xuejie" to "淡雅学姐",
+        "Chinese (Mandarin)_Gentle_Senior" to "温柔学姐"
     )
 
     FormItem(
@@ -528,9 +569,9 @@ private fun MiniMaxTTSConfiguration(
                 expanded = voiceIdExpanded,
                 onDismissRequest = { voiceIdExpanded = false }
             ) {
-                voiceIds.forEach { voiceId ->
+                voiceIds.forEach { (voiceId, voiceName) ->
                     DropdownMenuItem(
-                        text = { Text(voiceId) },
+                        text = { Text("$voiceName ($voiceId)") },
                         onClick = {
                             voiceIdExpanded = false
                             onValueChange(setting.copy(voiceId = voiceId))
@@ -543,7 +584,8 @@ private fun MiniMaxTTSConfiguration(
 
     // Emotion
     var emotionExpanded by remember { mutableStateOf(false) }
-    val emotions = listOf("calm", "happy", "sad", "angry", "fearful", "disgusted", "surprised")
+    // speech-2.8 系列支持的情绪（whisper 仅 2.6 支持，已排除）
+    val emotions = listOf("calm", "happy", "sad", "angry", "fearful", "disgusted", "surprised", "fluent")
 
     FormItem(
         label = { Text(stringResource(R.string.setting_tts_page_emotion)) },
@@ -590,12 +632,47 @@ private fun MiniMaxTTSConfiguration(
         OutlinedNumberInput(
             value = setting.speed,
             onValueChange = { newSpeed ->
-                if (newSpeed in 0.25f..4.0f) {
+                if (newSpeed in 0.5f..2.0f) {
                     onValueChange(setting.copy(speed = newSpeed))
                 }
             },
             modifier = Modifier.fillMaxWidth(),
             label = stringResource(R.string.setting_tts_page_speed)
+        )
+    }
+
+    // Vol（音量）
+    FormItem(
+        label = { Text("音量 (Vol)") },
+        description = { Text("合成音频的音量，范围 (0, 10]，默认 1.0") }
+    ) {
+        OutlinedNumberInput(
+            value = setting.vol,
+            onValueChange = { newVol ->
+                if (newVol > 0f && newVol <= 10f) {
+                    onValueChange(setting.copy(vol = newVol))
+                }
+            },
+            modifier = Modifier.fillMaxWidth(),
+            label = "Vol"
+        )
+    }
+
+    // Pitch（语调）
+    FormItem(
+        label = { Text("语调 (Pitch)") },
+        description = { Text("合成音频的语调，范围 [-12, 12]，默认 0") }
+    ) {
+        OutlinedNumberInput(
+            value = setting.pitch.toFloat(),
+            onValueChange = { newPitch ->
+                val intPitch = newPitch.toInt()
+                if (intPitch in -12..12) {
+                    onValueChange(setting.copy(pitch = intPitch))
+                }
+            },
+            modifier = Modifier.fillMaxWidth(),
+            label = "Pitch"
         )
     }
 }
