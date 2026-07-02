@@ -296,23 +296,21 @@ private fun dumpAst(node: ASTNode, text: String, indent: String = "") {
 }
 
 object HeaderStyle {
-    private const val LINE_HEIGHT_RATIO = 1.25f
-
     fun fromLevel(level: Int, fontSizeRatio: Float): TextStyle {
-        val fontSize = when (level) {
-            1 -> 24.sp
-            2 -> 22.sp
-            3 -> 20.sp
-            4 -> 18.sp
-            5 -> 16.sp
-            else -> 14.sp
-        } * fontSizeRatio
+        val (fontSize, fontWeight, lineHeight) = when (level) {
+            1 -> Triple(22.sp, FontWeight.SemiBold, 30.sp)
+            2 -> Triple(20.sp, FontWeight.SemiBold, 28.sp)
+            3 -> Triple(18.sp, FontWeight.Medium, 26.sp)
+            4 -> Triple(16.sp, FontWeight.Medium, 24.sp)
+            5 -> Triple(15.sp, FontWeight.Medium, 22.sp)
+            else -> Triple(14.sp, FontWeight.Medium, 20.sp)
+        }
 
         return TextStyle(
             fontStyle = FontStyle.Normal,
-            fontWeight = FontWeight.Bold,
-            fontSize = fontSize,
-            lineHeight = fontSize * LINE_HEIGHT_RATIO,
+            fontWeight = fontWeight,
+            fontSize = fontSize * fontSizeRatio,
+            lineHeight = lineHeight,
         )
     }
 
@@ -390,7 +388,7 @@ private fun MarkdownNode(
                                 node = node,
                                 content = content,
                                 onClickCitation = onClickCitation,
-                                modifier = modifier.padding(top = headingTopPadding, bottom = headingBottomPadding),
+                                modifier = modifier.padding(top = headingPadding, bottom = headingPadding),
                                 trim = true,
                             )
                         }
@@ -808,7 +806,7 @@ private fun Paragraph(
     val latexColorArgb = LocalContentColor.current.toArgb()
     FlowRow(
         modifier = modifier.then(
-            if (node.nextSibling() != null) Modifier.padding(bottom = LocalTextStyle.current.fontSize.toDp() * 1.8f) // [FORK] 段落间距加大
+            if (node.nextSibling() != null) Modifier.padding(bottom = LocalTextStyle.current.fontSize.toDp() * 1.5f)
             else Modifier
         )
     ) {
@@ -840,7 +838,7 @@ private fun Paragraph(
             overflow = TextOverflow.Visible,
             color = softTextColor,
             style = LocalTextStyle.current.copy(
-                lineHeight = if (hasInlineMath && enableLatexRendering) TextUnit.Unspecified else 1.75.em
+                lineHeight = if (hasInlineMath && enableLatexRendering) TextUnit.Unspecified else 1.6.em
             )
         )
     }

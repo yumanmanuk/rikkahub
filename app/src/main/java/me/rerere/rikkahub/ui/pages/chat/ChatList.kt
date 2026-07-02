@@ -368,9 +368,9 @@ private fun ChatListNormal(
         ChatFontProvider(displaySetting = settings.displaySetting) {
             LazyColumn(
                 state = state,
-                contentPadding = PaddingValues(16.dp) + PaddingValues(bottom = 32.dp + innerPadding.calculateBottomPadding()),
+                contentPadding = PaddingValues(horizontal = 24.dp, vertical = 16.dp) + PaddingValues(bottom = 32.dp + innerPadding.calculateBottomPadding()),
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(12.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
                 modifier = Modifier
                     .fillMaxSize()
                     .hazeSource(state = hazeState)
@@ -610,6 +610,7 @@ private fun ChatListNormal(
                     state = state,
                     userMessageIndices = userMessageIndices,
                     onDismissJumper = onDismissJumper,
+                    onDisableAutoFollow = { shouldAutoFollow = false },
                 )
             }
 
@@ -998,6 +999,7 @@ private fun BoxScope.MessageJumper(
     state: LazyListState,
     userMessageIndices: List<Int> = emptyList(),
     onDismissJumper: () -> Unit = {},
+    onDisableAutoFollow: () -> Unit = {},
 ) {
     AnimatedVisibility(
         visible = show,
@@ -1037,6 +1039,8 @@ private fun BoxScope.MessageJumper(
             // 上一个提问（不关闭导航栏）
             Surface(
                 onClick = {
+                    // 手动跳转时停止自动贴底，防止被 auto-follow 立即拉回底部
+                    onDisableAutoFollow()
                     scope.launch {
                         val current = state.firstVisibleItemIndex
                         // 找小于当前位置的最大 USER index
@@ -1062,6 +1066,8 @@ private fun BoxScope.MessageJumper(
             // 下一个提问（不关闭导航栏）
             Surface(
                 onClick = {
+                    // 手动跳转时停止自动贴底，防止被 auto-follow 立即拉回底部
+                    onDisableAutoFollow()
                     scope.launch {
                         val current = state.firstVisibleItemIndex
                         // 找大于当前位置的最小 USER index
