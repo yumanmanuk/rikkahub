@@ -308,9 +308,10 @@ class ConversationRepository(
             assistantId = conversation.assistantId.toString(),
             chatSuggestions = JsonInstant.encodeToString(conversation.chatSuggestions),
             isPinned = conversation.isPinned,
-            customSystemPrompt = conversation.customSystemPrompt ?: "",
+            conversationParams = JsonInstant.encodeToString(conversation.conversationParams),
             modeInjectionIds = JsonInstant.encodeToString(conversation.modeInjectionIds),
             lorebookIds = JsonInstant.encodeToString(conversation.lorebookIds),
+            conversationTagId = conversation.conversationTagId?.toString() ?: "",
             workspaceCwd = conversation.workspaceCwd ?: "",
             folderId = conversation.folderId?.toString() ?: "",
         )
@@ -329,9 +330,12 @@ class ConversationRepository(
             assistantId = Uuid.parse(conversationEntity.assistantId),
             chatSuggestions = JsonInstant.decodeFromString(conversationEntity.chatSuggestions),
             isPinned = conversationEntity.isPinned,
-            customSystemPrompt = conversationEntity.customSystemPrompt.ifEmpty { null },
+            conversationParams = runCatching {
+                JsonInstant.decodeFromString<ConversationParams>(conversationEntity.conversationParams)
+            }.getOrDefault(ConversationParams()),
             modeInjectionIds = JsonInstant.decodeFromString(conversationEntity.modeInjectionIds),
             lorebookIds = JsonInstant.decodeFromString(conversationEntity.lorebookIds),
+            conversationTagId = conversationEntity.conversationTagId?.takeIf { it.isNotBlank() }?.let { Uuid.parse(it) },
             workspaceCwd = conversationEntity.workspaceCwd.ifEmpty { null },
             folderId = conversationEntity.folderId.ifEmpty { null }?.let { Uuid.parse(it) },
         )

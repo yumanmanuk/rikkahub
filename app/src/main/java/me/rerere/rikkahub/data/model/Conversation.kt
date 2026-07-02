@@ -58,6 +58,7 @@ data class Conversation(
     val createAt: Instant = Instant.now(),
     @Serializable(with = InstantSerializer::class)
     val updateAt: Instant = Instant.now(),
+    // [FORK] v24 起由 conversationParams.systemPrompt 替代，保留作向后兼容
     val customSystemPrompt: String? = null,
     val modeInjectionIds: Set<Uuid> = emptySet(),
     val lorebookIds: Set<Uuid> = emptySet(),
@@ -65,6 +66,10 @@ data class Conversation(
     val workspaceCwd: String? = null,
     // 所属文件夹（助手内分组），null 表示未归入任何文件夹
     val folderId: Uuid? = null,
+    // [FORK] 对话专属参数（v24 新增）：覆盖助手级别的 temperature/topP/systemPrompt 等
+    val conversationParams: ConversationParams = ConversationParams(),
+    // [FORK] 标签 ID
+    val conversationTagId: Uuid? = null,
     @Transient
     val newConversation: Boolean = false,
     @Transient
