@@ -730,17 +730,20 @@ private fun ListItemNode(
                     modifier = Modifier.alignByBaseline(),
                     color = MaterialTheme.colorScheme.primary,
                 )
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    itemVerticalAlignment = Alignment.CenterVertically,
-                ) {
-                    directContent.fastForEach { contentChild ->
-                        MarkdownNode(
-                            node = contentChild,
-                            content = content,
-                            onClickCitation = onClickCitation,
-                            listLevel = level,
-                        )
+                // [FORK] 列表项行距与正文段落保持一致
+                ProvideTextStyle(LocalTextStyle.current.copy(lineHeight = 2.0.em)) {
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        itemVerticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        directContent.fastForEach { contentChild ->
+                            MarkdownNode(
+                                node = contentChild,
+                                content = content,
+                                onClickCitation = onClickCitation,
+                                listLevel = level,
+                            )
+                        }
                     }
                 }
             }
@@ -838,7 +841,7 @@ private fun Paragraph(
             overflow = TextOverflow.Visible,
             color = softTextColor,
             style = LocalTextStyle.current.copy(
-                lineHeight = if (hasInlineMath && enableLatexRendering) TextUnit.Unspecified else 1.75.em
+                lineHeight = if (hasInlineMath && enableLatexRendering) TextUnit.Unspecified else 2.1.em
             )
         )
     }

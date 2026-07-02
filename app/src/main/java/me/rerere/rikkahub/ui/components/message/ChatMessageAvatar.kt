@@ -99,7 +99,7 @@ fun ChatMessageAssistantAvatar(
             } else if (effectiveModel != null) {
                 if (showIcon) {
                     AutoAIIcon(
-                        name = model.modelId,
+                        name = effectiveModel.modelId,
                         modifier = Modifier.size(28.dp),
                         loading = loading
                     )
@@ -111,7 +111,7 @@ fun ChatMessageAssistantAvatar(
                 ) {
                     if (settings.displaySetting.showModelName) {
                         Text(
-                            text = model.displayName,
+                            text = effectiveModel.displayName,
                             style = MaterialTheme.typography.labelLargeEmphasized,
                             maxLines = 1,
                         )

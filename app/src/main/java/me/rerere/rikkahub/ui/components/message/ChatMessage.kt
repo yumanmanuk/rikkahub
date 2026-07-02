@@ -125,9 +125,6 @@ fun ChatMessage(
     onToolApproval: ((toolCallId: String, approved: Boolean, reason: String) -> Unit)? = null,
     onToolAnswer: ((toolCallId: String, answer: String) -> Unit)? = null,
     onScrollToQuestion: (() -> Unit)? = null,
-    // [FORK] 对话专属记忆操作
-    onExtractMemory: ((UIMessage) -> Unit)? = null,
-    onSaveAsMemory: ((String) -> Unit)? = null,
     // [FORK] 固定到上下文
     isPinned: Boolean = false,
     onTogglePin: (() -> Unit)? = null,
@@ -172,7 +169,8 @@ fun ChatMessage(
                 )
             }
         }
-        // [FORK] 固定到上下文：USER 消息被 pin 时，在气泡右上角显示锁徽章
+        // [FORK] 固定到上下文：被 pin 时在气泡角落显示钉子徽章
+        // USER 消息：右上角；ASSISTANT 消息：右下角
         // Box 提供 overlay 能力；内部必须有 Column 保证 MessagePartsBlock 的多个子项纵向排列
         Box {
             Column(
@@ -200,11 +198,15 @@ fun ChatMessage(
                     }
                 }
             }
-            if (message.role == MessageRole.USER && isPinned) {
+            if (isPinned) {
+                // USER 消息：钉子徽章显示在气泡右上角；ASSISTANT 消息：显示在气泡右下角
+                val alignment = if (message.role == MessageRole.USER) Alignment.TopEnd else Alignment.BottomEnd
+                val offsetX = 4.dp
+                val offsetY = if (message.role == MessageRole.USER) (-4).dp else 4.dp
                 Box(
                     modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .offset(x = 4.dp, y = (-4).dp)
+                        .align(alignment)
+                        .offset(x = offsetX, y = offsetY)
                         .size(18.dp)
                         .background(
                             color = MaterialTheme.colorScheme.tertiary,
@@ -253,6 +255,7 @@ fun ChatMessage(
                     onCopy = {
                         context.copyMessageToClipboard(message)
                     },
+                    isLastMessage = lastMessage,
                 )
             }
         }
@@ -301,11 +304,6 @@ fun ChatMessage(
                     navController.navigate(Screen.WebView(content = htmlContent.base64Encode()))
                 }
             },
-            // [FORK] 对话专属记忆操作
-            onExtractMemory = if (onExtractMemory != null) {
-                { onExtractMemory(message) }
-            } else null,
-            onSaveAsMemory = onSaveAsMemory,
             // [FORK] 固定到上下文
             isPinned = isPinned,
             onTogglePin = onTogglePin,

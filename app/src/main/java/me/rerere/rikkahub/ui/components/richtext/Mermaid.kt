@@ -297,3 +297,26 @@ private fun buildMermaidHtml(
         </html>
     """.trimIndent()
 }
+
+/**
+ * 预处理 Mermaid 代码：去除首行可能残留的 "mermaid" 语言标识符等噪声
+ */
+private fun preprocessMermaidCode(code: String): String {
+    val lines = code.trimIndent().lines()
+    // 如果第一行仅为 "mermaid" 标识符，则移除
+    return if (lines.isNotEmpty() && lines.first().trim().equals("mermaid", ignoreCase = true)) {
+        lines.drop(1).joinToString("\n")
+    } else {
+        code.trimIndent()
+    }
+}
+
+/**
+ * 清理 Mermaid 代码：移除可能导致 HTML 注入或解析错误的字符
+ */
+private fun sanitizeMermaidCode(code: String): String {
+    // 移除 script 标签等危险内容（防注入）
+    return code
+        .replace(Regex("<script[^>]*>.*?</script>", RegexOption.IGNORE_CASE), "")
+        .replace(Regex("<[^>]+>"), "")
+}

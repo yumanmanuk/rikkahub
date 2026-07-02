@@ -32,7 +32,6 @@ import androidx.compose.material3.SheetValue
 import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -42,17 +41,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.delay
+import androidx.compose.ui.graphics.Color
 import kotlinx.datetime.toJavaLocalDateTime
 import me.rerere.ai.core.MessageRole
 import me.rerere.ai.provider.Model
 import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.hugeicons.HugeIcons
-import me.rerere.hugeicons.stroke.Upload02
+import me.rerere.hugeicons.stroke.ArrowUpBig
 import me.rerere.hugeicons.stroke.Copy01
 import me.rerere.hugeicons.stroke.Delete01
 import me.rerere.hugeicons.stroke.Edit01
@@ -68,24 +66,29 @@ import me.rerere.hugeicons.stroke.TextSelection
 import me.rerere.hugeicons.stroke.Translate
 import me.rerere.hugeicons.stroke.VolumeHigh
 import me.rerere.hugeicons.stroke.WebDesign01
-// [FORK] 对话专属记忆操作图标
-import me.rerere.hugeicons.stroke.AiBrain01
-import me.rerere.hugeicons.stroke.NoteAdd
 // [FORK] 固定到上下文图标
 import me.rerere.hugeicons.stroke.Pin02
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.OutlinedTextField
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.model.MessageNode
 import me.rerere.rikkahub.ui.components.ui.RikkaConfirmDialog
 import me.rerere.rikkahub.ui.context.LocalSettings
 import me.rerere.rikkahub.ui.context.LocalTTSState
-import me.rerere.rikkahub.utils.copyMessageToClipboard
 import me.rerere.rikkahub.utils.extractQuotedContentAsText
 import me.rerere.rikkahub.utils.toLocalString
 import me.rerere.rikkahub.utils.toMessageTimeString
 import java.util.Locale
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.rememberLazyListState
+import sh.calvin.reorderable.rememberReorderableLazyListState
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.ui.graphics.graphicsLayer
+import sh.calvin.reorderable.ReorderableItem
+import me.rerere.rikkahub.ui.components.ui.AutoAIIcon
+import me.rerere.hugeicons.stroke.DragDropVertical
+import me.rerere.rikkahub.data.datastore.findModelById
 
 @Composable
 fun ColumnScope.ChatMessageActionButtons(
@@ -100,51 +103,55 @@ fun ColumnScope.ChatMessageActionButtons(
     onToggleFavorite: (() -> Unit)? = null,
     onScrollToQuestion: (() -> Unit)? = null,
     onCopy: (() -> Unit)? = null,
+    // 是否是对话中最后一条消息，只有最后一条才显示重试按钮
+    isLastMessage: Boolean = true,
 ) {
-    val context = LocalContext.current
     val settings = LocalSettings.current
-    var isPendingDelete by remember { mutableStateOf(false) }
-    var showTranslateDialog by remember { mutableStateOf(false) }
-    var showRegenerateConfirm by remember { mutableStateOf(false) }
 
-    LaunchedEffect(isPendingDelete) {
-        if (isPendingDelete) {
-            delay(3000) // 3秒后自动取消
-            isPendingDelete = false
-        }
-    }
+    val isAssistant = message.role == MessageRole.ASSISTANT
+    val tts = LocalTTSState.current
+    val isSpeaking by tts.isSpeaking.collectAsState()
+    val isAvailable by tts.isAvailable.collectAsState()
 
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = if (isAssistant) Arrangement.Start else Arrangement.End,
     ) {
         val actionIconColor = MaterialTheme.colorScheme.onSurfaceVariant
 
-        Icon(
-            imageVector = HugeIcons.Copy01,
-            contentDescription = stringResource(R.string.copy),
-            modifier = Modifier
-                .clip(CircleShape)
-                .clickable { context.copyMessageToClipboard(message) }
-                .padding(8.dp)
-                .size(16.dp),
-            tint = actionIconColor
-        )
+        if (isAssistant) {
+            // ASSISTANT 消息按钮：向上跳转 → 重试 → 语音 → 收藏 → 对战 → 更多
 
-            Icon(
-                imageVector = HugeIcons.Refresh03,
-                contentDescription = stringResource(R.string.regenerate),
-                modifier = Modifier
-                    .clip(CircleShape)
-                    .clickable { onRegenerate() }
-                    .padding(8.dp)
-                    .size(16.dp),
-                tint = actionIconColor
-            )
+            // 向上跳转到提问处
+            if (onScrollToQuestion != null) {
+                Icon(
+                    imageVector = HugeIcons.ArrowUpBig,
+                    contentDescription = "Scroll to question",
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .clickable { onScrollToQuestion() }
+                        .padding(8.dp)
+                        .size(16.dp),
+                    tint = actionIconColor
+                )
+            }
 
-            val tts = LocalTTSState.current
-            val isSpeaking by tts.isSpeaking.collectAsState()
-            val isAvailable by tts.isAvailable.collectAsState()
+            // 只有最后一条消息才显示重试按钮
+            if (isLastMessage) {
+                Icon(
+                    imageVector = HugeIcons.Refresh03,
+                    contentDescription = stringResource(R.string.regenerate),
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .clickable { onRegenerate() }
+                        .padding(8.dp)
+                        .size(16.dp),
+                    tint = actionIconColor
+                )
+            }
+
+            // 语音播放
             Icon(
                 imageVector = if (isSpeaking) HugeIcons.StopCircle else HugeIcons.VolumeHigh,
                 contentDescription = stringResource(R.string.tts),
@@ -173,23 +180,21 @@ fun ColumnScope.ChatMessageActionButtons(
                 tint = if (isAvailable) actionIconColor else actionIconColor.copy(alpha = 0.38f)
             )
 
-            // Translation button
-            if (onTranslate != null) {
+            // 收藏
+            if (onToggleFavorite != null) {
                 Icon(
-                    imageVector = HugeIcons.Translate,
-                    contentDescription = stringResource(R.string.translate),
+                    imageVector = if (isFavorite) HugeIcons.InLove else HugeIcons.Favourite,
+                    contentDescription = "Favourite",
                     modifier = Modifier
                         .clip(CircleShape)
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = LocalIndication.current,
-                            onClick = {
-                                showTranslateDialog = true
-                            }
+                            onClick = { onToggleFavorite() }
                         )
                         .padding(8.dp)
                         .size(16.dp),
-                    tint = actionIconColor
+                    tint = if (isFavorite) Color(0xFFE53935) else actionIconColor
                 )
             }
 
@@ -221,6 +226,7 @@ fun ColumnScope.ChatMessageActionButtons(
                 }
             }
 
+            // 更多
             Icon(
                 imageVector = HugeIcons.MoreVertical,
                 contentDescription = stringResource(R.string.more_options),
@@ -254,39 +260,75 @@ fun ColumnScope.ChatMessageActionButtons(
                 node = node,
                 onUpdate = onUpdate,
             )
+        } else {
+            // USER 消息按钮：重试 → 复制 → 更多 → 分支切换器，靠右对齐
+
+            if (settings.displaySetting.showDateTimeInMessage) {
+                Text(
+                    text = message.createdAt.toJavaLocalDateTime().toMessageTimeString(),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                    maxLines = 1,
+                    modifier = Modifier.padding(horizontal = 4.dp),
+                )
+            }
+
+            // 只有最后一条消息才显示重试按钮
+            if (isLastMessage) {
+                Icon(
+                    imageVector = HugeIcons.Refresh03,
+                    contentDescription = stringResource(R.string.regenerate),
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .clickable { onRegenerate() }
+                        .padding(8.dp)
+                        .size(16.dp),
+                    tint = actionIconColor
+                )
+            }
+
+            // 复制
+            if (onCopy != null) {
+                Icon(
+                    imageVector = HugeIcons.Copy01,
+                    contentDescription = stringResource(R.string.copy),
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = LocalIndication.current,
+                            onClick = { onCopy() }
+                        )
+                        .padding(8.dp)
+                        .size(16.dp),
+                    tint = actionIconColor
+                )
+            }
+
+            // 更多
+            Icon(
+                imageVector = HugeIcons.MoreVertical,
+                contentDescription = stringResource(R.string.more_options),
+                modifier = Modifier
+                    .clip(CircleShape)
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = LocalIndication.current,
+                        onClick = { onOpenActionSheet() }
+                    )
+                    .padding(8.dp)
+                    .size(16.dp),
+                tint = actionIconColor
+            )
+
+            // 分支切换器（最右边）
+            ChatMessageBranchSelector(
+                node = node,
+                onUpdate = onUpdate,
+            )
         }
     }
 
-    // Translation dialog
-    if (showTranslateDialog && onTranslate != null) {
-        LanguageSelectionDialog(
-            onLanguageSelected = { language ->
-                showTranslateDialog = false
-                onTranslate(message, language)
-            },
-            onClearTranslation = {
-                showTranslateDialog = false
-                onClearTranslation(message)
-            },
-            onDismissRequest = {
-                showTranslateDialog = false
-            },
-        )
-    }
-
-    // Regenerate confirmation dialog
-    RikkaConfirmDialog(
-        show = showRegenerateConfirm,
-        title = stringResource(R.string.regenerate),
-        confirmText = stringResource(R.string.confirm),
-        dismissText = stringResource(R.string.cancel),
-        onConfirm = {
-            showRegenerateConfirm = false
-            onRegenerate()
-        },
-        onDismiss = { showRegenerateConfirm = false },
-        text = { Text(stringResource(R.string.regenerate_confirm_message)) }
-    )
 }
 
 @Composable
@@ -306,9 +348,6 @@ fun ChatMessageActionsSheet(
     isFavorite: Boolean = false,
     onToggleFavorite: (() -> Unit)? = null,
     onWebViewPreview: () -> Unit,
-    // [FORK] 对话专属记忆： AI 提炼和手动保存
-    onExtractMemory: (() -> Unit)? = null,
-    onSaveAsMemory: ((String) -> Unit)? = null,
     // [FORK] 固定到上下文
     isPinned: Boolean = false,
     onTogglePin: (() -> Unit)? = null,
@@ -317,9 +356,6 @@ fun ChatMessageActionsSheet(
     var showTranslateDialog by remember { mutableStateOf(false) }
     var showDeleteBeforeConfirm by remember { mutableStateOf(false) }
     var showDeleteAfterConfirm by remember { mutableStateOf(false) }
-    // [FORK] 手动保存记忆的编辑对话框
-    var showSaveMemoryDialog by remember { mutableStateOf(false) }
-    var saveMemoryContent by remember { mutableStateOf("") }
 
     ModalBottomSheet(
         onDismissRequest = onDismissRequest,
@@ -359,68 +395,6 @@ fun ChatMessageActionsSheet(
                         text = stringResource(R.string.copy),
                         style = MaterialTheme.typography.titleMedium,
                     )
-                }
-            }
-
-            // [FORK] 对话专属记忆： AI 提炼
-            if (onExtractMemory != null) {
-                Card(
-                    onClick = {
-                        onDismissRequest()
-                        onExtractMemory()
-                    },
-                    shape = MaterialTheme.shapes.medium,
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(16.dp),
-                        modifier = Modifier
-                            .padding(16.dp)
-                            .fillMaxWidth()
-                    ) {
-                        Icon(
-                            imageVector = HugeIcons.AiBrain01,
-                            contentDescription = null,
-                            modifier = Modifier.padding(4.dp)
-                        )
-                        Text(
-                            text = "AI 提炼为记忆",
-                            style = MaterialTheme.typography.titleMedium,
-                        )
-                    }
-                }
-            }
-
-            // [FORK] 对话专属记忆：手动保存
-            if (onSaveAsMemory != null) {
-                Card(
-                    onClick = {
-                        // 预填消息文本为默认值
-                        saveMemoryContent = message.parts
-                            .filterIsInstance<UIMessagePart.Text>()
-                            .joinToString("\n") { it.text }
-                            .take(2000)
-                        showSaveMemoryDialog = true
-                    },
-                    shape = MaterialTheme.shapes.medium,
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(16.dp),
-                        modifier = Modifier
-                            .padding(16.dp)
-                            .fillMaxWidth()
-                    ) {
-                        Icon(
-                            imageVector = HugeIcons.NoteAdd,
-                            contentDescription = null,
-                            modifier = Modifier.padding(4.dp)
-                        )
-                        Text(
-                            text = "手动保存为记忆",
-                            style = MaterialTheme.typography.titleMedium,
-                        )
-                    }
                 }
             }
 
@@ -724,47 +698,6 @@ fun ChatMessageActionsSheet(
         }
     }
 
-    // [FORK] 手动保存记忆编辑对话框
-    if (showSaveMemoryDialog && onSaveAsMemory != null) {
-        AlertDialog(
-            onDismissRequest = { showSaveMemoryDialog = false },
-            title = { Text("保存为记忆") },
-            text = {
-                OutlinedTextField(
-                    value = saveMemoryContent,
-                    onValueChange = { saveMemoryContent = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    minLines = 4,
-                    maxLines = 10,
-                    placeholder = {
-                        Text(
-                            text = "输入要保存的记忆内容…",
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                    },
-                    label = { Text("记忆内容") },
-                )
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        showSaveMemoryDialog = false
-                        onDismissRequest()
-                        onSaveAsMemory(saveMemoryContent)
-                    },
-                    enabled = saveMemoryContent.isNotBlank()
-                ) {
-                    Text("保存")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showSaveMemoryDialog = false }) {
-                    Text("取消")
-                }
-            }
-        )
-    }
-
     // Delete before confirmation dialog
     RikkaConfirmDialog(
         show = showDeleteBeforeConfirm,
@@ -831,11 +764,15 @@ fun BattleSortSheet(
     var messages by remember(node.messages) { mutableStateOf(node.messages) }
     val lazyListState = rememberLazyListState()
     val reorderState = rememberReorderableLazyListState(lazyListState) { from, to ->
-        messages = messages.toMutableList().apply {
-            add(to.index, removeAt(from.index))
+        val fromIdx = messages.indexOfFirst { it.id.toString() == from.key }
+        val toIdx = messages.indexOfFirst { it.id.toString() == to.key }
+        if (fromIdx != -1 && toIdx != -1) {
+            messages = messages.toMutableList().apply {
+                add(toIdx, removeAt(fromIdx))
+            }
+            val newSelectIndex = messages.indexOfFirst { it.id == currentMsgId }.coerceAtLeast(0)
+            onUpdate(node.copy(messages = messages, selectIndex = newSelectIndex))
         }
-        val newSelectIndex = messages.indexOfFirst { it.id == currentMsgId }.coerceAtLeast(0)
-        onUpdate(node.copy(messages = messages, selectIndex = newSelectIndex))
     }
 
     ModalBottomSheet(
@@ -878,10 +815,10 @@ fun BattleSortSheet(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 contentPadding = PaddingValues(vertical = 4.dp),
             ) {
-                items(messages, key = { it.id }) { msg ->
+                items(messages, key = { it.id.toString() }) { msg ->
                     ReorderableItem(
                         state = reorderState,
-                        key = msg.id,
+                        key = msg.id.toString(),
                     ) { isDragging ->
                         val model: me.rerere.ai.provider.Model? = msg.modelId?.let {
                             settings.findModelById(it)
