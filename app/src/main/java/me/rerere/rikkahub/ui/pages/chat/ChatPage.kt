@@ -99,6 +99,11 @@ import me.rerere.rikkahub.data.datastore.getAssistantById
 import me.rerere.rikkahub.data.files.FilesManager
 import me.rerere.rikkahub.data.model.Assistant
 import me.rerere.rikkahub.data.model.Conversation
+import me.rerere.rikkahub.data.model.ConversationParams
+import me.rerere.rikkahub.data.model.SystemPromptMode
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
 import me.rerere.rikkahub.data.repository.WorkspaceRepository
 import me.rerere.rikkahub.service.ChatError
 import me.rerere.rikkahub.ui.components.ai.ChatInput
@@ -218,11 +223,12 @@ fun ChatPage(id: Uuid, text: String?, files: List<Uri>, nodeId: Uuid? = null) {
             } else {
                 chatListState.requestScrollToItem(conversation.currentMessages.size + 5)
             }
+        }
     }
 
-    // 标记初始化完成
-    LaunchedEffect(conversationReady) {
-        if (conversationReady) {
+    // 标记初始化完成（对话消息加载后即置为已初始化）
+    LaunchedEffect(conversation.messageNodes.size) {
+        if (conversation.messageNodes.isNotEmpty()) {
             vm.chatListInitialized = true
         }
     }
@@ -392,11 +398,6 @@ private fun ChatPageContent(
                     onToggleSearch = {
                         vm.updateSettings(setting.copy(enableWebSearch = !enableWebSearch))
                     },
-                    showMessageJumperButton = setting.displaySetting.showMessageJumper,
-                    messageJumperActive = showMessageJumperOverlay,
-                    onToggleMessageJumper = {
-                        showMessageJumperOverlay = !showMessageJumperOverlay
-                    },
                     onSendClick = {
                         if (currentChatModel == null) {
                             toaster.show("请先选择模型", type = ToastType.Error)
@@ -450,6 +451,9 @@ private fun ChatPageContent(
                     },
                     onMoreClick = {
                         showFilesSheet = true
+                    },
+                    onJumperClick = {
+                        showMessageJumperOverlay = !showMessageJumperOverlay
                     },
                 )
             },
@@ -548,6 +552,8 @@ private fun ChatPageContent(
                     vm.updateConversation(conversation.copy(customSystemPrompt = newPrompt))
                     vm.saveConversationAsync()
                 },
+                // [FORK] 固定到上下文
+                onTogglePin = { node -> vm.toggleMessagePin(node) },
             )
         }
 

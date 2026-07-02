@@ -11,7 +11,6 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.core.net.toUri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.google.firebase.analytics.FirebaseAnalytics
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -21,6 +20,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import me.rerere.ai.core.MessageRole
 import me.rerere.ai.provider.Model
 import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
@@ -220,16 +220,20 @@ class ChatVM(
         viewModelScope.launch {
             chatService.editMessage(_conversationId, messageId, parts)
             if (regenerate) {
-                // 找到编辑后的消息（已经是新版本），触发重新生成
-                val editedMessage = conversation.value.messageNodes
-                    .firstOrNull { node -> node.messages.any { it.id == messageId } }
-                    ?.currentMessage
-                if (editedMessage != null) {
+                val nodes = conversation.value.messageNodes
+                // 找到被编辑消息所在的 node
+                val editedNode = nodes.firstOrNull { node -> node.messages.any { it.id == messageId } }
+                // 只有编辑的是最后一条用户消息节点时，才自动触发重新生成
+                // 否则仅保存编辑，避免误操作截断后续所有对话
+                val lastUserNode = nodes.lastOrNull { it.role == MessageRole.USER }
+                if (editedNode != null && editedNode == lastUserNode) {
+                    val editedMessage = editedNode.currentMessage
                     chatService.regenerateAtMessage(_conversationId, editedMessage)
                 }
             }
         }
     }
+
 
     fun handleCompressContext(additionalPrompt: String, targetTokens: Int, keepRecentMessages: Int): Job {
         return viewModelScope.launch {
@@ -443,13 +447,27 @@ class ChatVM(
     }
 
     // [FORK] 固定到上下文：切换节点的 isPinned 状态并持久化
+    // 提问与回答是配套的，固定/取消固定时同步更新配对节点（USER↔ASSISTANT 相邻节点）
     fun toggleMessagePin(node: MessageNode) {
         viewModelScope.launch {
             val newPinnedState = !node.isPinned
             chatService.updateConversationState(_conversationId) { currentConversation ->
+                val nodes = currentConversation.messageNodes
+                val nodeIndex = nodes.indexOfFirst { it.id == node.id }
+                // 找到配对节点的索引：固定回答时联动前一条提问，固定提问时联动后一条回答
+                val pairedIndex = when {
+                    nodeIndex > 0 &&
+                        nodes[nodeIndex].role == MessageRole.ASSISTANT &&
+                        nodes[nodeIndex - 1].role == MessageRole.USER -> nodeIndex - 1
+                    nodeIndex >= 0 &&
+                        nodeIndex + 1 < nodes.size &&
+                        nodes[nodeIndex].role == MessageRole.USER &&
+                        nodes[nodeIndex + 1].role == MessageRole.ASSISTANT -> nodeIndex + 1
+                    else -> -1
+                }
                 currentConversation.copy(
-                    messageNodes = currentConversation.messageNodes.map { existingNode ->
-                        if (existingNode.id == node.id) {
+                    messageNodes = nodes.mapIndexed { index, existingNode ->
+                        if (existingNode.id == node.id || index == pairedIndex) {
                             existingNode.copy(isPinned = newPinnedState)
                         } else {
                             existingNode

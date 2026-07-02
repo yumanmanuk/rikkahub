@@ -149,9 +149,6 @@ fun ChatList(
     onToolAnswer: ((toolCallId: String, answer: String) -> Unit)? = null,
     onToggleFavorite: ((MessageNode) -> Unit)? = null,
     onConversationSystemPromptChange: ((String?) -> Unit)? = null,
-    // [FORK] 对话专属记忆操作
-    onExtractMemory: ((UIMessage) -> Unit)? = null,
-    onSaveAsMemory: ((String) -> Unit)? = null,
     // [FORK] 固定到上下文：仅当有上下文限制时才显示此选项
     onTogglePin: ((MessageNode) -> Unit)? = null,
 ) {
@@ -204,9 +201,6 @@ fun ChatList(
                 onToolAnswer = onToolAnswer,
                 onToggleFavorite = onToggleFavorite,
                 onConversationSystemPromptChange = onConversationSystemPromptChange,
-                // [FORK] 对话专属记忆
-                onExtractMemory = onExtractMemory,
-                onSaveAsMemory = onSaveAsMemory,
                 // [FORK] 固定到上下文
                 onTogglePin = onTogglePin,
             )
@@ -243,9 +237,6 @@ private fun ChatListNormal(
     onToolAnswer: ((toolCallId: String, answer: String) -> Unit)? = null,
     onToggleFavorite: ((MessageNode) -> Unit)? = null,
     onConversationSystemPromptChange: ((String?) -> Unit)? = null,
-    // [FORK] 对话专属记忆操作
-    onExtractMemory: ((UIMessage) -> Unit)? = null,
-    onSaveAsMemory: ((String) -> Unit)? = null,
     // [FORK] 固定到上下文
     onTogglePin: ((MessageNode) -> Unit)? = null,
 ) {
@@ -368,7 +359,7 @@ private fun ChatListNormal(
         ChatFontProvider(displaySetting = settings.displaySetting) {
             LazyColumn(
                 state = state,
-                contentPadding = PaddingValues(horizontal = 24.dp, vertical = 16.dp) + PaddingValues(bottom = 32.dp + innerPadding.calculateBottomPadding()),
+                contentPadding = PaddingValues(horizontal = 24.dp, vertical = 16.dp) + PaddingValues(bottom = 8.dp + innerPadding.calculateBottomPadding()),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(16.dp),
                 modifier = Modifier
@@ -449,6 +440,15 @@ private fun ChatListNormal(
                             onToolApproval = onToolApproval,
                             onToolAnswer = onToolAnswer,
                             lastMessage = index == lastMessageIndex,
+                            onScrollToQuestion = if (node.currentMessage.role == me.rerere.ai.core.MessageRole.ASSISTANT && index > 0) {
+                                val targetIndex = index - 1
+                                { scope.launch { state.animateScrollToItem(targetIndex) } }
+                            } else null,
+                            // [FORK] 固定到上下文
+                            isPinned = node.isPinned,
+                            onTogglePin = if (onTogglePin != null) {
+                                { onTogglePin(node) }
+                            } else null,
                         )
                     }
                 }
@@ -491,7 +491,7 @@ private fun ChatListNormal(
                 Spacer(
                     Modifier
                         .fillMaxWidth()
-                        .height(5.dp)
+                        .height(3.dp)
                 )
             }
             }
@@ -1012,7 +1012,7 @@ private fun BoxScope.MessageJumper(
         )
     ) {
         Column(
-            modifier = Modifier.padding(8.dp),
+            modifier = Modifier.padding(horizontal = 2.dp, vertical = 4.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             // 去顶部（点击后自动关闭导航栏）
