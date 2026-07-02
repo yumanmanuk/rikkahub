@@ -806,7 +806,7 @@ private fun Paragraph(
     val latexColorArgb = LocalContentColor.current.toArgb()
     FlowRow(
         modifier = modifier.then(
-            if (node.nextSibling() != null) Modifier.padding(bottom = LocalTextStyle.current.fontSize.toDp() * 1.5f)
+            if (node.nextSibling() != null) Modifier.padding(bottom = LocalTextStyle.current.fontSize.toDp() * 1.8f) // [FORK] 段落间距加大
             else Modifier
         )
     ) {
@@ -838,7 +838,7 @@ private fun Paragraph(
             overflow = TextOverflow.Visible,
             color = softTextColor,
             style = LocalTextStyle.current.copy(
-                lineHeight = if (hasInlineMath && enableLatexRendering) TextUnit.Unspecified else 1.6.em
+                lineHeight = if (hasInlineMath && enableLatexRendering) TextUnit.Unspecified else 1.75.em
             )
         )
     }
