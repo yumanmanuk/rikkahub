@@ -53,6 +53,7 @@ import me.rerere.rikkahub.CHAT_COMPLETED_NOTIFICATION_CHANNEL_ID
 import me.rerere.rikkahub.CHAT_LIVE_UPDATE_NOTIFICATION_CHANNEL_ID
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.RouteActivity
+import me.rerere.rikkahub.service.BattleService
 import me.rerere.rikkahub.data.ai.GenerationChunk
 import me.rerere.rikkahub.data.ai.GenerationHandler
 import me.rerere.rikkahub.data.ai.mcp.McpManager
@@ -159,6 +160,8 @@ class ChatService(
     private val skillManager: SkillManager,
     private val workspaceRepository: WorkspaceRepository,
     private val folderRepository: FolderRepository,
+    // [FORK] Battle Mode Service
+    private val battleService: BattleService,
 ) {
     // workspace 系统提示注入 (依赖 workspaceRepository, 故在类内构造)
     private val workspaceReminderTransformer = WorkspaceReminderTransformer(workspaceRepository)
@@ -763,7 +766,6 @@ class ChatService(
                 outputTransformers = outputTransformers,
                 // [FORK] 对话专属记忆
                 conversationMemoryKey = conversationMemoryKey,
-                conversationMemories = conversationMemories,
                 tools = buildList {
                     if (settings.enableWebSearch) {
                         addAll(createSearchTools(settings))
@@ -1458,12 +1460,18 @@ class ChatService(
             }
             edited = true
 
+            // 直接替换原消息，不新增分支
+            val newMessage = UIMessage(
+                role = node.role,
+                parts = processedParts,
+            )
+            val newMessages = node.messages.toMutableList().also { list ->
+                val idx = list.indexOfFirst { it.id == messageId }
+                if (idx != -1) list[idx] = newMessage
+            }
             node.copy(
-                messages = node.messages + UIMessage(
-                    role = node.role,
-                    parts = processedParts,
-                ),
-                selectIndex = node.messages.size
+                messages = newMessages,
+                selectIndex = node.selectIndex.coerceAtMost(newMessages.lastIndex)
             )
         }
 

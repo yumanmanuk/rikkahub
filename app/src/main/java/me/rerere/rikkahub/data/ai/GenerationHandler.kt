@@ -49,6 +49,7 @@ import me.rerere.rikkahub.data.repository.MemoryRepository
 import me.rerere.rikkahub.utils.applyPlaceholders
 // [FORK] ConversationParams 解析器
 import me.rerere.rikkahub.data.ai.resolveWith
+import me.rerere.rikkahub.data.model.ConversationParams
 import java.util.Locale
 import kotlin.time.Clock
 import kotlin.uuid.Uuid
@@ -86,6 +87,10 @@ class GenerationHandler(
         conversationModeInjectionIds: Set<Uuid> = emptySet(),
         conversationLorebookIds: Set<Uuid> = emptySet(),
         workspaceCwd: String? = null,
+        // [FORK] 对话专属记忆 key（非 null 时使用该 key 存取记忆，与其他对话隔离）
+        conversationMemoryKey: String? = null,
+        // [FORK] 覆盖助手级别的 reasoningLevel（Battle Mode 分模型设置）
+        reasoningLevelOverride: ReasoningLevel? = null,
     ): Flow<GenerationChunk> = flow {
         val provider = model.findProvider(settings.providers) ?: error("Provider not found")
         val providerImpl = providerManager.getProviderByType(provider)
@@ -370,6 +375,8 @@ class GenerationHandler(
         conversationModeInjectionIds: Set<Uuid> = emptySet(),
         conversationLorebookIds: Set<Uuid> = emptySet(),
         workspaceCwd: String? = null,
+        // [FORK] Battle Mode：覆盖助手级别的思考深度，null 表示使用助手默认值
+        reasoningLevelOverride: ReasoningLevel? = null,
     ) {
         // [FORK] 使用 ConversationParamsResolver 合并对话专属参数与助手默认参数
         val resolved = conversationParams.resolveWith(assistant)

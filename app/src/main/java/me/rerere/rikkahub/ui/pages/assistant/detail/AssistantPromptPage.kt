@@ -384,6 +384,8 @@ private fun AssistantPromptContent(
                                 onEdit = {},
                                 onShare = {},
                                 onDelete = {},
+                                onDeleteBefore = {},
+                                onDeleteAfter = {},
                                 onUpdate = {},
                                 lastMessage = false,
                             )
