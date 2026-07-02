@@ -7,75 +7,104 @@ import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontVariation
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.googlefonts.Font
+import androidx.compose.ui.text.googlefonts.GoogleFont
 import androidx.compose.ui.unit.sp
 import me.rerere.rikkahub.R
 
-val base = Typography()
-val Typography = Typography()
+// [FORK] 使用 Google Fonts 可下载字体，接近 Google AI Studio 的阅读体验
+// 英文/数字/符号：DM Sans（接近 Google Sans，字形纤细现代）
+// 中文：Noto Sans SC（字形细腻，与 AI Studio 中文渲染最接近）
+private val googleFontProvider = GoogleFont.Provider(
+    providerAuthority = "com.google.android.gms.fonts",
+    providerPackage = "com.google.android.gms",
+    certificates = R.array.com_google_android_gms_fonts_certs
+)
 
-// Set of Material typography styles to start with
-//val Typography = Typography(
-//    displayLargeEmphasized = base.displayLargeEmphasized.copy(
-//        fontFamily = GoogleSansFlex.Display.Emphasized.Large,
-//        fontWeight = FontWeight.Bold
-//    ),
-//    displayMediumEmphasized = base.displayMediumEmphasized.copy(
-//        fontFamily = GoogleSansFlex.Display.Emphasized.Medium,
-//        fontWeight = FontWeight.Bold
-//    ),
-//    displaySmallEmphasized = base.displaySmallEmphasized.copy(
-//        fontFamily = GoogleSansFlex.Display.Emphasized.Large,
-//        fontWeight = FontWeight.Bold
-//    ),
-//    headlineLargeEmphasized = base.headlineLargeEmphasized.copy(
-//        fontFamily = GoogleSansFlex.Headline.Emphasized.Large,
-//        fontWeight = FontWeight.Bold
-//    ),
-//    headlineMediumEmphasized = base.headlineMediumEmphasized.copy(
-//        fontFamily = GoogleSansFlex.Headline.Emphasized.Medium,
-//        fontWeight = FontWeight.Bold
-//    ),
-//    headlineSmallEmphasized = base.headlineSmallEmphasized.copy(
-//        fontFamily = GoogleSansFlex.Headline.Emphasized.Large,
-//        fontWeight = FontWeight.Bold
-//    ),
-//    titleLargeEmphasized = base.titleLargeEmphasized.copy(
-//        fontFamily = GoogleSansFlex.Title.Emphasized.Large,
-//        fontWeight = FontWeight.Bold
-//    ),
-//    titleMediumEmphasized = base.titleMediumEmphasized.copy(
-//        fontFamily = GoogleSansFlex.Title.Emphasized.Medium,
-//        fontWeight = FontWeight.Bold
-//    ),
-//    titleSmallEmphasized = base.titleSmallEmphasized.copy(
-//        fontFamily = GoogleSansFlex.Title.Emphasized.Small,
-//        fontWeight = FontWeight.Bold
-//    ),
-//    bodyLargeEmphasized = base.bodyLargeEmphasized.copy(
-//        fontFamily = GoogleSansFlex.Body.Emphasized.Large,
-//        fontWeight = FontWeight.Bold
-//    ),
-//    bodyMediumEmphasized = base.bodyMediumEmphasized.copy(
-//        fontFamily = GoogleSansFlex.Body.Emphasized.Medium,
-//        fontWeight = FontWeight.Bold
-//    ),
-//    bodySmallEmphasized = base.bodySmallEmphasized.copy(
-//        fontFamily = GoogleSansFlex.Body.Emphasized.Small,
-//        fontWeight = FontWeight.Bold
-//    ),
-//    labelLargeEmphasized = base.labelLargeEmphasized.copy(
-//        fontFamily = GoogleSansFlex.Label.Emphasized.Large,
-//        fontWeight = FontWeight.Bold
-//    ),
-//    labelMediumEmphasized = base.labelMediumEmphasized.copy(
-//        fontFamily = GoogleSansFlex.Label.Emphasized.Medium,
-//        fontWeight = FontWeight.Bold
-//    ),
-//    labelSmallEmphasized = base.labelSmallEmphasized.copy(
-//        fontFamily = GoogleSansFlex.Label.Emphasized.Small,
-//        fontWeight = FontWeight.Bold
-//    ),
-//)
+private val NotoSansSC = GoogleFont("Noto Sans SC")
+private val DMSans = GoogleFont("DM Sans")
+
+// 中文正文字体：Noto Sans SC，英文：DM Sans
+val AppFontFamily = FontFamily(
+    Font(googleFont = NotoSansSC, fontProvider = googleFontProvider, weight = FontWeight.Light),
+    Font(googleFont = NotoSansSC, fontProvider = googleFontProvider, weight = FontWeight.Normal),
+    Font(googleFont = NotoSansSC, fontProvider = googleFontProvider, weight = FontWeight.Medium),
+    Font(googleFont = NotoSansSC, fontProvider = googleFontProvider, weight = FontWeight.SemiBold),
+    // DM Sans 覆盖 Latin 字符（英文/数字中 DM Sans 优先）
+    Font(googleFont = DMSans, fontProvider = googleFontProvider, weight = FontWeight.Light),
+    Font(googleFont = DMSans, fontProvider = googleFontProvider, weight = FontWeight.Normal),
+    Font(googleFont = DMSans, fontProvider = googleFontProvider, weight = FontWeight.Medium),
+    Font(googleFont = DMSans, fontProvider = googleFontProvider, weight = FontWeight.SemiBold),
+)
+
+// [FORK] 全局 Typography 使用 AppFontFamily，正文字重 Normal
+val Typography = Typography(
+    bodyLarge = TextStyle(
+        fontFamily = AppFontFamily,
+        fontWeight = FontWeight.Normal,
+        fontSize = 16.sp,
+        lineHeight = 28.sp,
+    ),
+    bodyMedium = TextStyle(
+        fontFamily = AppFontFamily,
+        fontWeight = FontWeight.Normal,
+        fontSize = 14.sp,
+        lineHeight = 24.sp,
+    ),
+    bodySmall = TextStyle(
+        fontFamily = AppFontFamily,
+        fontWeight = FontWeight.Normal,
+        fontSize = 12.sp,
+        lineHeight = 20.sp,
+    ),
+    labelLarge = TextStyle(
+        fontFamily = AppFontFamily,
+        fontWeight = FontWeight.Normal,
+        fontSize = 14.sp,
+    ),
+    labelMedium = TextStyle(
+        fontFamily = AppFontFamily,
+        fontWeight = FontWeight.Normal,
+        fontSize = 12.sp,
+    ),
+    labelSmall = TextStyle(
+        fontFamily = AppFontFamily,
+        fontWeight = FontWeight.Normal,
+        fontSize = 11.sp,
+    ),
+    titleLarge = TextStyle(
+        fontFamily = AppFontFamily,
+        fontWeight = FontWeight.Medium,
+        fontSize = 22.sp,
+    ),
+    titleMedium = TextStyle(
+        fontFamily = AppFontFamily,
+        fontWeight = FontWeight.Medium,
+        fontSize = 16.sp,
+    ),
+    titleSmall = TextStyle(
+        fontFamily = AppFontFamily,
+        fontWeight = FontWeight.Medium,
+        fontSize = 14.sp,
+    ),
+    headlineLarge = TextStyle(
+        fontFamily = AppFontFamily,
+        fontWeight = FontWeight.SemiBold,
+        fontSize = 32.sp,
+    ),
+    headlineMedium = TextStyle(
+        fontFamily = AppFontFamily,
+        fontWeight = FontWeight.SemiBold,
+        fontSize = 28.sp,
+    ),
+    headlineSmall = TextStyle(
+        fontFamily = AppFontFamily,
+        fontWeight = FontWeight.SemiBold,
+        fontSize = 24.sp,
+    ),
+)
+
+val base = Typography()
 
 @OptIn(ExperimentalTextApi::class)
 val JetbrainsMono = FontFamily(
