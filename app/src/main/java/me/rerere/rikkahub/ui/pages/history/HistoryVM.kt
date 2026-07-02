@@ -34,6 +34,15 @@ class HistoryVM(
         Log.e(TAG, "Error: ${it.message}")
     }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
+    fun searchConversations(query: String): Flow<List<Conversation>> {
+        val currentAssistant = assistant.value
+        return if (currentAssistant != null) {
+            conversationRepo.searchConversationsOfAssistant(currentAssistant.id, query)
+        } else {
+            conversationRepo.searchConversations(query)
+        }
+    }
+
     fun deleteConversation(conversation: Conversation) {
         viewModelScope.launch {
             // 先标记已删除，防止并发中的异步任务（如生成标题）在删库后重新将其 insert 回数据库
