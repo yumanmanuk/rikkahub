@@ -49,12 +49,30 @@ sealed class LogEntry {
 }
 
 object Logging {
-    private val recentLogs = arrayListOf<LogEntry>()
+    private val _logsFlow = MutableStateFlow<List<LogEntry>>(emptyList())
+    val logsFlow: StateFlow<List<LogEntry>> = _logsFlow.asStateFlow()
+
     @Volatile
     private var requestLoggingEnabled = false
 
     fun log(tag: String, message: String) {
         addLog(LogEntry.TextLog(tag = tag, message = message))
+    }
+
+    fun logError(
+        tag: String,
+        title: String? = null,
+        message: String,
+        throwable: Throwable? = null
+    ) {
+        addLog(
+            LogEntry.ErrorLog(
+                tag = tag,
+                title = title,
+                message = message,
+                stackTrace = throwable?.stackTraceToString()
+            )
+        )
     }
 
     fun logRequest(entry: LogEntry.RequestLog) {
