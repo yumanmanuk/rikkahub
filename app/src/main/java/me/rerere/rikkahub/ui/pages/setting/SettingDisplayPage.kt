@@ -291,18 +291,7 @@ fun SettingDisplayPage(vm: SettingVM = koinViewModel()) {
                                 )
                             },
                         )
-                        item(
-                            headlineContent = { Text(stringResource(R.string.setting_display_page_show_date_below_name_title)) },
-                            supportingContent = { Text(stringResource(R.string.setting_display_page_show_date_below_name_desc)) },
-                            trailingContent = {
-                                Switch(
-                                    checked = displaySetting.showDateBelowName,
-                                    onCheckedChange = {
-                                        updateDisplaySetting(displaySetting.copy(showDateBelowName = it))
-                                    }
-                                )
-                            },
-                        )
+
                         item(
                             headlineContent = { Text(stringResource(R.string.setting_display_page_show_token_usage_title)) },
                             supportingContent = { Text(stringResource(R.string.setting_display_page_show_token_usage_desc)) },
@@ -379,6 +368,7 @@ fun SettingDisplayPage(vm: SettingVM = koinViewModel()) {
                                                     ChatFontFamily.DEFAULT -> FontFamily.Default
                                                     ChatFontFamily.SERIF -> FontFamily.Serif
                                                     ChatFontFamily.MONOSPACE -> FontFamily.Monospace
+                                                    ChatFontFamily.CUSTOM -> FontFamily.Default
                                                 }
                                             )
                                         }
@@ -415,6 +405,7 @@ fun SettingDisplayPage(vm: SettingVM = koinViewModel()) {
                                                 ChatFontFamily.DEFAULT -> FontFamily.Default
                                                 ChatFontFamily.SERIF -> FontFamily.Serif
                                                 ChatFontFamily.MONOSPACE -> FontFamily.Monospace
+                                                ChatFontFamily.CUSTOM -> FontFamily.Default
                                             }
                                         )
                                     )

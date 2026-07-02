@@ -304,6 +304,7 @@
   <string name="chat_page_save">Save</string>
   <string name="chat_page_scroll_to_bottom">Scroll to bottom</string>
   <string name="chat_page_search_chats">Search Chats</string>
+  <string name="chat_page_search_placeholder">Search conversations</string>
   <string name="chat_page_today">Today</string>
   <string name="chat_page_yesterday">Yesterday</string>
   <string name="chat_size_dialog_content">Current message count: %1$d. This may cause the application to crash or lag, or even lose this conversation data. Please create a new conversation as soon as possible to continue chatting.</string>
@@ -392,6 +393,8 @@
   <string name="history_page_pin">Pin</string>
   <string name="history_page_search">Search</string>
   <string name="history_page_search_messages">Search Messages</string>
+  <string name="history_page_search_placeholder">Search conversations…</string>
+  <string name="history_page_clear">Clear</string>
   <string name="history_page_title">Chat History</string>
   <string name="history_page_undo">Undo</string>
   <string name="history_page_unpin">Unpin</string>

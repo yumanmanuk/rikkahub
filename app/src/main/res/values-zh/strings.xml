@@ -301,6 +301,7 @@
   <string name="chat_page_save">保存</string>
   <string name="chat_page_scroll_to_bottom">滚动到底部</string>
   <string name="chat_page_search_chats">搜索聊天</string>
+  <string name="chat_page_search_placeholder">搜索对话</string>
   <string name="chat_page_today">今天</string>
   <string name="chat_page_yesterday">昨天</string>
   <string name="chat_size_dialog_content">当前消息数：%1$d。这可能导致应用崩溃或卡顿，甚至丢失本次对话数据。请尽快新建对话以继续聊天。</string>
@@ -387,6 +388,8 @@
   <string name="history_page_pin">置顶</string>
   <string name="history_page_search">搜索</string>
   <string name="history_page_search_messages">搜索消息</string>
+  <string name="history_page_search_placeholder">搜索对话…</string>
+  <string name="history_page_clear">清空</string>
   <string name="history_page_title">聊天历史</string>
   <string name="history_page_undo">撤销</string>
   <string name="history_page_unpin">取消置顶</string>
