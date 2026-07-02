@@ -90,6 +90,8 @@ import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Add01
 import me.rerere.hugeicons.stroke.ArrowUp02
 import me.rerere.hugeicons.stroke.Cancel01
+import me.rerere.hugeicons.stroke.ArrowUpDouble
+import me.rerere.hugeicons.stroke.ArrowUpDown
 import me.rerere.hugeicons.stroke.FullScreen
 import me.rerere.hugeicons.stroke.Zap
 import me.rerere.rikkahub.R
@@ -131,6 +133,7 @@ fun ChatInput(
     onUpdateAssistant: (Assistant) -> Unit,
     onUpdateSearchService: (Int) -> Unit,
     onMoreClick: () -> Unit,
+    onJumperClick: () -> Unit = {},
     onCancelClick: () -> Unit,
     onSendClick: () -> Unit,
     onLongSendClick: () -> Unit,
@@ -301,6 +304,16 @@ fun ChatInput(
                                 )
                             }
 
+                            // 快速跳转回答位置
+                            IconButton(onClick = onJumperClick) {
+                                Icon(
+                                    imageVector = HugeIcons.ArrowUpDown,
+                                    contentDescription = "快速跳转",
+                                    modifier = Modifier.size(20.dp),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+
                         }
 
                         ActionIconButton(
@@ -462,6 +475,7 @@ private fun TextInputRow(
         }
 
         var isFocused by remember { mutableStateOf(false) }
+        val focusRequester = remember { FocusRequester() }
         var isFullScreen by remember { mutableStateOf(false) }
         var completionList by remember { mutableStateOf<ChatCompletionList?>(null) }
         val receiveContentListener = remember(
