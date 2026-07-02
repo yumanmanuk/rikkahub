@@ -169,6 +169,39 @@ sealed class ASRProviderSetting {
         }
     }
 
+    /**
+     * Google Cloud Speech-to-Text v2 Chirp 3 ASR（gRPC 双向流式）。
+     * 鉴权方式：Service Account JSON 中的 serviceAccountEmail + privateKey（PKCS8 PEM），
+     * 在运行时换取 access token，通过 Vertex gRPC 端点发送请求。
+     *
+     * 注：denoiseAudio / snrThreshold 字段目前 SDK 暂不支持下发，预留供后续启用。
+     */
+    @Serializable
+    @SerialName("chirp3")
+    data class Chirp3(
+        override val id: Uuid = Uuid.random(),
+        override val name: String = "Chirp 3 ASR",
+        val serviceAccountEmail: String = "",
+        val privateKey: String = "",
+        val projectId: String = "",
+        val region: String = "us-central1",
+        val recognizerId: String = "",
+        val language: String = "cmn-Hans-CN",
+        val sampleRate: Int = 16000,
+        val denoiseAudio: Boolean = false,
+        val snrThreshold: Float = 3.0f,
+    ) : ASRProviderSetting() {
+        override fun copyProvider(
+            id: Uuid,
+            name: String,
+        ): ASRProviderSetting {
+            return this.copy(
+                id = id,
+                name = name,
+            )
+        }
+    }
+
     companion object {
         val Types by lazy {
             listOf(
@@ -177,6 +210,7 @@ sealed class ASRProviderSetting {
                 Volcengine::class,
                 MiMo::class,
                 Step::class,
+                Chirp3::class,
             )
         }
     }

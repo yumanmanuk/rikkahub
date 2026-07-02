@@ -14,6 +14,8 @@ import me.rerere.tts.provider.providers.QwenTTSProvider
 import me.rerere.tts.provider.providers.StepTTSProvider
 import me.rerere.tts.provider.providers.SystemTTSProvider
 import me.rerere.tts.provider.providers.XAITTSProvider
+import me.rerere.tts.provider.providers.GeminiVertexTTSProvider
+import me.rerere.tts.provider.providers.VertexCloudTTSProvider
 
 class TTSManager(private val context: Context) {
     private val openAIProvider = OpenAITTSProvider()
@@ -26,6 +28,8 @@ class TTSManager(private val context: Context) {
     private val miMoProvider = MiMoTTSProvider()
     private val stepProvider = StepTTSProvider()
     private val elevenLabsProvider = ElevenLabsTTSProvider()
+    private val geminiVertexProvider = GeminiVertexTTSProvider()
+    private val vertexCloudProvider = VertexCloudTTSProvider()
 
     fun generateSpeech(
         providerSetting: TTSProviderSetting,
@@ -42,6 +46,8 @@ class TTSManager(private val context: Context) {
             is TTSProviderSetting.MiMo -> miMoProvider.generateSpeech(context, providerSetting, request)
             is TTSProviderSetting.ElevenLabs -> elevenLabsProvider.generateSpeech(context, providerSetting, request)
             is TTSProviderSetting.Step -> stepProvider.generateSpeech(context, providerSetting, request)
+            is TTSProviderSetting.GeminiVertex -> geminiVertexProvider.generateSpeech(context, providerSetting, request)
+            is TTSProviderSetting.VertexCloud -> vertexCloudProvider.generateSpeech(context, providerSetting, request)
         }
     }
 }

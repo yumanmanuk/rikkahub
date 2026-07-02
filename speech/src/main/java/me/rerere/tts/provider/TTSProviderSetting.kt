@@ -262,11 +262,64 @@ sealed class TTSProviderSetting {
         }
     }
 
+    @Serializable
+    @SerialName("gemini_vertex")
+    data class GeminiVertex(
+        override var id: Uuid = Uuid.random(),
+        override var name: String = "Gemini Vertex TTS",
+        val serviceAccountEmail: String = "",
+        val privateKey: String = "",
+        val projectId: String = "",
+        val location: String = "us-central1",
+        val model: String = "gemini-2.5-flash-preview-tts",
+        val voiceName: String = "Kore"
+    ) : TTSProviderSetting() {
+        fun buildEndpoint(): String {
+            return "https://${location}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/${model}:generateContent"
+        }
+
+        override fun copyProvider(
+            id: Uuid,
+            name: String,
+        ): TTSProviderSetting {
+            return this.copy(
+                id = id,
+                name = name,
+            )
+        }
+    }
+
+    @Serializable
+    @SerialName("vertex_cloud")
+    data class VertexCloud(
+        override var id: Uuid = Uuid.random(),
+        override var name: String = "Vertex Cloud TTS",
+        val serviceAccountEmail: String = "",
+        val privateKey: String = "",
+        val voiceName: String = "en-US-Chirp3-HD-Aoede",
+        val languageCode: String = "en-US",
+        val audioEncoding: String = "MP3",
+        val speakingRate: Float = 1.0f,
+        val pitch: Float = 0.0f,
+    ) : TTSProviderSetting() {
+        override fun copyProvider(
+            id: Uuid,
+            name: String,
+        ): TTSProviderSetting {
+            return this.copy(
+                id = id,
+                name = name,
+            )
+        }
+    }
+
     companion object {
+
         val Types by lazy {
             listOf(
                 OpenAI::class,
                 Gemini::class,
+                GeminiVertex::class,
                 SystemTTS::class,
                 MiniMax::class,
                 Qwen::class,
@@ -275,6 +328,7 @@ sealed class TTSProviderSetting {
                 MiMo::class,
                 ElevenLabs::class,
                 Step::class,
+                VertexCloud::class,
             )
         }
     }

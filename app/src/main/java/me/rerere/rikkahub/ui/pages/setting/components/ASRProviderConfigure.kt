@@ -37,6 +37,7 @@ fun ASRProviderConfigure(
                     is ASRProviderSetting.Volcengine -> "Volcengine"
                     is ASRProviderSetting.MiMo -> "MiMo"
                     is ASRProviderSetting.Step -> "Step"
+                    is ASRProviderSetting.Chirp3 -> "Google Chirp3"
                 },
                 onValueChange = {},
                 readOnly = true,
@@ -62,6 +63,7 @@ fun ASRProviderConfigure(
             is ASRProviderSetting.Volcengine -> VolcengineASRConfiguration(setting, onValueChange)
             is ASRProviderSetting.MiMo -> MiMoASRConfiguration(setting, onValueChange)
             is ASRProviderSetting.Step -> StepASRConfiguration(setting, onValueChange)
+            is ASRProviderSetting.Chirp3 -> Chirp3ASRConfiguration(setting, onValueChange)
         }
     }
 }
@@ -527,6 +529,73 @@ private fun StepASRConfiguration(
             },
             modifier = Modifier.fillMaxWidth(),
             placeholder = { Text("热词1, 热词2, 热词3") }
+        )
+    }
+}
+
+@Composable
+private fun Chirp3ASRConfiguration(
+    setting: ASRProviderSetting.Chirp3,
+    onValueChange: (ASRProviderSetting) -> Unit
+) {
+    FormItem(
+        label = { Text("Service Account Email") },
+        description = { Text("Google Cloud 服务账号邮筱地址") }
+    ) {
+        OutlinedTextField(
+            value = setting.serviceAccountEmail,
+            onValueChange = { onValueChange(setting.copy(serviceAccountEmail = it)) },
+            modifier = Modifier.fillMaxWidth(),
+            placeholder = { Text("your-service-account@project.iam.gserviceaccount.com") }
+        )
+    }
+
+    FormItem(
+        label = { Text("Private Key") },
+        description = { Text("服务账号私钥（PEM 格式）") }
+    ) {
+        OutlinedTextField(
+            value = setting.privateKey,
+            onValueChange = { onValueChange(setting.copy(privateKey = it)) },
+            modifier = Modifier.fillMaxWidth(),
+            placeholder = { Text("-----BEGIN RSA PRIVATE KEY-----\n...") },
+            minLines = 3,
+        )
+    }
+
+    FormItem(
+        label = { Text("Project ID") },
+        description = { Text("Google Cloud 项目 ID") }
+    ) {
+        OutlinedTextField(
+            value = setting.projectId,
+            onValueChange = { onValueChange(setting.copy(projectId = it)) },
+            modifier = Modifier.fillMaxWidth(),
+            placeholder = { Text("my-gcp-project") }
+        )
+    }
+
+    FormItem(
+        label = { Text("Region") },
+        description = { Text("Google Cloud 地址（如 us-central1）") }
+    ) {
+        OutlinedTextField(
+            value = setting.region,
+            onValueChange = { onValueChange(setting.copy(region = it)) },
+            modifier = Modifier.fillMaxWidth(),
+            placeholder = { Text("us-central1") }
+        )
+    }
+
+    FormItem(
+        label = { Text("Language") },
+        description = { Text("识别语言代码（如 cmn-Hans-CN）") }
+    ) {
+        OutlinedTextField(
+            value = setting.language,
+            onValueChange = { onValueChange(setting.copy(language = it)) },
+            modifier = Modifier.fillMaxWidth(),
+            placeholder = { Text("cmn-Hans-CN") }
         )
     }
 }

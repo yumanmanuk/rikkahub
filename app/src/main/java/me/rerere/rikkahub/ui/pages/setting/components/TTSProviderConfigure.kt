@@ -59,6 +59,8 @@ fun TTSProviderConfigure(
                         is TTSProviderSetting.MiMo -> "MiMo"
                         is TTSProviderSetting.Step -> "Step"
                         is TTSProviderSetting.ElevenLabs -> "ElevenLabs"
+                        is TTSProviderSetting.GeminiVertex -> "Gemini Vertex"
+                        is TTSProviderSetting.VertexCloud -> "Vertex Cloud"
                     },
                     onValueChange = {},
                     readOnly = true,
@@ -181,6 +183,8 @@ fun TTSProviderConfigure(
             is TTSProviderSetting.MiMo -> MiMoTTSConfiguration(setting, onValueChange)
             is TTSProviderSetting.ElevenLabs -> ElevenLabsTTSConfiguration(setting, onValueChange)
             is TTSProviderSetting.Step -> StepTTSConfiguration(setting, onValueChange)
+            is TTSProviderSetting.GeminiVertex -> GeminiVertexTTSConfiguration(setting, onValueChange)
+            is TTSProviderSetting.VertexCloud -> VertexCloudTTSConfiguration(setting, onValueChange)
         }
     }
 }
@@ -1572,6 +1576,124 @@ private fun StepTTSConfiguration(
             placeholder = { Text("例如: 语气温柔, 语速偏慢") },
             minLines = 2,
             maxLines = 4,
+        )
+    }
+}
+
+@Composable
+private fun GeminiVertexTTSConfiguration(
+    setting: TTSProviderSetting.GeminiVertex,
+    onValueChange: (TTSProviderSetting) -> Unit
+) {
+    FormItem(
+        label = { Text("Service Account Email") },
+        description = { Text("Google Cloud 服务账号邮筱") }
+    ) {
+        OutlinedTextField(
+            value = setting.serviceAccountEmail,
+            onValueChange = { onValueChange(setting.copy(serviceAccountEmail = it)) },
+            modifier = Modifier.fillMaxWidth(),
+            placeholder = { Text("your-account@project.iam.gserviceaccount.com") }
+        )
+    }
+    FormItem(
+        label = { Text("Private Key") },
+        description = { Text("服务账号私钥 (PEM)") }
+    ) {
+        OutlinedTextField(
+            value = setting.privateKey,
+            onValueChange = { onValueChange(setting.copy(privateKey = it)) },
+            modifier = Modifier.fillMaxWidth(),
+            minLines = 3,
+        )
+    }
+    FormItem(
+        label = { Text("Project ID") },
+        description = { Text("Google Cloud 项目 ID") }
+    ) {
+        OutlinedTextField(
+            value = setting.projectId,
+            onValueChange = { onValueChange(setting.copy(projectId = it)) },
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
+    FormItem(
+        label = { Text("Location") },
+        description = { Text("地址，如 us-central1") }
+    ) {
+        OutlinedTextField(
+            value = setting.location,
+            onValueChange = { onValueChange(setting.copy(location = it)) },
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
+    FormItem(
+        label = { Text("Model") },
+        description = { Text("TTS 模型") }
+    ) {
+        OutlinedTextField(
+            value = setting.model,
+            onValueChange = { onValueChange(setting.copy(model = it)) },
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
+    FormItem(
+        label = { Text("Voice Name") },
+        description = { Text("音色名称") }
+    ) {
+        OutlinedTextField(
+            value = setting.voiceName,
+            onValueChange = { onValueChange(setting.copy(voiceName = it)) },
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
+}
+
+@Composable
+private fun VertexCloudTTSConfiguration(
+    setting: TTSProviderSetting.VertexCloud,
+    onValueChange: (TTSProviderSetting) -> Unit
+) {
+    FormItem(
+        label = { Text("Service Account Email") },
+        description = { Text("Google Cloud 服务账号邮筱") }
+    ) {
+        OutlinedTextField(
+            value = setting.serviceAccountEmail,
+            onValueChange = { onValueChange(setting.copy(serviceAccountEmail = it)) },
+            modifier = Modifier.fillMaxWidth(),
+            placeholder = { Text("your-account@project.iam.gserviceaccount.com") }
+        )
+    }
+    FormItem(
+        label = { Text("Private Key") },
+        description = { Text("服务账号私钥 (PEM)") }
+    ) {
+        OutlinedTextField(
+            value = setting.privateKey,
+            onValueChange = { onValueChange(setting.copy(privateKey = it)) },
+            modifier = Modifier.fillMaxWidth(),
+            minLines = 3,
+        )
+    }
+    FormItem(
+        label = { Text("Voice Name") },
+        description = { Text("音色名称，如 en-US-Chirp3-HD-Aoede") }
+    ) {
+        OutlinedTextField(
+            value = setting.voiceName,
+            onValueChange = { onValueChange(setting.copy(voiceName = it)) },
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
+    FormItem(
+        label = { Text("Language Code") },
+        description = { Text("语言代码，如 en-US") }
+    ) {
+        OutlinedTextField(
+            value = setting.languageCode,
+            onValueChange = { onValueChange(setting.copy(languageCode = it)) },
+            modifier = Modifier.fillMaxWidth(),
         )
     }
 }

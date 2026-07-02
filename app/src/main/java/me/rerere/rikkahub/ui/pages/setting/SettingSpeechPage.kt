@@ -700,6 +700,8 @@ private fun TTSProviderItem(
                             is TTSProviderSetting.MiMo -> "MiMo"
                             is TTSProviderSetting.Step -> "Step"
                             is TTSProviderSetting.ElevenLabs -> "ElevenLabs"
+                            is TTSProviderSetting.GeminiVertex -> "Gemini Vertex"
+                            is TTSProviderSetting.VertexCloud -> "Vertex Cloud"
                         },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -842,6 +844,7 @@ private fun ASRProviderItem(
                             is ASRProviderSetting.Volcengine -> "Volcengine"
                             is ASRProviderSetting.MiMo -> "MiMo"
                             is ASRProviderSetting.Step -> "Step"
+                            is ASRProviderSetting.Chirp3 -> "Google Chirp3"
                         },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant

@@ -131,6 +131,11 @@ private class CustomAsrStateImpl(
                 if (provider.apiKey.isBlank()) return null
                 StepASRController(context, httpClient, provider)
             }
+
+            is ASRProviderSetting.Chirp3 -> {
+                if (provider.serviceAccountEmail.isBlank() || provider.privateKey.isBlank()) return null
+                Chirp3ASRController(context, httpClient, provider)
+            }
         }
     }
 }
