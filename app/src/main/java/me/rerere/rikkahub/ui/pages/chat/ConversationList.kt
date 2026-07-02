@@ -1,6 +1,7 @@
 package me.rerere.rikkahub.ui.pages.chat
 
 import me.rerere.hugeicons.HugeIcons
+import me.rerere.hugeicons.stroke.Folder01
 import me.rerere.hugeicons.stroke.Forward02
 import me.rerere.hugeicons.stroke.PencilEdit01
 import me.rerere.hugeicons.stroke.Pin
@@ -90,6 +91,7 @@ fun ColumnScope.ConversationList(
     // [FORK] 打标签入口
     onSetTag: (Conversation) -> Unit = {},
     onRenameTitle: (Conversation, String) -> Unit = { _, _ -> },
+    onMoveToFolder: (Conversation) -> Unit = {},
 ) {
     var hasScrolledToCurrent by remember(current.id) { mutableStateOf(false) }
 
@@ -168,6 +170,7 @@ fun ColumnScope.ConversationList(
                         // [FORK] 打标签
                         onSetTag = onSetTag,
                         onRenameTitle = onRenameTitle,
+                        onMoveToFolder = onMoveToFolder,
                         modifier = Modifier.animateItem()
                     )
                 }
@@ -241,6 +244,7 @@ internal fun ConversationItem(
     // [FORK] 打标签入口
     onSetTag: (Conversation) -> Unit = {},
     onRenameTitle: (Conversation, String) -> Unit = { _, _ -> },
+    onMoveToFolder: (Conversation) -> Unit = {},
     onClick: (Conversation) -> Unit
 ) {
     val interactionSource = remember { MutableInteractionSource() }
@@ -372,6 +376,19 @@ internal fun ConversationItem(
                     },
                     leadingIcon = {
                         Icon(HugeIcons.Forward02, null)
+                    }
+                )
+
+                DropdownMenuItem(
+                    text = {
+                        Text(stringResource(R.string.chat_page_move_to_folder))
+                    },
+                    onClick = {
+                        onMoveToFolder(conversation)
+                        showDropdownMenu = false
+                    },
+                    leadingIcon = {
+                        Icon(HugeIcons.Folder01, null)
                     }
                 )
 
