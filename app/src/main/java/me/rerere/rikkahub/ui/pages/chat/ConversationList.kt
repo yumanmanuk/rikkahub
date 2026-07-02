@@ -379,18 +379,19 @@ internal fun ConversationItem(
                     }
                 )
 
-                DropdownMenuItem(
-                    text = {
-                        Text(stringResource(R.string.chat_page_move_to_folder))
-                    },
-                    onClick = {
-                        onMoveToFolder(conversation)
-                        showDropdownMenu = false
-                    },
-                    leadingIcon = {
-                        Icon(HugeIcons.Folder01, null)
-                    }
-                )
+                // [FORK] 文件夹功能已隐藏，保留代码避免与 upstream 冲突
+//                DropdownMenuItem(
+//                    text = {
+//                        Text(stringResource(R.string.chat_page_move_to_folder))
+//                    },
+//                    onClick = {
+//                        onMoveToFolder(conversation)
+//                        showDropdownMenu = false
+//                    },
+//                    leadingIcon = {
+//                        Icon(HugeIcons.Folder01, null)
+//                    }
+//                )
 
                 DropdownMenuItem(
                     text = {

@@ -285,14 +285,17 @@ fun ChatDrawerContent(
                         imageVector = HugeIcons.MessageAdd01,
                         contentDescription = stringResource(R.string.chat_page_new_chat)
                     )
-                }            FolderBar(
-                folders = folders,
-                selectedFolderId = selectedFolderId,
-                onSelect = { drawerVm.selectFolder(it) },
-                onCreate = { showCreateFolderDialog = true },
-                onRename = { folderToRename = it },
-                onDelete = { folderToDelete = it },
-            )
+                }
+            }
+            // [FORK] 文件夹功能入口已注释，保留代码以避免与 upstream 冲突
+//            FolderBar(
+//                folders = folders,
+//                selectedFolderId = selectedFolderId,
+//                onSelect = { drawerVm.selectFolder(it) },
+//                onCreate = { showCreateFolderDialog = true },
+//                onRename = { folderToRename = it },
+//                onDelete = { folderToDelete = it },
+//            )
 
             // [FORK] 视图切换行：标题 + 切换按钮
             Row(
@@ -463,6 +466,22 @@ fun ChatDrawerContent(
                         expanded = showMenuPopup,
                         onDismissRequest = { showMenuPopup = false }
                     ) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.chat_page_search_chats)) },
+                            leadingIcon = { Icon(HugeIcons.Search01, null) },
+                            onClick = {
+                                showMenuPopup = false
+                                navController.navigate(Screen.MessageSearch)
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.chat_page_history)) },
+                            leadingIcon = { Icon(HugeIcons.TransactionHistory, null) },
+                            onClick = {
+                                showMenuPopup = false
+                                navController.navigate(Screen.History)
+                            }
+                        )
                         DropdownMenuItem(
                             text = { Text(stringResource(R.string.chat_page_menu_ai_translator)) },
                             leadingIcon = { Icon(HugeIcons.LanguageCircle, null) },
