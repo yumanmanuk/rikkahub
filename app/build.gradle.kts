@@ -9,8 +9,8 @@ plugins {
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ksp)
-    alias(libs.plugins.google.services)
-    alias(libs.plugins.firebase.crashlytics)
+    // alias(libs.plugins.google.services)  // [FORK] Firebase disabled
+    // alias(libs.plugins.firebase.crashlytics)  // [FORK] Firebase disabled
     alias(libs.plugins.baselineprofile)
 }
 
