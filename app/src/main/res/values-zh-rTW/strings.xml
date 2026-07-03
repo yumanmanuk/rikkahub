@@ -758,6 +758,7 @@
   <string name="setting_model_page_translate_model">翻譯模型</string>
   <string name="setting_model_page_translate_model_desc">用於翻譯功能的模型</string>
   <string name="setting_model_page_translate_prompt_vars">變數: 原始文字: {source_text}, 目標語言: {target_lang}</string>
+  <string name="setting_page_logs">日誌</string>
   <string name="setting_page_about">關於</string>
   <string name="setting_page_about_desc">關於本APP</string>
   <string name="setting_page_assistant">助手</string>
@@ -783,6 +784,8 @@
   <string name="setting_page_config_api_title">請配置API和模型</string>
   <string name="setting_page_data_backup">資料備份</string>
   <string name="setting_page_data_backup_desc">備份和恢復應用資料</string>
+  <string name="setting_page_error_logs">錯誤日誌</string>
+  <string name="setting_page_error_logs_desc">檢視執行時錯誤日誌</string>
   <string name="setting_page_data_settings">資料設定</string>
   <string name="setting_page_default_model">預設模型與提示</string>
   <string name="setting_page_default_model_desc">設定各個功能的預設模型</string>

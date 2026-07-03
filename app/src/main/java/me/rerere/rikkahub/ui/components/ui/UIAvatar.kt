@@ -51,8 +51,6 @@ import androidx.compose.ui.unit.sp
 import androidx.core.net.toUri
 import coil3.compose.AsyncImage
 import me.rerere.common.android.appTempFolder
-import me.rerere.hugeicons.HugeIcons
-import me.rerere.hugeicons.stroke.Edit03
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.files.FilesManager
 import me.rerere.rikkahub.data.model.Avatar
@@ -193,27 +191,7 @@ fun UIAvatar(
             }
         }
 
-        // Show edit icon when editable
-        if (onUpdate != null) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .size(14.dp)
-                    .clip(MaterialTheme.shapes.small)
-                    .background(MaterialTheme.colorScheme.tertiaryContainer),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = HugeIcons.Edit03,
-                    contentDescription = "Edit",
-                    modifier = Modifier
-                        .size(10.dp)
-                        .padding(1.dp),
-                    tint = MaterialTheme.colorScheme.onTertiaryContainer
-                )
-            }
         }
-    }
 
     if (showPickOption) {
         AlertDialog(

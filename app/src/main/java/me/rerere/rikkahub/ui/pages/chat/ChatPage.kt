@@ -218,7 +218,9 @@ fun ChatPage(id: Uuid, text: String?, files: List<Uri>, nodeId: Uuid? = null) {
             if (nodeId != null) {
                 val index = conversation.messageNodes.indexOfFirst { it.id == nodeId }
                 if (index >= 0) {
-                    chatListState.scrollToItem(index)
+                    // 跳到该回答的提问节点（前一个节点），让用户先看到问题再看回答
+                    val questionIndex = (index - 1).coerceAtLeast(0)
+                    chatListState.scrollToItem(questionIndex)
                 }
             } else {
                 chatListState.requestScrollToItem(conversation.currentMessages.size + 5)
@@ -819,16 +821,15 @@ private fun TopBar(
                 Column {
                     val assistant = settings.getCurrentAssistant()
                     val model = settings.getCurrentChatModel()
-                    val provider = model?.findProvider(providers = settings.providers, checkOverwrite = false)
                     Text(
                         text = conversation.title.ifBlank { stringResource(R.string.chat_page_new_chat) },
                         maxLines = 1,
                         style = MaterialTheme.typography.bodyMedium,
                         overflow = TextOverflow.Ellipsis,
                     )
-                    if (model != null && provider != null) {
+                    if (model != null) {
                         Text(
-                            text = "${assistant.name.ifBlank { stringResource(R.string.assistant_page_default_assistant) }} / ${model.displayName} (${provider.name})",
+                            text = "${assistant.name.ifBlank { stringResource(R.string.assistant_page_default_assistant) }} / ${model.displayName}",
                             overflow = TextOverflow.Ellipsis,
                             maxLines = 1,
                             color = LocalContentColor.current.copy(0.65f),
