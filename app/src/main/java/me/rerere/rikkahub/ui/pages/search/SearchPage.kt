@@ -271,6 +271,7 @@ private fun SearchResultItem(
     onClick: () -> Unit,
 ) {
     val highlightColor = MaterialTheme.colorScheme.tertiaryContainer
+    val onHighlightColor = MaterialTheme.colorScheme.onTertiaryContainer
     val untitled = stringResource(R.string.search_page_untitled)
     val snippetText = buildAnnotatedString {
         val snippet = result.snippet
@@ -290,12 +291,14 @@ private fun SearchResultItem(
                 break
             }
             val matched = snippet.substring(start + 1, end)
-            withStyle(SpanStyle(background = highlightColor)) {
+            // 使用语义配对色保证深浅色主题下高亮文字都清晰可见
+            withStyle(SpanStyle(background = highlightColor, color = onHighlightColor)) {
                 append(matched)
             }
             index = end + 1
         }
     }
+
     val formattedTime = remember(result.updateAt) {
         result.updateAt.toLocalDateTime()
     }
