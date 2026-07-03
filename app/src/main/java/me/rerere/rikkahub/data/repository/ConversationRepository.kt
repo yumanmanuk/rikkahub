@@ -452,12 +452,20 @@ class ConversationRepository(
                 page.forEach { entity ->
                     val messages = JsonInstant.decodeFromString<List<UIMessage>>(entity.messages)
                     val nodeId = Uuid.parse(entity.id)
+                    // 计算 favoriteMessageId：
+                    // - nodeId 不在收藏表：null（未收藏）
+                    // - 旧格式收藏（ref.messageId = null）：回退到 selectIndex 对应的 message id（向后兼容）
+                    // - 新格式收藏（ref.messageId 有值）：使用存储的具体 messageId
+                    val favMsgId: Uuid? = if (favoriteMessageIds.containsKey(nodeId)) {
+                        favoriteMessageIds[nodeId]
+                            ?: messages.getOrNull(entity.selectIndex)?.id
+                    } else null
                     nodes.add(
                         MessageNode(
                             id = nodeId,
                             messages = messages,
                             selectIndex = entity.selectIndex,
-                            favoriteMessageId = favoriteMessageIds[nodeId],
+                            favoriteMessageId = favMsgId,
                             isPinned = entity.isPinned
                         )
                     )
