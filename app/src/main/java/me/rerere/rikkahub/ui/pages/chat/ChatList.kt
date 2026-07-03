@@ -301,6 +301,13 @@ private fun ChatListNormal(
             .associateBy { it.id }
     }
     val lastMessageIndex = conversation.messageNodes.lastIndex
+    // 分别记录 USER 和 ASSISTANT 角色的最后一条 node 的 index，用于控制重试按钮显示
+    val lastUserMessageIndex = conversation.messageNodes.indexOfLast {
+        it.role == me.rerere.ai.core.MessageRole.USER
+    }
+    val lastAssistantMessageIndex = conversation.messageNodes.indexOfLast {
+        it.role == me.rerere.ai.core.MessageRole.ASSISTANT
+    }
 
     Box(
         modifier = Modifier
@@ -439,7 +446,10 @@ private fun ChatListNormal(
                             onClearTranslation = onClearTranslation,
                             onToolApproval = onToolApproval,
                             onToolAnswer = onToolAnswer,
-                            lastMessage = index == lastMessageIndex,
+                            lastMessage = when (node.role) {
+                                me.rerere.ai.core.MessageRole.USER -> index == lastUserMessageIndex
+                                else -> index == lastAssistantMessageIndex
+                            },
                             onScrollToQuestion = if (node.currentMessage.role == me.rerere.ai.core.MessageRole.ASSISTANT && index > 0) {
                                 val targetIndex = index - 1
                                 { scope.launch { state.animateScrollToItem(targetIndex) } }
