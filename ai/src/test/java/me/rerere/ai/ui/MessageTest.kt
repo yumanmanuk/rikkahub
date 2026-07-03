@@ -121,6 +121,88 @@ class MessageTest {
         assertEquals(messages, result)
     }
 
+    // ==================== limitContext with protectedMessageIds Tests ====================
+
+    @Test
+    fun `limitContext with empty protectedMessageIds behaves identically to legacy`() {
+        val messages = createTestMessages(5)
+        val legacyResult = messages.limitContext(3)
+        val withEmpty = messages.limitContext(3, emptySet())
+        assertEquals(legacyResult, withEmpty)
+    }
+
+    @Test
+    fun `limitContext preserves protected messages scattered across the list`() {
+        val messages = createTestMessages(6)
+        // 标记 index 1 和 4 为 protected
+        val protected = setOf(messages[1].id, messages[4].id)
+        // size=2 时,normal = [0,2,3,5],takeLast(2) = [3,5]
+        // 合并:protected [1, 4] + normal 末尾 [3, 5],按时序得 [1, 3, 4, 5]
+        val result = messages.limitContext(2, protected)
+        assertEquals(4, result.size)
+        assertEquals(messages[1].id, result[0].id)
+        assertEquals(messages[3].id, result[1].id)
+        assertEquals(messages[4].id, result[2].id)
+        assertEquals(messages[5].id, result[3].id)
+    }
+
+    @Test
+    fun `limitContext with protectedCount greater than size keeps all protected and all normal`() {
+        val messages = createTestMessages(6)
+        // 固定 5 条
+        val protected = setOf(
+            messages[0].id, messages[1].id, messages[2].id, messages[3].id, messages[4].id
+        )
+        // size=2 比 protectedCount=5 小
+        val result = messages.limitContext(2, protected)
+        // 期望:protected 5 条全保留 + normal 只有 [5],共 6 条全部
+        assertEquals(6, result.size)
+        for (i in 0 until 6) {
+            assertEquals(messages[i].id, result[i].id)
+        }
+    }
+
+    @Test
+    fun `limitContext with no protected and normal exceeds size truncates from tail`() {
+        val messages = createTestMessages(10)
+        val result = messages.limitContext(3, emptySet())
+        assertEquals(3, result.size)
+        assertEquals(messages.subList(7, 10), result)
+    }
+
+    @Test
+    fun `limitContext with all protected returns all messages regardless of size`() {
+        val messages = createTestMessages(5)
+        val protected = messages.map { it.id }.toSet()
+        val result = messages.limitContext(1, protected)
+        // size=1 但全 protected,应该全部返回
+        assertEquals(5, result.size)
+    }
+
+    @Test
+    fun `limitContext with protected size zero still applies size to normal`() {
+        val messages = createTestMessages(8)
+        val protected = setOf(messages[1].id, messages[3].id)
+        val result = messages.limitContext(3, protected)
+        // normal = [0,2,4,5,6,7], size=3, takeLast(3) = [5,6,7]
+        // protected = [1, 3]
+        // 按时序: [1, 3, 5, 6, 7]
+        assertEquals(5, result.size)
+        assertEquals(messages[1].id, result[0].id)
+        assertEquals(messages[3].id, result[1].id)
+        assertEquals(messages[5].id, result[2].id)
+        assertEquals(messages[6].id, result[3].id)
+        assertEquals(messages[7].id, result[4].id)
+    }
+
+    @Test
+    fun `limitContext with size zero still returns all even with protected`() {
+        val messages = createTestMessages(5)
+        val protected = setOf(messages[0].id)
+        val result = messages.limitContext(0, protected)
+        assertEquals(messages, result)
+    }
+
     // ==================== isValidToUpload Tests ====================
 
     @Test

@@ -281,49 +281,62 @@ fun List<UIMessagePart>.isEmptyUIMessage(): Boolean {
     }
 }
 
-fun List<UIMessage>.limitContext(size: Int): List<UIMessage> {
+fun List<UIMessage>.limitContext(
+    size: Int,
+    protectedMessageIds: Set<Uuid> = emptySet(),
+): List<UIMessage> {
     if (size <= 0 || this.size <= size) return this
 
-    val startIndex = this.size - size
-    var adjustedStartIndex = startIndex
+    // [FORK] protected 消息(收藏/固定)完全独立于 size:全部保留,size 只用于截断普通消息
+    val normalMsgs: List<UIMessage> = if (protectedMessageIds.isEmpty()) this
+                                     else filter { it.id !in protectedMessageIds }
 
-    // 循环往前查找，直到满足所有依赖条件
-    var needsAdjustment = true
-    val visitedIndices = mutableSetOf<Int>()
+    // 只对 normalMsgs 按 size 截尾,并做 tool call 配对回溯
+    val limitedNormalMsgs: List<UIMessage> = if (normalMsgs.size > size) {
+        var adjustedStartIndex = normalMsgs.size - size
+        var needsAdjustment = true
+        val visitedIndices = mutableSetOf<Int>()
 
-    while (needsAdjustment && adjustedStartIndex > 0) {
-        needsAdjustment = false
+        while (needsAdjustment && adjustedStartIndex > 0) {
+            needsAdjustment = false
 
-        // 防止无限循环
-        if (adjustedStartIndex in visitedIndices) break
-        visitedIndices.add(adjustedStartIndex)
+            // 防止无限循环
+            if (adjustedStartIndex in visitedIndices) break
+            visitedIndices.add(adjustedStartIndex)
 
-        val currentMessage = this[adjustedStartIndex]
+            val currentMessage = normalMsgs[adjustedStartIndex]
 
-        // 如果当前消息包含已执行的tool（有output），往前查找对应的tool call
-        if (currentMessage.getTools().any { it.isExecuted }) {
-            for (i in adjustedStartIndex - 1 downTo 0) {
-                if (this[i].getTools().any { !it.isExecuted }) {
-                    adjustedStartIndex = i
-                    needsAdjustment = true
-                    break
+            // 如果当前消息包含已执行的tool(有output),往前查找对应的tool call
+            if (currentMessage.getTools().any { it.isExecuted }) {
+                for (i in adjustedStartIndex - 1 downTo 0) {
+                    if (normalMsgs[i].getTools().any { !it.isExecuted }) {
+                        adjustedStartIndex = i
+                        needsAdjustment = true
+                        break
+                    }
+                }
+            }
+
+            // 如果当前消息包含未执行的tool call,往前查找对应的用户消息
+            if (currentMessage.getTools().any { !it.isExecuted }) {
+                for (i in adjustedStartIndex - 1 downTo 0) {
+                    if (normalMsgs[i].role == MessageRole.USER) {
+                        adjustedStartIndex = i
+                        needsAdjustment = true
+                        break
+                    }
                 }
             }
         }
 
-        // 如果当前消息包含未执行的tool call，往前查找对应的用户消息
-        if (currentMessage.getTools().any { !it.isExecuted }) {
-            for (i in adjustedStartIndex - 1 downTo 0) {
-                if (this[i].role == MessageRole.USER) {
-                    adjustedStartIndex = i
-                    needsAdjustment = true
-                    break
-                }
-            }
-        }
+        normalMsgs.subList(adjustedStartIndex, normalMsgs.size)
+    } else {
+        normalMsgs
     }
 
-    return this.subList(adjustedStartIndex, this.size)
+    // 按原时序合并 protected 全部 + 截尾后的 normal
+    val limitedNormalIds = limitedNormalMsgs.map { it.id }.toSet()
+    return filter { it.id in protectedMessageIds || it.id in limitedNormalIds }
 }
 
 @Serializable
