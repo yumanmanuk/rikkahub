@@ -25,11 +25,15 @@ object NodeFavoriteAdapter : FavoriteAdapter<NodeFavoriteTarget> {
         val ref = NodeFavoriteRef(
             conversationId = target.conversationId,
             nodeId = target.nodeId,
+            messageId = target.messageId,
         )
+        // 收藏指定 message 的预览文本
+        val targetMessage = target.node.messages.firstOrNull { it.id == target.messageId }
+            ?: target.node.currentMessage
         val meta = FavoriteMeta(
             title = target.conversationTitle.ifBlank { null },
             subtitle = target.questionPreview,
-            previewText = target.node.buildFavoritePreview(),
+            previewText = targetMessage.buildFavoritePreview(),
         )
 
         return FavoriteEntity(

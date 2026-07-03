@@ -32,6 +32,7 @@ data class FavoriteMeta(
 data class NodeFavoriteRef(
     val conversationId: Uuid,
     val nodeId: Uuid,
+    val messageId: Uuid? = null,
 )
 
 data class NodeFavoriteTarget(
@@ -40,6 +41,7 @@ data class NodeFavoriteTarget(
     val nodeId: Uuid,
     val node: MessageNode,
     val questionPreview: String? = null,
+    val messageId: Uuid,
 )
 
 fun UIMessage.buildFavoritePreview(maxLength: Int = 160): String {
