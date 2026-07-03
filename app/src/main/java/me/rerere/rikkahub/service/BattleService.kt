@@ -55,6 +55,36 @@ import me.rerere.common.android.Logging
 private const val BATTLE_TAG = "BattleService"
 
 /**
+ * [FORK] 收集对话中所有收藏/固定到上下文节点的「整 turn」消息 id。
+ *
+ * Turn 范围:
+ *  - 节点内:该节点所有 messages(覆盖 USER 提问 + ASSISTANT 回答/分支)
+ *  - Battle 节点 / 普通 ASSISTANT 节点:+ 前一个 USER 节点(防止孤立回答)
+ *  - USER 节点:+ 下一个 ASSISTANT 节点(防止孤立提问)
+ *
+ * 这些消息在生成时完全不受 contextMessageSize 限制,会被 GenerationHandler.limitContext 全部保留。
+ */
+private fun Conversation.collectProtectedMessageIds(): Set<Uuid> = buildSet {
+    messageNodes.forEachIndexed { index, node ->
+        if (!node.isPinned && !node.isFavorite) return@forEachIndexed
+        // 节点内所有 messages
+        node.messages.forEach { add(it.id) }
+        if (index > 0) {
+            val prevNode = messageNodes[index - 1]
+            // Battle 节点:USER 提问在前一个节点,把前一个节点也纳入 turn
+            // 普通 ASSISTANT 节点:同理把前一个 USER 节点也一并保护,防止孤立回答
+            if (node.isBattleNode || node.role == MessageRole.ASSISTANT) {
+                prevNode.messages.forEach { add(it.id) }
+            }
+        }
+        // USER 节点被收藏/固定:把下一个 ASSISTANT 节点也一并保护,防止孤立提问
+        if (node.role == MessageRole.USER && index < messageNodes.lastIndex) {
+            messageNodes[index + 1].messages.forEach { add(it.id) }
+        }
+    }
+}
+
+/**
  * [FORK] Battle Mode Service
  *
  * 负责并发调用多个 AI 模型，各自生成回答并存储到同一个 MessageNode 的不同
@@ -125,12 +155,7 @@ class BattleService(
         }
 
         val assistant = settings.getCurrentAssistant()
-        // [FORK] 对话专属记忆开启时优先加载对话隔离库
-        val conversationMemoryEnabled = conversation.conversationParams.enableConversationMemory
-        val conversationMemoryKey: String? = if (conversationMemoryEnabled) conversationId.toString() else null
-        val memories: List<AssistantMemory> = if (conversationMemoryEnabled) {
-            memoryRepository.getMemoriesOfAssistant(conversationId.toString())
-        } else if (assistant.useGlobalMemory) {
+        val memories: List<AssistantMemory> = if (assistant.useGlobalMemory) {
             memoryRepository.getGlobalMemories()
         } else {
             memoryRepository.getMemoriesOfAssistant(settings.assistantId.toString())
@@ -190,6 +215,8 @@ class BattleService(
                             Log.d(BATTLE_TAG, "runBattle [${model.displayName}]: sharedContext, msgs=${it.size}")
                         }
                     }
+                    // [FORK] 收藏/固定到上下文的消息 id,完全不受 contextMessageSize 限制
+                    val protectedMsgIds = conversation.collectProtectedMessageIds()
                     runCatching {
                         generateForModel(
                             model = model,
@@ -198,8 +225,6 @@ class BattleService(
                             battleNodeId = battleNode.id,
                             placeholderMsgId = placeholderMsgId,
                             memories = memories,
-                            // [FORK] 对话专属记忆
-                            conversationMemoryKey = conversationMemoryKey,
                             tools = tools,
                             getConversation = getConversation,
                             updateConversationState = updateConversationState,
@@ -207,6 +232,7 @@ class BattleService(
                             // [FORK] Battle Mode：每个模型使用独立的思考深度
                             reasoningLevel = conversation.conversationParams.battleModelReasoningLevels[model.id]
                                 ?: assistant.reasoningLevel,
+                            protectedMessageIds = protectedMsgIds,
                         )
                     }.onFailure { e ->
                         if (e is CancellationException) throw e
@@ -295,12 +321,7 @@ class BattleService(
         }
 
         val assistant = settings.getCurrentAssistant()
-        // [FORK] 对话专属记忆开启时优先加载对话隔离库
-        val conversationMemoryEnabled = conversation.conversationParams.enableConversationMemory
-        val conversationMemoryKey: String? = if (conversationMemoryEnabled) conversationId.toString() else null
-        val memories: List<AssistantMemory> = if (conversationMemoryEnabled) {
-            memoryRepository.getMemoriesOfAssistant(conversationId.toString())
-        } else if (assistant.useGlobalMemory) {
+        val memories: List<AssistantMemory> = if (assistant.useGlobalMemory) {
             memoryRepository.getGlobalMemories()
         } else {
             memoryRepository.getMemoriesOfAssistant(settings.assistantId.toString())
@@ -318,6 +339,9 @@ class BattleService(
                 Log.d(BATTLE_TAG, "rerunSlot [${model.displayName}]: sharedContext, msgs=${it.size}")
             }
         }
+
+        // [FORK] 收藏/固定到上下文的消息 id,完全不受 contextMessageSize 限制
+        val protectedMsgIds = conversation.collectProtectedMessageIds()
 
         // 清空当前 slot 内容，给用户即时反馈
         updateConversationState(conversationId) { conv ->
@@ -350,8 +374,6 @@ class BattleService(
                         battleNodeId = battleNodeId,
                         placeholderMsgId = messageId,
                         memories = memories,
-                        // [FORK] 对话专属记忆
-                        conversationMemoryKey = conversationMemoryKey,
                         tools = tools,
                         getConversation = getConversation,
                         updateConversationState = updateConversationState,
@@ -359,6 +381,7 @@ class BattleService(
                         // [FORK] Battle Mode：重试时同样应用该模型独立的思考深度
                         reasoningLevel = conversation.conversationParams.battleModelReasoningLevels[modelId]
                             ?: assistant.reasoningLevel,
+                        protectedMessageIds = protectedMsgIds,
                     )
                 }.onFailure { e ->
                     if (e is CancellationException) throw e
@@ -414,10 +437,10 @@ class BattleService(
         processingStatus: MutableStateFlow<String?>,
         // [FORK] Battle Mode 独立重试
         retryCount: Int = 0,
-        // [FORK] 对话专属记忆 key
-        conversationMemoryKey: String? = null,
         // [FORK] Battle Mode：该模型独立的思考深度
         reasoningLevel: ReasoningLevel,
+        // [FORK] 收藏/固定到上下文的消息 id,完全不受 contextMessageSize 限制,全部保留
+        protectedMessageIds: Set<Uuid> = emptySet(),
     ) {
         val maxRetries = 3
         val retryDelayMs = 2000L
@@ -441,10 +464,9 @@ class BattleService(
                 outputTransformers = outputTransformers,
                 tools = tools,
                 processingStatus = processingStatus,
-                // [FORK] 对话专属记忆
-                conversationMemoryKey = conversationMemoryKey,
                 // [FORK] Battle Mode：传入该模型独立的思考深度
                 reasoningLevelOverride = reasoningLevel,
+                protectedMessageIds = protectedMessageIds,
             ).onCompletion {
                 // 生成结束后确保 reasoning 状态归位
                 updateConversationState(conversationId) { conv ->
@@ -488,8 +510,6 @@ class BattleService(
                     updateConversationState = updateConversationState,
                     processingStatus = processingStatus,
                     retryCount = retryCount + 1,
-                    // [FORK] 对话专属记忆 key 传递给重试
-                    conversationMemoryKey = conversationMemoryKey,
                     // [FORK] Battle Mode：重试时保持相同的思考深度
                     reasoningLevel = reasoningLevel,
                 )

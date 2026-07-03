@@ -123,10 +123,10 @@ import me.rerere.rikkahub.utils.base64Decode
 import me.rerere.rikkahub.utils.isAllowedFileType
 import me.rerere.rikkahub.utils.navigateToChatPage
 import me.rerere.rikkahub.ui.components.ui.FormItem
+import me.rerere.rikkahub.ui.components.ui.IntSliderItem
 import me.rerere.rikkahub.ui.components.ui.Tag
 import me.rerere.rikkahub.ui.components.ui.TagType
 import me.rerere.rikkahub.utils.toFixed
-import kotlin.math.roundToInt
 import org.koin.androidx.compose.koinViewModel
 import org.koin.compose.koinInject
 import org.koin.core.parameter.parametersOf
@@ -959,8 +959,6 @@ private fun ConversationParamsSheet(
     var params by remember {
         mutableStateOf(conversation.conversationParams)
     }
-    // [FORK] 对话专属记忆列表（响应式）
-    val conversationMemories by vm.conversationMemories.collectAsStateWithLifecycle()
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -1016,16 +1014,14 @@ private fun ConversationParamsSheet(
                 }
             ) {
                 params.contextMessageSize?.let { size ->
-                    Slider(
-                        value = size.toFloat(),
-                        onValueChange = {
-                            val newParams = params.copy(contextMessageSize = it.roundToInt())
+                    IntSliderItem(
+                        value = size,
+                        onValueChange = { newSize ->
+                            val newParams = params.copy(contextMessageSize = newSize)
                             params = newParams
                             onUpdate(newParams)
                         },
-                        valueRange = 0f..512f,
-                        steps = 0,
-                        modifier = Modifier.fillMaxWidth()
+                        valueRange = 0..512,
                     )
                     Text(
                         text = if (size > 0) stringResource(
@@ -1034,57 +1030,6 @@ private fun ConversationParamsSheet(
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.75f),
                     )
-                }
-            }
-            HorizontalDivider()
-
-            // [FORK] 对话专属记忆
-            FormItem(
-                modifier = Modifier.padding(8.dp),
-                label = { Text("对话专属记忆") },
-                description = {
-                    Text(
-                        text = if (params.enableConversationMemory)
-                            "已开启：LLM 可将重要内容写入此对话的专属记忆（与其他对话完全隔离）"
-                        else
-                            "关闭：不使用对话专属记忆",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                },
-                tail = {
-                    Switch(
-                        checked = params.enableConversationMemory,
-                        onCheckedChange = { enabled ->
-                            val newParams = params.copy(enableConversationMemory = enabled)
-                            params = newParams
-                            onUpdate(newParams)
-                        }
-                    )
-                }
-            ) {
-                if (params.enableConversationMemory) {
-                    // [FORK] 管理对话专属记忆：点击入口弹出 BottomSheet
-                    var showMemorySheet by remember { mutableStateOf(false) }
-                    TextButton(
-                        onClick = { showMemorySheet = true },
-                        modifier = Modifier.padding(top = 4.dp)
-                    ) {
-                        Text(
-                            "管理记忆（${conversationMemories.size} 条）→",
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                    }
-
-                    if (showMemorySheet) {
-                        ConversationMemorySheet(
-                            memories = conversationMemories,
-                            onDismiss = { showMemorySheet = false },
-                            onAdd = { content -> vm.saveMessageAsMemory(content) },
-                            onUpdate = { memory -> vm.updateConversationMemory(memory) },
-                            onDelete = { memory -> vm.deleteConversationMemory(memory) },
-                        )
-                    }
                 }
             }
             HorizontalDivider()

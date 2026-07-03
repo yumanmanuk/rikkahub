@@ -684,70 +684,52 @@ class ChatService(
             // start generating
             val session = getOrCreateSession(conversationId)
 
-            // [FORK] 解析对话参数（pin-to-context 保护逻辑需要 resolved.contextMessageSize）
-            val resolved = conversation.conversationParams.resolveWith(assistant)
-
-            // [FORK] 对话专属记忆：加载以 conversation.id 为 key 的隔离记忆
-            val conversationMemoryKey: String? = if (resolved.enableConversationMemory) {
-                conversationId.toString()
-            } else null
-            val conversationMemories = if (conversationMemoryKey != null) {
-                memoryRepository.getMemoriesOfAssistant(conversationMemoryKey)
-            } else emptyList()
+            // [FORK] 收藏 / 固定到上下文的「整 turn」消息 id,完全不受 contextMessageSize 限制,全部保留
+            // Turn 范围:节点内所有 messages
+            //           + Battle 节点 / 普通 ASSISTANT 节点:前一个 USER 节点(防止孤立回答)
+            //           + USER 节点:下一个 ASSISTANT 节点(防止孤立提问)
+            // 仅在普通发送路径下计算,messageRange(重生成)路径不携带(避免 token 暴涨)
+            val protectedMessageIds: Set<Uuid> = if (messageRange != null) {
+                emptySet()
+            } else {
+                buildSet {
+                    conversation.messageNodes.forEachIndexed { index, node ->
+                        if (!node.isPinned && !node.isFavorite) return@forEachIndexed
+                        node.messages.forEach { add(it.id) }
+                        if (index > 0) {
+                            val prevNode = conversation.messageNodes[index - 1]
+                            // Battle 节点:USER 提问在前一个节点,把前一个节点也纳入 turn
+                            // 普通 ASSISTANT 节点:同理把前一个 USER 节点也一并保护,防止孤立回答
+                            if (node.isBattleNode || node.role == MessageRole.ASSISTANT) {
+                                prevNode.messages.forEach { add(it.id) }
+                            }
+                        }
+                        // USER 节点被收藏/固定:把下一个 ASSISTANT 节点也一并保护,防止孤立提问
+                        if (node.role == MessageRole.USER && index < conversation.messageNodes.lastIndex) {
+                            conversation.messageNodes[index + 1].messages.forEach { add(it.id) }
+                        }
+                    }
+                }
+            }
 
             generationHandler.generateText(
                 settings = settings,
                 model = model,
                 processingStatus = session.processingStatus,
-                messages = conversation.let { conv ->
-                    val allMessages = conv.currentMessages
-                    // messageRange 路径：按索引截取，直接返回原顺序切片（无 limitContext 截断问题）
-                    if (messageRange != null) {
-                        return@let allMessages.subList(
-                            messageRange.start.coerceAtLeast(0),
-                            (messageRange.endInclusive + 1).coerceAtMost(allMessages.size)
-                        )
-                    }
-
-                    // [FORK] 固定到上下文保护：受保护节点（isPinned / isFavorite）不被 limitContext 截断
-                    // 保持 allMessages 原始时序过滤，确保 AI 看到顺序正确的对话
-                    val nodes = conv.messageNodes
-                    val protectedNodeIds = nodes
-                        .filter { it.isPinned || it.isFavorite }
-                        .map { it.id }
-                        .toSet()
-
-                    if (protectedNodeIds.isEmpty()) return@let allMessages
-
-                    // 建立「选中消息 id → 所属节点 id」映射，用于划分受保护消息
-                    val selectMsgIdToNodeId = nodes.associate { node ->
-                        node.messages.getOrNull(node.selectIndex)?.id to node.id
-                    }
-
-                    // 区分受保护消息 ID 集合和普通消息
-                    val protectedMsgIds = allMessages
-                        .filter { msg -> selectMsgIdToNodeId[msg.id]?.let { it in protectedNodeIds } == true }
-                        .map { it.id }
-                        .toSet()
-                    if (protectedMsgIds.isEmpty()) return@let allMessages
-
-                    val normalMsgs = allMessages.filter { msg -> msg.id !in protectedMsgIds }
-
-                    // 对普通消息预先截断，保证总长度 ≤ effectiveContextSize
-                    val effectiveContextSize = resolved.contextMessageSize
-                    val limitedNormalMsgs = if (effectiveContextSize > 0) {
-                        val maxNormal = (effectiveContextSize - protectedMsgIds.size).coerceAtLeast(0)
-                        normalMsgs.takeLast(maxNormal)
-                    } else {
-                        normalMsgs
-                    }
-
-                    // 从 allMessages 中过滤保留，维持原始时序（受保护消息 + 未截断的普通消息）
-                    val limitedNormalMsgIds = limitedNormalMsgs.map { it.id }.toSet()
-                    allMessages.filter { msg ->
-                        msg.id in protectedMsgIds || msg.id in limitedNormalMsgIds
-                    }
+                messages = if (messageRange != null) {
+                    // 重生成某条：按索引截取,不再走 pin/favorite 保护
+                    conversation.currentMessages.subList(
+                        messageRange.start.coerceAtLeast(0),
+                        (messageRange.endInclusive + 1).coerceAtMost(conversation.currentMessages.size)
+                    )
+                } else {
+                    // 正常发送：全量消息 + protectedMessageIds 让 GenerationHandler.limitContext 保留收藏/固定
+                    conversation.currentMessages
                 },
+                protectedMessageIds = protectedMessageIds,
+                // [FORK] 显式传 conversationParams,确保对话专属 contextMessageSize 在 GenerationHandler.limitContext 中生效
+                // (若不传,generateInternal 会用默认空 ConversationParams(),只能读到助手级别设置)
+                conversationParams = conversation.conversationParams,
                 assistant = assistant,
                 conversationSystemPrompt = conversation.customSystemPrompt,
                 conversationModeInjectionIds = conversation.modeInjectionIds,
@@ -764,8 +746,6 @@ class ChatService(
                     add(workspaceReminderTransformer)
                 },
                 outputTransformers = outputTransformers,
-                // [FORK] 对话专属记忆
-                conversationMemoryKey = conversationMemoryKey,
                 tools = buildList {
                     if (settings.enableWebSearch) {
                         addAll(createSearchTools(settings))

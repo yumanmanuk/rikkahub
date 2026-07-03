@@ -42,8 +42,6 @@ data class ConversationParams(
     val battleIndependentContext: Boolean = false,
     // [FORK] Battle Mode: 每个模型对应的思考深度，key=modelId；未设置则继承 assistant.reasoningLevel
     val battleModelReasoningLevels: Map<Uuid, ReasoningLevel> = emptyMap(),
-    // [FORK] 对话专属记忆：开启后记忆以 conversation.id 为 key 存储，与其他对话完全隔离
-    val enableConversationMemory: Boolean = false,
 )
 
 @Serializable
@@ -94,12 +92,21 @@ data class Conversation(
      * 对于 battle 节点，选取该 modelId 生成的那条 message 作为该模型的上下文；
      * 对于非 battle 节点，直接取当前选中的 message。
      * 若 battle 节点中找不到对应 modelId 的消息，则回退到 selectIndex。
+     *
+     * [FORK] 收藏/固定语义：若 battle 节点被收藏或固定到上下文，
+     * 所有模型统一使用 selectIndex 对应的那条回答（即用户明确选定收藏的那条），
+     * 而非各自找 modelId 匹配的回答，确保收藏内容跨模型一致传递。
      */
     fun getMessagesForModel(modelId: Uuid): List<UIMessage> {
         return messageNodes.map { node ->
             if (node.isBattleNode) {
-                node.messages.firstOrNull { it.modelId == modelId }
-                    ?: node.messages.getOrElse(node.selectIndex) { node.messages.first() }
+                // 收藏/固定的 battle 节点：所有模型都使用用户选定（收藏）的那条回答
+                if (node.isFavorite || node.isPinned) {
+                    node.messages.getOrElse(node.selectIndex) { node.messages.first() }
+                } else {
+                    node.messages.firstOrNull { it.modelId == modelId }
+                        ?: node.messages.getOrElse(node.selectIndex) { node.messages.first() }
+                }
             } else {
                 node.messages[node.selectIndex]
             }

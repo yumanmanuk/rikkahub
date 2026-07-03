@@ -87,10 +87,10 @@ class GenerationHandler(
         conversationModeInjectionIds: Set<Uuid> = emptySet(),
         conversationLorebookIds: Set<Uuid> = emptySet(),
         workspaceCwd: String? = null,
-        // [FORK] 对话专属记忆 key（非 null 时使用该 key 存取记忆，与其他对话隔离）
-        conversationMemoryKey: String? = null,
         // [FORK] 覆盖助手级别的 reasoningLevel（Battle Mode 分模型设置）
         reasoningLevelOverride: ReasoningLevel? = null,
+        // [FORK] 受保护消息 id（收藏/固定到上下文）:在 limitContext 中保留,不受 contextMessageSize 限制
+        protectedMessageIds: Set<Uuid> = emptySet(),
     ): Flow<GenerationChunk> = flow {
         val provider = model.findProvider(settings.providers) ?: error("Provider not found")
         val providerImpl = providerManager.getProviderByType(provider)
@@ -102,16 +102,13 @@ class GenerationHandler(
 
             val toolsInternal = buildList {
                 Log.i(TAG, "generateInternal: build tools($assistant)")
-                // [FORK] 对话专属记忆优先：有 conversationMemoryKey 时使用对话 key，否则回退助手记忆
-                val effectiveMemoryKey: String? = when {
-                    conversationMemoryKey != null -> conversationMemoryKey
-                    assistant?.enableMemory == true -> if (assistant.useGlobalMemory) {
+                val effectiveMemoryKey: String? = if (assistant?.enableMemory == true) {
+                    if (assistant.useGlobalMemory) {
                         MemoryRepository.GLOBAL_MEMORY_ID
                     } else {
                         assistant.id.toString()
                     }
-                    else -> null
-                }
+                } else null
                 if (effectiveMemoryKey != null) {
                     buildMemoryTools(
                         json = json,
@@ -175,6 +172,7 @@ class GenerationHandler(
                     conversationModeInjectionIds = conversationModeInjectionIds,
                     conversationLorebookIds = conversationLorebookIds,
                     workspaceCwd = workspaceCwd,
+                    protectedMessageIds = protectedMessageIds,
                 )
                 messages = messages.visualTransforms(
                     transformers = outputTransformers,
@@ -377,6 +375,8 @@ class GenerationHandler(
         workspaceCwd: String? = null,
         // [FORK] Battle Mode：覆盖助手级别的思考深度，null 表示使用助手默认值
         reasoningLevelOverride: ReasoningLevel? = null,
+        // [FORK] 受保护消息 id（收藏/固定到上下文）:在 limitContext 中保留,不受 contextMessageSize 限制
+        protectedMessageIds: Set<Uuid> = emptySet(),
     ) {
         // [FORK] 使用 ConversationParamsResolver 合并对话专属参数与助手默认参数
         val resolved = conversationParams.resolveWith(assistant)
@@ -409,7 +409,7 @@ class GenerationHandler(
                 }
             }
             if (system.isNotBlank()) add(UIMessage.system(prompt = system))
-            addAll(messages.limitContext(effectiveContextMessageSize))
+            addAll(messages.limitContext(effectiveContextMessageSize, protectedMessageIds))
         }.transforms(
             transformers = transformers,
             context = context,

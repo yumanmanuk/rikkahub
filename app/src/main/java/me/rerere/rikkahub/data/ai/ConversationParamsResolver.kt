@@ -16,8 +16,6 @@ data class ResolvedConversationParams(
     val topP: Float?,
     val contextMessageSize: Int,
     val systemPrompt: String,
-    // [FORK] 对话专属记忆
-    val enableConversationMemory: Boolean,
 )
 
 /**
@@ -41,7 +39,5 @@ fun ConversationParams.resolveWith(assistant: Assistant): ResolvedConversationPa
         topP = topP ?: assistant.topP,
         contextMessageSize = contextMessageSize ?: assistant.contextMessageSize,
         systemPrompt = effectiveSystemPrompt,
-        // [FORK] 对话专属记忆不继承助手设置，仅当对话自己开启时有效
-        enableConversationMemory = enableConversationMemory,
     )
 }
