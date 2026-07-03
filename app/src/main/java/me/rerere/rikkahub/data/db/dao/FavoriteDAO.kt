@@ -35,4 +35,22 @@ interface FavoriteDAO {
 
     @Query("DELETE FROM favorites WHERE id = :id")
     suspend fun deleteById(id: String): Int
+
+    @Query("""
+        DELETE FROM favorites
+        WHERE type = 'node'
+          AND ref_key LIKE 'node:' || :conversationId || ':%'
+    """)
+    suspend fun deleteAllOfConversation(conversationId: String): Int
+
+    @Query("SELECT * FROM favorites WHERE ref_key LIKE 'node:' || :conversationId || ':%'")
+    suspend fun getFavoriteEntitiesOfConversation(conversationId: String): List<FavoriteEntity>
+
+    @Query("""
+        DELETE FROM favorites
+        WHERE type = 'node'
+          AND ref_key LIKE 'node:' || :conversationId || ':%'
+          AND substr(ref_key, length('node:' || :conversationId || ':') + 1) IN (:nodeIds)
+    """)
+    suspend fun deleteByNodeIds(conversationId: String, nodeIds: List<String>): Int
 }

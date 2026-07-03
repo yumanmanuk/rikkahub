@@ -40,6 +40,18 @@ class FavoriteRepository(
         return dao.deleteByRefKey(NodeFavoriteAdapter.buildRefKey(conversationId.toString(), nodeId.toString()))
     }
 
+    suspend fun removeNodeFavorites(conversationId: Uuid, nodeIds: List<Uuid>): Int {
+        if (nodeIds.isEmpty()) return 0
+        return dao.deleteByNodeIds(
+            conversationId.toString(),
+            nodeIds.map { it.toString() }
+        )
+    }
+
+    suspend fun removeAllNodeFavoritesOfConversation(conversationId: Uuid): Int {
+        return dao.deleteAllOfConversation(conversationId.toString())
+    }
+
     suspend fun isNodeFavorited(conversationId: Uuid, nodeId: Uuid): Boolean {
         return dao.existsByRefKey(NodeFavoriteAdapter.buildRefKey(conversationId.toString(), nodeId.toString()))
     }
