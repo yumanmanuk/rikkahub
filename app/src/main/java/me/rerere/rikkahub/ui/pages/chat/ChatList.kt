@@ -438,7 +438,7 @@ private fun ChatListNormal(
                             onUpdate = {
                                 onUpdateMessage(it)
                             },
-                            isFavorite = node.isFavorite,
+                            isFavorite = node.favoriteMessageId == node.currentMessage.id,
                             onToggleFavorite = {
                                 onToggleFavorite?.invoke(node)
                             },
@@ -666,7 +666,8 @@ private fun extractMatchingSnippet(
 private fun buildHighlightedText(
     text: String,
     query: String,
-    highlightColor: Color
+    highlightColor: Color,
+    onHighlightColor: Color
 ): AnnotatedString {
     if (query.isBlank()) {
         return AnnotatedString(text)
@@ -680,11 +681,11 @@ private fun buildHighlightedText(
             // 添加高亮前的文本
             append(text.substring(startIndex, index))
 
-            // 添加高亮文本
+            // 添加高亮文本，使用语义配对色保证深浅色主题下都可读
             withStyle(
                 style = SpanStyle(
                     background = highlightColor,
-                    color = Color.Black
+                    color = onHighlightColor
                 )
             ) {
                 append(text.substring(index, index + query.length))
@@ -942,6 +943,7 @@ private fun ChatListPreview(
                                 )
                             }
                             val highlightColor = MaterialTheme.colorScheme.tertiaryContainer
+                            val onHighlightColor = MaterialTheme.colorScheme.onTertiaryContainer
                             val highlightedText = remember(searchQuery, message) {
                                 val fullText = message.toText().trim().ifBlank { "[...]" }
                                 val messageText = extractMatchingSnippet(
@@ -951,7 +953,8 @@ private fun ChatListPreview(
                                 buildHighlightedText(
                                     text = messageText,
                                     query = searchQuery,
-                                    highlightColor = highlightColor
+                                    highlightColor = highlightColor,
+                                    onHighlightColor = onHighlightColor
                                 )
                             }
                             Text(

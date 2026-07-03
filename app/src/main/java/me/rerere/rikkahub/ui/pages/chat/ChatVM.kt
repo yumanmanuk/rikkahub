@@ -399,10 +399,16 @@ class ChatVM(
 
     fun toggleMessageFavorite(node: MessageNode) {
         viewModelScope.launch {
-            val currentlyFavorited = favoriteRepository.isNodeFavorited(_conversationId, node.id)
-            if (currentlyFavorited) {
+            val currentMessage = node.currentMessage
+            // 当前显示的 message 是否是被收藏的那条
+            val isCurrentMessageFavorited = node.favoriteMessageId == currentMessage.id
+
+            if (isCurrentMessageFavorited) {
                 favoriteRepository.removeNodeFavorite(_conversationId, node.id)
             } else {
+                // 先移除旧收藏（换了一条 message 来收藏时），再添加新收藏
+                favoriteRepository.removeNodeFavorite(_conversationId, node.id)
+
                 // 查找前一条用户提问
                 val nodes = conversation.value.messageNodes
                 val nodeIndex = nodes.indexOfFirst { it.id == node.id }
@@ -420,6 +426,7 @@ class ChatVM(
                         nodeId = node.id,
                         node = node,
                         questionPreview = questionPreview,
+                        messageId = currentMessage.id,
                     )
                 )
             }
@@ -428,7 +435,9 @@ class ChatVM(
                 currentConversation.copy(
                     messageNodes = currentConversation.messageNodes.map { existingNode ->
                         if (existingNode.id == node.id) {
-                            existingNode.copy(isFavorite = !currentlyFavorited)
+                            existingNode.copy(
+                                favoriteMessageId = if (isCurrentMessageFavorited) null else currentMessage.id
+                            )
                         } else {
                             existingNode
                         }

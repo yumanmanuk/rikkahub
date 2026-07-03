@@ -177,11 +177,13 @@ data class MessageNode(
     // [FORK] Battle Mode: 标记该节点是否由 BattleService 创建（多模型并发生成）
     val isBattleNode: Boolean = false,
     @Transient
-    val isFavorite: Boolean = false,
+    val favoriteMessageId: Uuid? = null,
     // [FORK] 固定到上下文：设置了上下文长度时，该节点不会被截断
     @Transient
     val isPinned: Boolean = false,
 ) {
+    // 节点是否有收藏（只要 favoriteMessageId 不为 null 即为 true）
+    val isFavorite: Boolean get() = favoriteMessageId != null
     val currentMessage get() = if (messages.isEmpty() || selectIndex !in messages.indices) {
         throw IllegalStateException("MessageNode has no valid current message: messages.size=${messages.size}, selectIndex=$selectIndex")
     } else {

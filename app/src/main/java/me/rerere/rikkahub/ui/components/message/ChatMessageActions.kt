@@ -1,13 +1,21 @@
 package me.rerere.rikkahub.ui.components.message
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -37,6 +45,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.LaunchedEffect
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -182,20 +192,65 @@ fun ColumnScope.ChatMessageActionButtons(
 
             // 收藏
             if (onToggleFavorite != null) {
-                Icon(
-                    imageVector = if (isFavorite) HugeIcons.InLove else HugeIcons.Favourite,
-                    contentDescription = "Favourite",
+                var bouncing by remember { mutableStateOf(false) }
+                val scale by animateFloatAsState(
+                    targetValue = if (bouncing) 1.45f else 1f,
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioMediumBouncy,
+                        stiffness = Spring.StiffnessMedium
+                    ),
+                    label = "favoriteScale"
+                )
+                val iconColor by animateColorAsState(
+                    targetValue = if (isFavorite) Color(0xFFE53935) else actionIconColor,
+                    animationSpec = tween(durationMillis = 250),
+                    label = "favoriteColor"
+                )
+                LaunchedEffect(bouncing) {
+                    if (bouncing) {
+                        delay(120)
+                        bouncing = false
+                    }
+                }
+                Box(
                     modifier = Modifier
                         .clip(CircleShape)
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = LocalIndication.current,
-                            onClick = { onToggleFavorite() }
+                            onClick = {
+                                bouncing = true
+                                onToggleFavorite()
+                            }
                         )
-                        .padding(8.dp)
-                        .size(16.dp),
-                    tint = if (isFavorite) Color(0xFFE53935) else actionIconColor
-                )
+                        .padding(8.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    AnimatedContent(
+                        targetState = isFavorite,
+                        transitionSpec = {
+                            // 新图标：用 tween 缩放入场（不用弹簧，避免过冲超出裁剪边界）
+                            // 退场：立即消失，不显示旧图标残影
+                            (scaleIn(
+                                animationSpec = tween(durationMillis = 220),
+                                initialScale = 0.3f
+                            ) + fadeIn(tween(180))) togetherWith ExitTransition.None
+                        },
+                        label = "favoriteIcon"
+                    ) { favorited ->
+                        Icon(
+                            imageVector = if (favorited) HugeIcons.InLove else HugeIcons.Favourite,
+                            contentDescription = "Favourite",
+                            modifier = Modifier
+                                .size(16.dp)
+                                .graphicsLayer {
+                                    scaleX = scale
+                                    scaleY = scale
+                                },
+                            tint = iconColor
+                        )
+                    }
+                }
             }
 
             // Battle Mode 标识图标：多条来自不同模型的回答可切换时显示，点击打开排序面板
