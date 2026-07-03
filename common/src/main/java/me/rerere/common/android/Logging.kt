@@ -53,7 +53,7 @@ object Logging {
     val logsFlow: StateFlow<List<LogEntry>> = _logsFlow.asStateFlow()
 
     @Volatile
-    private var requestLoggingEnabled = false
+    private var requestLoggingEnabled = true
 
     fun log(tag: String, message: String) {
         addLog(LogEntry.TextLog(tag = tag, message = message))
