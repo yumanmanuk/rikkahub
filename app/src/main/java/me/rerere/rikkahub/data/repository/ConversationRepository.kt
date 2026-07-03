@@ -19,6 +19,7 @@ import me.rerere.rikkahub.data.db.dao.FavoriteDAO
 import me.rerere.rikkahub.data.db.dao.MessageNodeDAO
 import me.rerere.rikkahub.data.db.entity.ConversationEntity
 import me.rerere.rikkahub.data.db.entity.MessageNodeEntity
+import me.rerere.rikkahub.data.favorite.NodeFavoriteAdapter
 import me.rerere.rikkahub.data.files.FilesManager
 import me.rerere.rikkahub.data.model.Conversation
 import me.rerere.rikkahub.data.model.ConversationParams
@@ -245,6 +246,32 @@ class ConversationRepository(
     }
 
     suspend fun updateConversation(conversation: Conversation) {
+        // 找出被删除的节点 ID，联动清理对应收藏
+        val newNodeIds = conversation.messageNodes.map { it.id.toString() }.toSet()
+        val oldNodeIds = favoriteDAO
+            .getFavoriteNodeIdsOfConversation(conversation.id.toString())
+            .toSet()
+        val removedNodeIds = oldNodeIds.filter { it !in newNodeIds }
+        if (removedNodeIds.isNotEmpty()) {
+            favoriteDAO.deleteByNodeIds(conversation.id.toString(), removedNodeIds)
+        }
+
+        // 对存活节点检查：若收藏的那条具体 message 已被删除，也清理该收藏
+        val survivingFavoritedEntities = favoriteDAO
+            .getFavoriteEntitiesOfConversation(conversation.id.toString())
+            .filter { entity ->
+                val ref = NodeFavoriteAdapter.decodeRef(entity) ?: return@filter false
+                ref.nodeId.toString() in newNodeIds
+            }
+        for (entity in survivingFavoritedEntities) {
+            val ref = NodeFavoriteAdapter.decodeRef(entity) ?: continue
+            val messageId = ref.messageId ?: continue
+            val node = conversation.messageNodes.firstOrNull { it.id == ref.nodeId } ?: continue
+            if (node.messages.none { it.id == messageId }) {
+                favoriteDAO.deleteByRefKey(entity.refKey)
+            }
+        }
+
         database.withTransaction {
             conversationDAO.update(
                 conversationToConversationEntity(conversation)
@@ -265,6 +292,8 @@ class ConversationRepository(
         }
         messageFtsManager.deleteConversation(conversation.id.toString())
         database.withTransaction {
+            // 联动清理该会话所有收藏（与 conversation 删除在同一事务内）
+            favoriteDAO.deleteAllOfConversation(conversation.id.toString())
             // message_node 会通过 CASCADE 自动删除
             conversationDAO.delete(
                 conversationToConversationEntity(conversation)
@@ -341,6 +370,9 @@ class ConversationRepository(
         )
     }
 
+    fun observeExistingConversationIds(): Flow<Set<String>> =
+        conversationDAO.observeAllIds().map { it.toSet() }
+
     fun getPinnedConversations(): Flow<List<Conversation>> {
         return conversationDAO
             .getPinnedConversations()
@@ -390,10 +422,15 @@ class ConversationRepository(
     }
 
     private suspend fun loadMessageNodes(conversationId: String): List<MessageNode> {
-        val favoriteNodeIds = favoriteDAO
-            .getFavoriteNodeIdsOfConversation(conversationId)
-            .mapNotNull { runCatching { Uuid.parse(it) }.getOrNull() }
-            .toSet()
+        // 加载完整 favorite entities，解析出 nodeId → messageId 的映射
+        val favoriteMessageIds: Map<Uuid, Uuid?> = favoriteDAO
+            .getFavoriteEntitiesOfConversation(conversationId)
+            .mapNotNull { entity ->
+                val ref = runCatching { NodeFavoriteAdapter.decodeRef(entity) }.getOrNull()
+                    ?: return@mapNotNull null
+                ref.nodeId to ref.messageId
+            }
+            .toMap()
 
         return database.withTransaction {
             val nodes = mutableListOf<MessageNode>()
@@ -420,7 +457,7 @@ class ConversationRepository(
                             id = nodeId,
                             messages = messages,
                             selectIndex = entity.selectIndex,
-                            isFavorite = favoriteNodeIds.contains(nodeId),
+                            favoriteMessageId = favoriteMessageIds[nodeId],
                             isPinned = entity.isPinned
                         )
                     )
