@@ -809,7 +809,7 @@ private fun Paragraph(
     val latexColorArgb = LocalContentColor.current.toArgb()
     FlowRow(
         modifier = modifier.then(
-            if (node.nextSibling() != null) Modifier.padding(bottom = LocalTextStyle.current.fontSize.toDp() * 1.8f) // [FORK] 段落间距加大
+            if (node.nextSibling() != null) Modifier.padding(bottom = LocalTextStyle.current.fontSize.toDp() * 1.6f) // [FORK] 段落间距加大
             else Modifier
         )
     ) {
