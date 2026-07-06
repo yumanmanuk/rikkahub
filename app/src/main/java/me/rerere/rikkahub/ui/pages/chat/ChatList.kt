@@ -452,7 +452,11 @@ private fun ChatListNormal(
                             },
                             onScrollToQuestion = if (node.currentMessage.role == me.rerere.ai.core.MessageRole.ASSISTANT && index > 0) {
                                 val targetIndex = index - 1
-                                { scope.launch { state.animateScrollToItem(targetIndex) } }
+                                {
+                                    // 点击向上跳转时，暂停自动贴底，防止跳转到问题后又被拉回底部
+                                    shouldAutoFollow = false
+                                    scope.launch { state.animateScrollToItem(targetIndex) }
+                                }
                             } else null,
                             // [FORK] 固定到上下文
                             isPinned = node.isPinned,
