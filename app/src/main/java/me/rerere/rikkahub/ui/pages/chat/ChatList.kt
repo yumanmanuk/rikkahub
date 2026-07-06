@@ -109,7 +109,7 @@ import me.rerere.rikkahub.ui.components.ui.ErrorCardsDisplay
 import me.rerere.rikkahub.ui.components.ui.ListSelectableItem
 import me.rerere.rikkahub.ui.components.ui.RabbitLoadingIndicator
 import me.rerere.rikkahub.ui.components.ui.Tooltip
-import me.rerere.rikkahub.ui.hooks.ImeLazyListAutoScroller
+
 import me.rerere.rikkahub.ui.theme.ChatFontProvider
 import me.rerere.rikkahub.utils.plus
 import me.rerere.rikkahub.utils.wordCount
@@ -242,7 +242,7 @@ private fun ChatListNormal(
 ) {
     val scope = rememberCoroutineScope()
     val loadingState by rememberUpdatedState(loading)
-    var isRecentScroll by remember { mutableStateOf(false) }
+
     var isUserDragging by remember { mutableStateOf(false) }
     var shouldAutoFollow by remember { mutableStateOf(true) }
     val conversationUpdated by rememberUpdatedState(conversation)
@@ -1088,10 +1088,14 @@ private fun BoxScope.MessageJumper(
                     scope.launch {
                         val current = state.firstVisibleItemIndex
                         // 找大于当前位置的最小 USER index
-                        val target = userMessageIndices.firstOrNull { it > current }
-                            ?: userMessageIndices.lastOrNull()
-                            ?: (current + 1)
-                        state.animateScrollToItem(target)
+                        val nextUserIndex = userMessageIndices.firstOrNull { it > current }
+                        if (nextUserIndex != null) {
+                            // 还有更靠下的提问，跳过去
+                            state.animateScrollToItem(nextUserIndex)
+                        } else {
+                            // 已经跨过最后一条提问，直接滚到底部
+                            state.animateScrollToItem((state.layoutInfo.totalItemsCount - 1).coerceAtLeast(0))
+                        }
                     }
                 },
                 shape = CircleShape,
