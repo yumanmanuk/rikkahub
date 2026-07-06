@@ -25,3 +25,5 @@ description: Use this skill when the user wants to pull/sync upstream changes in
 - 对于复杂冲突，应该逐段阅读冲突块，理解上下游双方的意图
 - 涉及数据库 schema、API 接口定义等关键文件时，更要仔细
 - 如果冲突过多，应先告知用户并列出冲突文件清单，再逐一解决
+- 不需要commit和push代码
+- 执行完成后检查数据导出/导入和 Room migration 逻辑是否受本次upstream同步影响
