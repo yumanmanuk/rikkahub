@@ -1017,6 +1017,9 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="setting_tts_page_speech_rate">语音速度</string>
   <string name="setting_tts_page_stability">稳定度</string>
   <string name="setting_tts_page_stability_description">控制语音的稳定度（0.0 - 1.0，越低越有表现力）</string>
+  <string name="setting_tts_page_temperature">温度</string>
+  <string name="setting_tts_page_temperature_description">控制语音的随机性（0.0 - 1.0，越高越有表现力）</string>
+  <string name="setting_tts_page_fish_audio_speed_description">语音速度（0.5 - 2.0，1.0 为正常语速）</string>
   <string name="setting_tts_page_speech_rate_description">控制语音播放速度 (0.1 - 3.0，1.0为正常速度)</string>
   <string name="setting_tts_page_speed">语速</string>
   <string name="setting_tts_page_speed_description">语音合成速度 (0.25 - 4.0)</string>
