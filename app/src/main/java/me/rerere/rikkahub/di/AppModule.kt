@@ -86,6 +86,7 @@ val appModule = module {
         )
     }
 
+
     single {
         ChatService(
             context = get(),
