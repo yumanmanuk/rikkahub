@@ -108,10 +108,14 @@ private fun rememberReasoningState(reasoning: UIMessagePart.Reasoning): Pair<Rea
         }
     }
 
-    LaunchedEffect(loading) {
-        if (loading) {
+    LaunchedEffect(reasoning.finishedAt) {
+        if (reasoning.finishedAt != null) {
+            // Reasoning finished: lock duration to the actual finishedAt timestamp so that
+            // wall-clock drift during screen-off / backgrounding does not leak into the display.
+            state.duration = reasoning.finishedAt!! - reasoning.createdAt
+        } else {
             while (isActive) {
-                state.duration = (reasoning.finishedAt ?: Clock.System.now()) - reasoning.createdAt
+                state.duration = Clock.System.now() - reasoning.createdAt
                 delay(50)
             }
         }
