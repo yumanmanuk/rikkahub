@@ -15,43 +15,51 @@ import me.rerere.tts.provider.providers.QwenTTSProvider
 import me.rerere.tts.provider.providers.StepTTSProvider
 import me.rerere.tts.provider.providers.SystemTTSProvider
 import me.rerere.tts.provider.providers.XAITTSProvider
+// [FORK] GeminiVertex / VertexCloud TTS providers
 import me.rerere.tts.provider.providers.GeminiVertexTTSProvider
 import me.rerere.tts.provider.providers.VertexCloudTTSProvider
+import kotlin.reflect.KClass
 
 class TTSManager(private val context: Context) {
-    private val openAIProvider = OpenAITTSProvider()
-    private val geminiProvider = GeminiTTSProvider()
-    private val systemProvider = SystemTTSProvider()
-    private val miniMaxProvider = MiniMaxTTSProvider()
-    private val qwenProvider = QwenTTSProvider()
-    private val groqProvider = GroqTTSProvider()
-    private val xaiProvider = XAITTSProvider()
-    private val miMoProvider = MiMoTTSProvider()
-    private val stepProvider = StepTTSProvider()
-    private val elevenLabsProvider = ElevenLabsTTSProvider()
-    private val geminiVertexProvider = GeminiVertexTTSProvider()
-    private val vertexCloudProvider = VertexCloudTTSProvider()
-    private val fishAudioProvider = FishAudioTTSProvider()
+
+    /**
+     * Provider 注册表：将 TTSProviderSetting 的具体类型映射到对应的 TTSProvider 实例。
+     *
+     * 新增 provider 时只需在此 Map 追加一行即可，无需修改多处 when 表达式，
+     * 从而减少 upstream merge 冲突的概率。
+     *
+     * upstream 新增的 provider 通常追加在列表末尾；
+     * [FORK] 自定义 provider 统一放在下方独立分组，便于识别与保留。
+     */
+    @Suppress("UNCHECKED_CAST")
+    private val registry: Map<KClass<out TTSProviderSetting>, TTSProvider<TTSProviderSetting>> = mapOf(
+        // ---- upstream providers ----
+        TTSProviderSetting.OpenAI::class      to OpenAITTSProvider()      as TTSProvider<TTSProviderSetting>,
+        TTSProviderSetting.Gemini::class      to GeminiTTSProvider()      as TTSProvider<TTSProviderSetting>,
+        TTSProviderSetting.SystemTTS::class   to SystemTTSProvider()      as TTSProvider<TTSProviderSetting>,
+        TTSProviderSetting.MiniMax::class     to MiniMaxTTSProvider()     as TTSProvider<TTSProviderSetting>,
+        TTSProviderSetting.Qwen::class        to QwenTTSProvider()        as TTSProvider<TTSProviderSetting>,
+        TTSProviderSetting.Groq::class        to GroqTTSProvider()        as TTSProvider<TTSProviderSetting>,
+        TTSProviderSetting.XAI::class         to XAITTSProvider()         as TTSProvider<TTSProviderSetting>,
+        TTSProviderSetting.MiMo::class        to MiMoTTSProvider()        as TTSProvider<TTSProviderSetting>,
+        TTSProviderSetting.ElevenLabs::class  to ElevenLabsTTSProvider()  as TTSProvider<TTSProviderSetting>,
+        TTSProviderSetting.FishAudio::class   to FishAudioTTSProvider()   as TTSProvider<TTSProviderSetting>,
+        TTSProviderSetting.Step::class        to StepTTSProvider()        as TTSProvider<TTSProviderSetting>,
+        // ---- [FORK] 自定义 providers ----
+        TTSProviderSetting.GeminiVertex::class to GeminiVertexTTSProvider() as TTSProvider<TTSProviderSetting>,
+        TTSProviderSetting.VertexCloud::class  to VertexCloudTTSProvider()  as TTSProvider<TTSProviderSetting>,
+    )
+
+    private fun providerFor(setting: TTSProviderSetting): TTSProvider<TTSProviderSetting> {
+        return registry[setting::class]
+            ?: error("No TTSProvider registered for ${setting::class.simpleName}")
+    }
 
     fun generateSpeech(
         providerSetting: TTSProviderSetting,
         request: TTSRequest
     ): Flow<AudioChunk> {
-        return when (providerSetting) {
-            is TTSProviderSetting.OpenAI -> openAIProvider.generateSpeech(context, providerSetting, request)
-            is TTSProviderSetting.Gemini -> geminiProvider.generateSpeech(context, providerSetting, request)
-            is TTSProviderSetting.SystemTTS -> systemProvider.generateSpeech(context, providerSetting, request)
-            is TTSProviderSetting.MiniMax -> miniMaxProvider.generateSpeech(context, providerSetting, request)
-            is TTSProviderSetting.Qwen -> qwenProvider.generateSpeech(context, providerSetting, request)
-            is TTSProviderSetting.Groq -> groqProvider.generateSpeech(context, providerSetting, request)
-            is TTSProviderSetting.XAI -> xaiProvider.generateSpeech(context, providerSetting, request)
-            is TTSProviderSetting.MiMo -> miMoProvider.generateSpeech(context, providerSetting, request)
-            is TTSProviderSetting.ElevenLabs -> elevenLabsProvider.generateSpeech(context, providerSetting, request)
-            is TTSProviderSetting.FishAudio -> fishAudioProvider.generateSpeech(context, providerSetting, request)
-            is TTSProviderSetting.Step -> stepProvider.generateSpeech(context, providerSetting, request)
-            is TTSProviderSetting.GeminiVertex -> geminiVertexProvider.generateSpeech(context, providerSetting, request)
-            is TTSProviderSetting.VertexCloud -> vertexCloudProvider.generateSpeech(context, providerSetting, request)
-        }
+        return providerFor(providerSetting).generateSpeech(context, providerSetting, request)
     }
 
     /**
@@ -59,38 +67,6 @@ class TTSManager(private val context: Context) {
      * 供 text_to_speech 工具注入 system prompt 使用。
      */
     fun getPromptGuidance(providerSetting: TTSProviderSetting): String {
-        return when (providerSetting) {
-            is TTSProviderSetting.OpenAI -> openAIProvider.promptGuidance
-            is TTSProviderSetting.Gemini -> geminiProvider.promptGuidance
-            is TTSProviderSetting.SystemTTS -> systemProvider.promptGuidance
-            is TTSProviderSetting.MiniMax -> miniMaxProvider.promptGuidance
-            is TTSProviderSetting.Qwen -> qwenProvider.promptGuidance
-            is TTSProviderSetting.Groq -> groqProvider.promptGuidance
-            is TTSProviderSetting.XAI -> xaiProvider.promptGuidance
-            is TTSProviderSetting.MiMo -> miMoProvider.promptGuidance
-            is TTSProviderSetting.ElevenLabs -> elevenLabsProvider.promptGuidance
-            is TTSProviderSetting.FishAudio -> fishAudioProvider.promptGuidance
-            is TTSProviderSetting.Step -> stepProvider.promptGuidance
-        }
-    }
-
-    /**
-     * 返回该 provider 硬编码的语气标记引导提示词（默认空）。
-     * 供 text_to_speech 工具注入 system prompt 使用。
-     */
-    fun getPromptGuidance(providerSetting: TTSProviderSetting): String {
-        return when (providerSetting) {
-            is TTSProviderSetting.OpenAI -> openAIProvider.promptGuidance
-            is TTSProviderSetting.Gemini -> geminiProvider.promptGuidance
-            is TTSProviderSetting.SystemTTS -> systemProvider.promptGuidance
-            is TTSProviderSetting.MiniMax -> miniMaxProvider.promptGuidance
-            is TTSProviderSetting.Qwen -> qwenProvider.promptGuidance
-            is TTSProviderSetting.Groq -> groqProvider.promptGuidance
-            is TTSProviderSetting.XAI -> xaiProvider.promptGuidance
-            is TTSProviderSetting.MiMo -> miMoProvider.promptGuidance
-            is TTSProviderSetting.ElevenLabs -> elevenLabsProvider.promptGuidance
-            is TTSProviderSetting.FishAudio -> fishAudioProvider.promptGuidance
-            is TTSProviderSetting.Step -> stepProvider.promptGuidance
-        }
+        return providerFor(providerSetting).promptGuidance
     }
 }
