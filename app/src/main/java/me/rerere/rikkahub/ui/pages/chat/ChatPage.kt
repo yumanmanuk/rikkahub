@@ -52,6 +52,7 @@ import androidx.compose.material3.rememberDrawerState
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -332,6 +333,9 @@ private fun ChatPageContent(
     val workspaceRepository: WorkspaceRepository = koinInject()
     var previewMode by rememberSaveable { mutableStateOf(false) }
     var showMessageJumperOverlay by rememberSaveable { mutableStateOf(false) }
+    // 缩略页跳转请求：nonce 保证同一 index 重复点击时 LaunchedEffect 也能重新触发
+    var jumpNonce by remember { mutableIntStateOf(0) }
+    var jumpRequest by remember { mutableStateOf<JumpRequest?>(null) }
     val hazeState = rememberHazeState()
     val assistant = setting.getCurrentAssistant()
     var showFilesSheet by remember { mutableStateOf(false) }
@@ -474,6 +478,7 @@ private fun ChatPageContent(
                 hazeState = hazeState,
                 showJumper = showMessageJumperOverlay,
                 onDismissJumper = { showMessageJumperOverlay = false },
+                jumpRequest = jumpRequest,
                 errors = errors,
                 onDismissError = onDismissError,
                 onClearAllErrors = onClearAllErrors,
@@ -537,10 +542,11 @@ private fun ChatPageContent(
                     vm.clearTranslationField(message.id)
                 },
                 onJumpToMessage = { index ->
+                    // 先切到普通模式，再通过 jumpRequest 通知 ChatListNormal
+                    // ChatListNormal 内部会原子地“禁用自动贴底 + 滚动到目标”，防止贴底覆盖跳转位置
                     previewMode = false
-                    scope.launch {
-                        chatListState.requestScrollToItem(index)
-                    }
+                    jumpNonce++
+                    jumpRequest = JumpRequest(index, jumpNonce)
                 },
                 onToolApproval = { toolCallId, approved, reason ->
                     vm.handleToolApproval(toolCallId, approved, reason)

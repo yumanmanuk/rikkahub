@@ -119,6 +119,12 @@ private const val TAG = "ChatList"
 private const val LoadingIndicatorKey = "LoadingIndicator"
 private const val ScrollBottomKey = "ScrollBottomKey"
 
+/**
+ * 从缩略页跳转到指定消息的请求。
+ * nonce 用于保证同一 index 重复点击时 LaunchedEffect 也能重新触发。
+ */
+data class JumpRequest(val index: Int, val nonce: Int)
+
 @Composable
 fun ChatList(
     innerPadding: PaddingValues,
@@ -145,6 +151,8 @@ fun ChatList(
     onTranslate: ((UIMessage, java.util.Locale) -> Unit)? = null,
     onClearTranslation: (UIMessage) -> Unit = {},
     onJumpToMessage: (Int) -> Unit = {},
+    // 缩略页跳转请求：非 null 时 ChatListNormal 会原子地禁用自动贴底再滚动
+    jumpRequest: JumpRequest? = null,
     onToolApproval: ((toolCallId: String, approved: Boolean, reason: String) -> Unit)? = null,
     onToolAnswer: ((toolCallId: String, answer: String) -> Unit)? = null,
     onToggleFavorite: ((MessageNode) -> Unit)? = null,
@@ -197,6 +205,7 @@ fun ChatList(
                 onTranslate = onTranslate,
                 onClearTranslation = onClearTranslation,
                 animatedVisibilityScope = this@AnimatedContent,
+                jumpRequest = jumpRequest,
                 onToolApproval = onToolApproval,
                 onToolAnswer = onToolAnswer,
                 onToggleFavorite = onToggleFavorite,
@@ -237,6 +246,8 @@ private fun ChatListNormal(
     onToolAnswer: ((toolCallId: String, answer: String) -> Unit)? = null,
     onToggleFavorite: ((MessageNode) -> Unit)? = null,
     onConversationSystemPromptChange: ((String?) -> Unit)? = null,
+    // 缩略页跳转请求，非 null 时原子地禁用自动贴底再跳转
+    jumpRequest: JumpRequest? = null,
     // [FORK] 固定到上下文
     onTogglePin: ((MessageNode) -> Unit)? = null,
 ) {
@@ -244,10 +255,19 @@ private fun ChatListNormal(
     val loadingState by rememberUpdatedState(loading)
 
     var isUserDragging by remember { mutableStateOf(false) }
-    var shouldAutoFollow by remember { mutableStateOf(true) }
+    // 如果入场时就带有跳转请求，直接以 false 初始化，封堕贴底 LaunchedEffect 在跳转请求处理之前抓先触发
+    var shouldAutoFollow by remember { mutableStateOf(jumpRequest == null) }
     val conversationUpdated by rememberUpdatedState(conversation)
     val density = LocalDensity.current
     val activity = LocalContext.current as? me.rerere.rikkahub.RouteActivity
+
+    // 处理缩略页跳转请求：禁用自动贴底，然后瞬间跳转到目标位置（不带动画，和之前行为一致）
+    LaunchedEffect(jumpRequest) {
+        jumpRequest?.let { req ->
+            shouldAutoFollow = false
+            state.scrollToItem(req.index)
+        }
+    }
 
     DisposableEffect(Unit) {
         val listener: (Boolean) -> Boolean = { isVolumeUp ->
