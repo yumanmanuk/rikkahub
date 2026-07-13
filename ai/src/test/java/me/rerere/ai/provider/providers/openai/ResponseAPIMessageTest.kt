@@ -12,10 +12,13 @@ import me.rerere.ai.provider.ModelAbility
 import me.rerere.ai.provider.ProviderSetting
 import me.rerere.ai.provider.TextGenerationParams
 import me.rerere.ai.ui.UIMessage
+import me.rerere.ai.ui.OpenAIReasoningMetadata
 import me.rerere.ai.ui.UIMessagePart
+import me.rerere.ai.ui.toMetadata
 import okhttp3.OkHttpClient
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -39,8 +42,11 @@ class ResponseAPIMessageTest {
     }
 
     // Helper to invoke buildMessages method
-    private fun invokeBuildMessages(messages: List<UIMessage>): JsonArray {
-        return api.buildMessages(messages)
+    private fun invokeBuildMessages(
+        messages: List<UIMessage>,
+        includeHistoryReasoning: Boolean = true,
+    ): JsonArray {
+        return api.buildMessages(messages, includeHistoryReasoning)
     }
 
     private fun invokeBuildRequestBody(
@@ -354,7 +360,166 @@ class ResponseAPIMessageTest {
         assertEquals("low", reasoning!!["effort"]?.jsonPrimitive?.content)
     }
 
+    // ---------------- includeHistoryReasoning behavior (P0 fix) ----------------
+
+    @Test
+    fun `reasoning item with encrypted content keeps id and encrypted_content and omits summary when history reasoning disabled`() {
+        val assistant = UIMessage(
+            role = MessageRole.ASSISTANT,
+            parts = listOf(
+                createReasoningPart(
+                    reasoning = "this is a long chain of thought that should not be uploaded",
+                    reasoningId = "rs_abc123",
+                    encryptedContent = "encrypted_blob_payload",
+                ),
+                UIMessagePart.Text("final answer"),
+            )
+        )
+        val result = invokeBuildMessages(
+            messages = listOf(UIMessage.user("hi"), assistant),
+            includeHistoryReasoning = false,
+        )
+        // user message + reasoning item + assistant text
+        assertEquals(3, result.size)
+        val reasoningItem = result[1].jsonObject
+        assertEquals("reasoning", reasoningItem["type"]?.jsonPrimitive?.content)
+        assertEquals("rs_abc123", reasoningItem["id"]?.jsonPrimitive?.content)
+        assertEquals("encrypted_blob_payload", reasoningItem["encrypted_content"]?.jsonPrimitive?.content)
+        assertFalse(
+            "summary must be omitted when includeHistoryReasoning=false",
+            reasoningItem.containsKey("summary"),
+        )
+    }
+
+    @Test
+    fun `reasoning item with encrypted content still emits summary when history reasoning enabled`() {
+        val assistant = UIMessage(
+            role = MessageRole.ASSISTANT,
+            parts = listOf(
+                createReasoningPart(
+                    reasoning = "preserved thought chain",
+                    reasoningId = "rs_keep",
+                    encryptedContent = "blob",
+                ),
+                UIMessagePart.Text("ok"),
+            )
+        )
+        val result = invokeBuildMessages(
+            messages = listOf(UIMessage.user("hi"), assistant),
+            includeHistoryReasoning = true,
+        )
+        val reasoningItem = result[1].jsonObject
+        assertEquals("rs_keep", reasoningItem["id"]?.jsonPrimitive?.content)
+        assertEquals("blob", reasoningItem["encrypted_content"]?.jsonPrimitive?.content)
+        val summary = reasoningItem["summary"]?.jsonArray
+        assertTrue("summary should be present when includeHistoryReasoning=true", summary != null)
+        val first = summary!![0].jsonObject
+        assertEquals("summary_text", first["type"]?.jsonPrimitive?.content)
+        assertEquals("preserved thought chain", first["text"]?.jsonPrimitive?.content)
+    }
+
+    @Test
+    fun `reasoning item without encrypted content but with id keeps id and omits summary when history reasoning disabled`() {
+        val assistant = UIMessage(
+            role = MessageRole.ASSISTANT,
+            parts = listOf(
+                createReasoningPart(
+                    reasoning = "should not appear",
+                    reasoningId = "rs_only_id",
+                    encryptedContent = null,
+                ),
+                UIMessagePart.Text("answer"),
+            )
+        )
+        val result = invokeBuildMessages(
+            messages = listOf(UIMessage.user("hi"), assistant),
+            includeHistoryReasoning = false,
+        )
+        val reasoningItem = result[1].jsonObject
+        assertEquals("rs_only_id", reasoningItem["id"]?.jsonPrimitive?.content)
+        assertFalse(reasoningItem.containsKey("encrypted_content"))
+        assertFalse(reasoningItem.containsKey("summary"))
+    }
+
+    @Test
+    fun `reasoning item with no id and no encrypted content is dropped entirely when history reasoning disabled`() {
+        val assistant = UIMessage(
+            role = MessageRole.ASSISTANT,
+            parts = listOf(
+                createReasoningPart(
+                    reasoning = "orphan thought",
+                    reasoningId = null,
+                    encryptedContent = null,
+                ),
+                UIMessagePart.Text("answer"),
+            )
+        )
+        val result = invokeBuildMessages(
+            messages = listOf(UIMessage.user("hi"), assistant),
+            includeHistoryReasoning = false,
+        )
+        // user message + assistant text (reasoning item skipped)
+        assertEquals(2, result.size)
+        assertNull(result[0].jsonObject["type"]?.jsonPrimitive?.content)
+        // second item should be the assistant text content, not a reasoning item
+        assertEquals("assistant", result[1].jsonObject["role"]?.jsonPrimitive?.content)
+    }
+
+    @Test
+    fun `buildRequestBody threads includeHistoryReasoning from provider setting into history reasoning item`() {
+        val assistant = UIMessage(
+            role = MessageRole.ASSISTANT,
+            parts = listOf(
+                createReasoningPart(
+                    reasoning = "should-not-be-uploaded",
+                    reasoningId = "rs_thread",
+                    encryptedContent = "blob_thread",
+                ),
+                UIMessagePart.Text("done"),
+            )
+        )
+        val provider = ProviderSetting.OpenAI(
+            baseUrl = "https://api.openai.com/v1",
+            useResponseApi = true,
+            includeHistoryReasoning = false,
+        )
+        val requestBody = api.buildRequestBody(
+            providerSetting = provider,
+            messages = listOf(UIMessage.user("hi"), assistant),
+            params = createReasoningParams(),
+            stream = false,
+        )
+        val input = requestBody["input"]?.jsonArray ?: error("input missing")
+        // find the reasoning item
+        val reasoningItem = input.firstNotNullOfOrNull { el ->
+            val obj = el.jsonObject
+            if (obj["type"]?.jsonPrimitive?.content == "reasoning") obj else null
+        }
+        assertTrue("reasoning item should be present", reasoningItem != null)
+        assertEquals("rs_thread", reasoningItem!!["id"]?.jsonPrimitive?.content)
+        assertEquals("blob_thread", reasoningItem["encrypted_content"]?.jsonPrimitive?.content)
+        assertFalse(
+            "summary should be omitted when provider includeHistoryReasoning=false",
+            reasoningItem.containsKey("summary"),
+        )
+    }
+
     // ==================== Helper Functions ====================
+
+    private fun createReasoningPart(
+        reasoning: String = "let me think step by step",
+        reasoningId: String? = null,
+        encryptedContent: String? = null,
+    ): UIMessagePart.Reasoning {
+        val meta = OpenAIReasoningMetadata(
+            reasoningId = reasoningId,
+            encryptedContent = encryptedContent,
+        )
+        return UIMessagePart.Reasoning(
+            reasoning = reasoning,
+            metadata = meta.toMetadata(),
+        )
+    }
 
     private fun createExecutedTool(
         callId: String,

@@ -226,7 +226,7 @@ class ResponseAPI(
             }
 
             // messages
-            put("input", buildMessages(messages))
+            put("input", buildMessages(messages, providerSetting.includeHistoryReasoning))
 
             // reasoning
             if (params.model.abilities.contains(ModelAbility.REASONING) && params.reasoningLevel != null) {
@@ -290,19 +290,19 @@ class ResponseAPI(
         }.mergeCustomBody(params.customBody)
     }
 
-    internal fun buildMessages(messages: List<UIMessage>) = buildJsonArray {
+    internal fun buildMessages(messages: List<UIMessage>, includeHistoryReasoning: Boolean = true) = buildJsonArray {
         messages
             .filter { it.isValidToUpload() && it.role != MessageRole.SYSTEM }
             .forEach { message ->
                 if (message.role == MessageRole.ASSISTANT) {
-                    addAssistantItems(message)
+                    addAssistantItems(message, includeHistoryReasoning)
                 } else {
                     addUserItems(message)
                 }
             }
     }
 
-    private fun JsonArrayBuilder.addAssistantItems(message: UIMessage) {
+    private fun JsonArrayBuilder.addAssistantItems(message: UIMessage, includeHistoryReasoning: Boolean) {
         val groups = groupPartsByToolBoundary(message.parts)
         val contentBuffer = mutableListOf<UIMessagePart>()
 
@@ -312,27 +312,32 @@ class ResponseAPI(
                     group.parts.forEach { part ->
                         when (part) {
                             is UIMessagePart.Reasoning -> {
-                                // 先输出累积的文本/图片内容
+                                // flush pending text/image before emitting reasoning item
                                 if (contentBuffer.isNotEmpty()) {
                                     addContentItem(MessageRole.ASSISTANT, contentBuffer)
                                     contentBuffer.clear()
                                 }
-                                // 输出 reasoning item
+                                // includeHistoryReasoning gates the optional summary text;
+                                // id + encrypted_content are the Responses API chain anchors and stay on.
                                 val reasoningMetadata = part.metadataAs<OpenAIReasoningMetadata>()
+                                val reasoningId = reasoningMetadata?.reasoningId
+                                val encryptedContent = reasoningMetadata?.encryptedContent
+                                // If history reasoning is disabled and there is no chain anchor, skip the item entirely.
+                                if (!includeHistoryReasoning && reasoningId == null && encryptedContent == null) {
+                                    return@forEach
+                                }
                                 add(buildJsonObject {
                                     put("type", "reasoning")
-                                    reasoningMetadata?.reasoningId?.let {
-                                        put("id", it)
-                                    }
-                                    put("summary", buildJsonArray {
-                                        add(buildJsonObject {
-                                            put("type", "summary_text")
-                                            put("text", part.reasoning)
+                                    reasoningId?.let { put("id", it) }
+                                    if (includeHistoryReasoning) {
+                                        put("summary", buildJsonArray {
+                                            add(buildJsonObject {
+                                                put("type", "summary_text")
+                                                put("text", part.reasoning)
+                                            })
                                         })
-                                    })
-                                    reasoningMetadata?.encryptedContent?.let {
-                                        put("encrypted_content", it)
                                     }
+                                    encryptedContent?.let { put("encrypted_content", it) }
                                 })
                             }
 
