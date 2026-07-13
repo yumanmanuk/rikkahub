@@ -706,7 +706,6 @@ class ChatService(
                 // (若不传,generateInternal 会用默认空 ConversationParams(),只能读到助手级别设置)
                 conversationParams = conversation.conversationParams,
                 assistant = assistant,
-                conversationSystemPrompt = conversation.customSystemPrompt,
                 conversationModeInjectionIds = conversation.modeInjectionIds,
                 conversationLorebookIds = conversation.lorebookIds,
                 workspaceCwd = conversation.workspaceCwd,
@@ -1359,7 +1358,7 @@ class ChatService(
             id = Uuid.random(),
             assistantId = currentConversation.assistantId,
             messageNodes = copiedNodes,
-            customSystemPrompt = currentConversation.customSystemPrompt,
+            conversationParams = currentConversation.conversationParams,
             modeInjectionIds = currentConversation.modeInjectionIds,
             lorebookIds = currentConversation.lorebookIds,
         )

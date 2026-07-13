@@ -558,7 +558,10 @@ private fun ChatPageContent(
                     vm.toggleMessageFavorite(node)
                 },
                 onConversationSystemPromptChange = { newPrompt ->
-                    vm.updateConversation(conversation.copy(customSystemPrompt = newPrompt))
+                    val newParams = conversation.conversationParams.copy(
+                        systemPrompt = newPrompt?.ifBlank { null },
+                    )
+                    vm.updateConversation(conversation.copy(conversationParams = newParams))
                     vm.saveConversationAsync()
                 },
                 // [FORK] 固定到上下文

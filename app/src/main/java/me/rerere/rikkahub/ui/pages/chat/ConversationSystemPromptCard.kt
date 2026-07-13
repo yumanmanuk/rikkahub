@@ -28,12 +28,12 @@ import me.rerere.rikkahub.R
 
 @Composable
 fun ConversationSystemPromptButton(
-    customSystemPrompt: String?,
+    value: String?,
     onSystemPromptChange: (String?) -> Unit,
 ) {
     var expanded by rememberSaveable { mutableStateOf(false) }
-    var editText by rememberSaveable(customSystemPrompt) {
-        mutableStateOf(customSystemPrompt ?: "")
+    var editText by rememberSaveable(value) {
+        mutableStateOf(value ?: "")
     }
 
     Column(
@@ -50,7 +50,7 @@ fun ConversationSystemPromptButton(
             )
             Spacer(Modifier.size(4.dp))
             Text(
-                text = if (!customSystemPrompt.isNullOrBlank()) {
+                text = if (!value.isNullOrBlank()) {
                     stringResource(R.string.chat_page_conversation_system_prompt) + " ✎"
                 } else {
                     stringResource(R.string.chat_page_conversation_system_prompt)
@@ -78,7 +78,7 @@ fun ConversationSystemPromptButton(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.align(Alignment.End),
                 ) {
-                    if (!customSystemPrompt.isNullOrBlank()) {
+                    if (!value.isNullOrBlank()) {
                         TextButton(
                             onClick = {
                                 editText = ""

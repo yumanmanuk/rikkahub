@@ -491,7 +491,7 @@ private fun ChatListNormal(
             if (!loading && assistant?.allowConversationSystemPrompt == true && onConversationSystemPromptChange != null) {
                 item(key = "ConversationSystemPrompt") {
                     ConversationSystemPromptButton(
-                        customSystemPrompt = conversation.conversationParams.systemPrompt,
+                        value = conversation.conversationParams.systemPrompt,
                         onSystemPromptChange = onConversationSystemPromptChange,
                     )
                 }
