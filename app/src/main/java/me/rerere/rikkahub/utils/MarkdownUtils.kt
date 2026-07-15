@@ -86,22 +86,20 @@ fun String.stripMarkdownForTts(): String {
 }
 
 fun String.extractThinkingTitle(): String? {
-    // 按行分割文本
+    // 匹配行内任意 **...** 片段（非贪婪，不跨行）
+    val boldPattern = Regex("\\*\\*(.+?)\\*\\*")
     val lines = this.lines()
 
-    // 从后往前查找最后一个符合条件的加粗文本行
+    // 从后往前查找最后一个包含加粗文本的行，取该行最后一个 **...** 段作为标题
+    // 不使用行首行尾锚点，避免同一行多个 **段** 被全部捕获成一个超长标题
     for (i in lines.indices.reversed()) {
         val line = lines[i].trim()
-
-        // 检查是否为加粗格式且独占一整行
-        val boldPattern = Regex("^\\*\\*(.+?)\\*\\*$")
-        val match = boldPattern.find(line)
-
-        if (match != null) {
-            // 返回加粗标记内的文本内容
-            return match.groupValues[1].trim().takeUnless { it.isBlank() }
+        val matches = boldPattern.findAll(line).toList()
+        if (matches.isNotEmpty()) {
+            return matches.last().groupValues[1].trim().takeUnless { it.isBlank() }
         }
     }
 
     return null
 }
+
