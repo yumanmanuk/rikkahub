@@ -329,14 +329,16 @@ class ResponseAPI(
                                 add(buildJsonObject {
                                     put("type", "reasoning")
                                     reasoningId?.let { put("id", it) }
-                                    if (includeHistoryReasoning) {
-                                        put("summary", buildJsonArray {
+                                    // summary 字段是 Responses API 的必填字段，不能省略
+                                    // includeHistoryReasoning=false 时发送空数组，不回传思考内容但满足 API 约束
+                                    put("summary", buildJsonArray {
+                                        if (includeHistoryReasoning) {
                                             add(buildJsonObject {
                                                 put("type", "summary_text")
                                                 put("text", part.reasoning)
                                             })
-                                        })
-                                    }
+                                        }
+                                    })
                                     encryptedContent?.let { put("encrypted_content", it) }
                                 })
                             }
