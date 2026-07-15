@@ -6,9 +6,13 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SegmentedButton
@@ -518,12 +522,56 @@ private fun ProviderConfigureGoogle(
             },
         )
 
-        OutlinedTextField(
-            value = provider.location,
-            onValueChange = { onEdit(provider.copy(location = it.trim())) },
-            label = { Text(stringResource(R.string.setting_provider_page_location)) },
-            modifier = Modifier.fillMaxWidth(),
+        // Vertex AI 区域下拉选择框（支持预设选项，也可手动输入自定义值）
+        val vertexLocationOptions = listOf(
+            "us-central1" to "US Central (Iowa)",
+            "asia-east1" to "Asia East (Taiwan)",
+            "europe-west1" to "Europe West (Belgium)",
+            "us-east4" to "US East (Virginia)",
+            "us-west1" to "US West (Oregon)",
+            "asia-northeast1" to "Asia Northeast (Tokyo)",
+            "asia-southeast1" to "Asia Southeast (Singapore)",
+            "europe-west4" to "Europe West (Netherlands)",
         )
+        var locationMenuExpanded by remember { mutableStateOf(false) }
+        ExposedDropdownMenuBox(
+            expanded = locationMenuExpanded,
+            onExpandedChange = { locationMenuExpanded = it },
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            OutlinedTextField(
+                value = provider.location,
+                onValueChange = { onEdit(provider.copy(location = it.trim())) },
+                label = { Text(stringResource(R.string.setting_provider_page_location)) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .menuAnchor(MenuAnchorType.PrimaryEditable),
+                trailingIcon = {
+                    ExposedDropdownMenuDefaults.TrailingIcon(expanded = locationMenuExpanded)
+                },
+            )
+            ExposedDropdownMenu(
+                expanded = locationMenuExpanded,
+                onDismissRequest = { locationMenuExpanded = false },
+            ) {
+                vertexLocationOptions.forEach { (value, label) ->
+                    DropdownMenuItem(
+                        text = {
+                            Column {
+                                Text(value, style = MaterialTheme.typography.bodyMedium)
+                                Text(label, style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        },
+                        onClick = {
+                            onEdit(provider.copy(location = value))
+                            locationMenuExpanded = false
+                        },
+                        contentPadding = ExposedDropdownMenuDefaults.ItemContentPadding,
+                    )
+                }
+            }
+        }
 
         OutlinedTextField(
             value = provider.projectId,

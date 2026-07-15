@@ -523,10 +523,10 @@ class BattleService(
     // --- 工具构建 ---
 
     private fun buildTools(settings: Settings): List<Tool> = buildList {
-        if (settings.enableWebSearch) {
+        val assistant = settings.getCurrentAssistant()
+        if (assistant.enableWebSearch) {
             addAll(createSearchTools(settings))
         }
-        val assistant = settings.getCurrentAssistant()
         addAll(localTools.getTools(assistant.localTools))
         if (assistant.enabledSkills.isNotEmpty()) {
             addAll(
