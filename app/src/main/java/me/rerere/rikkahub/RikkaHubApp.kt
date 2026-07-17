@@ -11,9 +11,6 @@ import androidx.compose.runtime.tooling.ComposeStackTraceMode
 import androidx.core.app.NotificationChannelCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
-// [FORK] Firebase removed
-// import com.google.firebase.remoteconfig.FirebaseRemoteConfig
-// import com.google.firebase.remoteconfig.remoteConfigSettings
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.CoroutineScope
@@ -86,15 +83,6 @@ class RikkaHubApp : Application() {
 
         // sync upload files to DB
         syncManagedFiles()
-
-        // Init remote config — [FORK] Firebase disabled
-        // get<FirebaseRemoteConfig>().apply {
-        //     setConfigSettingsAsync(remoteConfigSettings {
-        //         minimumFetchIntervalInSeconds = 1800
-        //     })
-        //     setDefaultsAsync(R.xml.remote_config_defaults)
-        //     fetchAndActivate()
-        // }
 
         // Start WebServer if enabled in settings
         startWebServerIfEnabled()
