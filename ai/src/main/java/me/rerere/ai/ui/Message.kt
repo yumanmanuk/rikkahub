@@ -285,15 +285,26 @@ fun List<UIMessage>.limitContext(
     size: Int,
     protectedMessageIds: Set<Uuid> = emptySet(),
 ): List<UIMessage> {
+    // size<=0 表示不限制上下文长度；全部消息都能放下时直接返回
     if (size <= 0 || this.size <= size) return this
 
-    // [FORK] protected 消息(收藏/固定)完全独立于 size:全部保留,size 只用于截断普通消息
-    val normalMsgs: List<UIMessage> = if (protectedMessageIds.isEmpty()) this
-                                     else filter { it.id !in protectedMessageIds }
+    // [FORK] 总预算语义：size 是"发送消息总条数"上限(含固定)。
+    // 固定消息(protectedMessageIds，已在收集阶段按固定上限截断)优先占用预算，
+    // 普通消息用剩余预算 = max(0, size - 固定条数) 保留最近若干条。
+    val protectedMsgs: List<UIMessage> =
+        if (protectedMessageIds.isEmpty()) emptyList()
+        else filter { it.id in protectedMessageIds }
+    val normalMsgs: List<UIMessage> =
+        if (protectedMessageIds.isEmpty()) this
+        else filter { it.id !in protectedMessageIds }
 
-    // 只对 normalMsgs 按 size 截尾,并做 tool call 配对回溯
-    val limitedNormalMsgs: List<UIMessage> = if (normalMsgs.size > size) {
-        var adjustedStartIndex = normalMsgs.size - size
+    // 普通消息剩余预算；即使固定占满预算，也至少保留最新一条普通消息(当前提问)，避免请求缺失当前输入
+    val remaining = (size - protectedMsgs.size).coerceAtLeast(0)
+
+    // 只对 normalMsgs 按 remaining 截尾,并做 tool call 配对回溯
+    val limitedNormalMsgs: List<UIMessage> = if (normalMsgs.size > remaining) {
+        val keep = remaining.coerceAtLeast(1)
+        var adjustedStartIndex = normalMsgs.size - keep
         var needsAdjustment = true
         val visitedIndices = mutableSetOf<Int>()
 

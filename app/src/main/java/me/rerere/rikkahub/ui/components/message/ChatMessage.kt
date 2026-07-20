@@ -257,6 +257,9 @@ fun ChatMessage(
                         context.copyMessageToClipboard(message)
                     },
                     isLastMessage = lastMessage,
+                    // [FORK] 固定到上下文
+                    isPinned = isPinned,
+                    onTogglePin = onTogglePin,
                 )
             }
         }
@@ -306,9 +309,6 @@ fun ChatMessage(
                     navController.navigate(Screen.WebView(contentId = contentId))
                 }
             },
-            // [FORK] 固定到上下文
-            isPinned = isPinned,
-            onTogglePin = onTogglePin,
             onDismissRequest = {
                 showActionsSheet = false
             }

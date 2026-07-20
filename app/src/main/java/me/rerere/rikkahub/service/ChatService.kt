@@ -455,6 +455,14 @@ class ChatService(
                     // 用 id 查找节点，避免异步更新导致 equals 失效
                     val nodeInner = conversation.getMessageNodeByMessageId(message.id)
                     val indexAt = conversation.messageNodes.indexOf(nodeInner)
+                    // [FORK] 安全防护：定位不到目标 USER 节点（id 不在当前状态）时绝不截断保存，
+                    // 否则 indexOf 返回 -1 → subList(0, 0) → 空会话被持久化 → 误删全部历史。
+                    // 此处宁可放弃本次重试，也不能丢历史数据。
+                    if (nodeInner == null || indexAt < 0) {
+                        Log.w(TAG, "regenerateAtMessage: USER node not found (id=${message.id}), abort to avoid data loss")
+                        return@launch
+                    }
+                    // subList(0, indexAt + 1) 保留“该 USER 消息及其之前”的全部历史，仅移除其之后的回答。
                     val newConversation = conversation.copy(
                         messageNodes = conversation.messageNodes.subList(0, indexAt + 1)
                     )
@@ -492,11 +500,21 @@ class ChatService(
                                 processingStatus = session.processingStatus,
                             )
                         } else {
+                            // [FORK] 安全防护：定位不到目标节点（nodeInner 为 null → nodeIndex 为 -1）时
+                            // 绝不截断保存，避免 subList 越界或把历史误删。宁可放弃本次重试。
+                            if (nodeInner == null || nodeIndex < 0) {
+                                Log.w(TAG, "regenerateAtMessage: ASSISTANT node not found (id=${message.id}), abort to avoid data loss")
+                                return@launch
+                            }
                             // [FORK] Battle Mode: 非 battle 节点或普通模式，统一走 dispatchGeneration
+                            // subList(0, nodeIndex) 只保留“被重试节点之前”的全部历史，
+                            // 仅移除被重试的这条回答（含中断产生的半截回答）及其之后的节点。
                             val contextConversation = conversation.copy(
                                 messageNodes = conversation.messageNodes.subList(0, nodeIndex)
                             )
-                            if (isBattle) saveConversation(conversationId, contextConversation)
+                            // [FORK] 方案A：非 Battle 也持久化截断后的会话，让重试结果替换被重试的回答，
+                            // 不再堆叠在其下方成为新节点。截断只发生在“被重试节点及其之后”，之前历史完整保留。
+                            saveConversation(conversationId, contextConversation)
                             dispatchGeneration(
                                 conversationId = conversationId,
                                 conversation = contextConversation,
@@ -659,32 +677,13 @@ class ChatService(
             // start generating
             val session = getOrCreateSession(conversationId)
 
-            // [FORK] 收藏 / 固定到上下文的「整 turn」消息 id,完全不受 contextMessageSize 限制,全部保留
-            // Turn 范围:节点内所有 messages
-            //           + Battle 节点 / 普通 ASSISTANT 节点:前一个 USER 节点(防止孤立回答)
-            //           + USER 节点:下一个 ASSISTANT 节点(防止孤立提问)
+            // [FORK] 固定到上下文的「整 turn」消息 id：在 limitContext 中优先占用总预算，超出固定上限时自动砍旧固定。
+            // 收藏(favorite)仅为书签，不再进入上下文。
             // 仅在普通发送路径下计算,messageRange(重生成)路径不携带(避免 token 暴涨)
             val protectedMessageIds: Set<Uuid> = if (messageRange != null) {
                 emptySet()
             } else {
-                buildSet {
-                    conversation.messageNodes.forEachIndexed { index, node ->
-                        if (!node.isPinned && !node.isFavorite) return@forEachIndexed
-                        node.messages.forEach { add(it.id) }
-                        if (index > 0) {
-                            val prevNode = conversation.messageNodes[index - 1]
-                            // Battle 节点:USER 提问在前一个节点,把前一个节点也纳入 turn
-                            // 普通 ASSISTANT 节点:同理把前一个 USER 节点也一并保护,防止孤立回答
-                            if (node.isBattleNode || node.role == MessageRole.ASSISTANT) {
-                                prevNode.messages.forEach { add(it.id) }
-                            }
-                        }
-                        // USER 节点被收藏/固定:把下一个 ASSISTANT 节点也一并保护,防止孤立提问
-                        if (node.role == MessageRole.USER && index < conversation.messageNodes.lastIndex) {
-                            conversation.messageNodes[index + 1].messages.forEach { add(it.id) }
-                        }
-                    }
-                }
+                conversation.collectProtectedMessageIds()
             }
 
             generationHandler.generateText(

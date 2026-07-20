@@ -28,6 +28,7 @@ import kotlin.math.roundToInt
  * - +/- 按钮: 每按一下按 [step] 增减, 在 [valueRange] 边界处禁用.
  * - 滑块拖动: 拖动过程仅在本地缓冲, 松手时通过 [onValueChange] 一次性提交,
  *   避免每次像素级变化都触发上层数据模型与持久化.
+ * - [onValueChanging]: 拖动过程中持续回调（不提交/不持久化），供调用方实时更新显示.
  * - 外部 [value] 变化 (例如重置) 通过 [LaunchedEffect] 回流到本地 buffer.
  */
 @Composable
@@ -38,6 +39,7 @@ fun IntSliderItem(
     modifier: Modifier = Modifier,
     step: Int = 1,
     enabled: Boolean = true,
+    onValueChanging: (Int) -> Unit = {},
 ) {
     require(valueRange.first <= valueRange.last) {
         "valueRange.first must be <= valueRange.last"
@@ -75,7 +77,10 @@ fun IntSliderItem(
         }
         Slider(
             value = sliderValue,
-            onValueChange = { sliderValue = it },
+            onValueChange = {
+                sliderValue = it
+                onValueChanging(it.roundToInt().coerceIn(min, max))
+            },
             onValueChangeFinished = {
                 val snapped = sliderValue.roundToInt().coerceIn(min, max)
                 sliderValue = snapped.toFloat()

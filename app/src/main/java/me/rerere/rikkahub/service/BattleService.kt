@@ -55,18 +55,19 @@ import me.rerere.common.android.Logging
 private const val BATTLE_TAG = "BattleService"
 
 /**
- * [FORK] 收集对话中所有收藏/固定到上下文节点的「整 turn」消息 id。
+ * [FORK] 收集对话中所有固定到上下文节点的「整 turn」消息 id。
  *
  * Turn 范围:
  *  - 节点内:该节点所有 messages(覆盖 USER 提问 + ASSISTANT 回答/分支)
  *  - Battle 节点 / 普通 ASSISTANT 节点:+ 前一个 USER 节点(防止孤立回答)
  *  - USER 节点:+ 下一个 ASSISTANT 节点(防止孤立提问)
  *
- * 这些消息在生成时完全不受 contextMessageSize 限制,会被 GenerationHandler.limitContext 全部保留。
+ * [FORK] 收藏(favorite)仅作为书签，不再进入上下文；只有固定(pinned)会被保护。
+ * 这些消息在 GenerationHandler.limitContext 中优先占用总预算（固定由用户手动 pin/unpin 控制，不自动砍）。
  */
-private fun Conversation.collectProtectedMessageIds(): Set<Uuid> = buildSet {
+internal fun Conversation.collectProtectedMessageIds(): Set<Uuid> = buildSet {
     messageNodes.forEachIndexed { index, node ->
-        if (!node.isPinned && !node.isFavorite) return@forEachIndexed
+        if (!node.isPinned) return@forEachIndexed
         // 节点内所有 messages
         node.messages.forEach { add(it.id) }
         if (index > 0) {
@@ -77,7 +78,7 @@ private fun Conversation.collectProtectedMessageIds(): Set<Uuid> = buildSet {
                 prevNode.messages.forEach { add(it.id) }
             }
         }
-        // USER 节点被收藏/固定:把下一个 ASSISTANT 节点也一并保护,防止孤立提问
+        // USER 节点被固定:把下一个 ASSISTANT 节点也一并保护,防止孤立提问
         if (node.role == MessageRole.USER && index < messageNodes.lastIndex) {
             messageNodes[index + 1].messages.forEach { add(it.id) }
         }
@@ -215,7 +216,7 @@ class BattleService(
                             Log.d(BATTLE_TAG, "runBattle [${model.displayName}]: sharedContext, msgs=${it.size}")
                         }
                     }
-                    // [FORK] 收藏/固定到上下文的消息 id,完全不受 contextMessageSize 限制
+                    // [FORK] 收藏仅为书签，只有固定进入上下文并优先占用总预算
                     val protectedMsgIds = conversation.collectProtectedMessageIds()
                     runCatching {
                         generateForModel(
@@ -340,7 +341,7 @@ class BattleService(
             }
         }
 
-        // [FORK] 收藏/固定到上下文的消息 id,完全不受 contextMessageSize 限制
+        // [FORK] 收藏仅为书签，只有固定进入上下文并优先占用总预算
         val protectedMsgIds = conversation.collectProtectedMessageIds()
 
         // 清空当前 slot 内容，给用户即时反馈
@@ -439,7 +440,7 @@ class BattleService(
         retryCount: Int = 0,
         // [FORK] Battle Mode：该模型独立的思考深度
         reasoningLevel: ReasoningLevel,
-        // [FORK] 收藏/固定到上下文的消息 id,完全不受 contextMessageSize 限制,全部保留
+        // [FORK] 固定到上下文的消息 id：在 limitContext 中优先占用总预算(收藏不再进入上下文)
         protectedMessageIds: Set<Uuid> = emptySet(),
     ) {
         val maxRetries = 3

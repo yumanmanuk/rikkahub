@@ -208,6 +208,29 @@ fun UIMessage.toMessageNode(): MessageNode {
 }
 
 /**
+ * [FORK] 统计“固定到上下文”的问答组数：成对固定的 USER+ASSISTANT 记为一组，
+ * 孤立固定的单节点（如尚无回答的提问）各记一组。用于 UI 展示，与“条数(消息)”区分。
+ */
+fun Conversation.pinnedGroupCount(): Int {
+    var count = 0
+    var i = 0
+    while (i < messageNodes.size) {
+        val node = messageNodes[i]
+        if (node.isPinned) {
+            val next = messageNodes.getOrNull(i + 1)
+            if (node.role == MessageRole.USER && next != null && next.isPinned && next.role == MessageRole.ASSISTANT) {
+                count++
+                i += 2
+                continue
+            }
+            count++
+        }
+        i++
+    }
+    return count
+}
+
+/**
  * 递归展开所有 parts，包括工具调用结果中的嵌套 parts。
  */
 private fun List<UIMessagePart>.collectAllParts(): List<UIMessagePart> =

@@ -116,6 +116,9 @@ fun ColumnScope.ChatMessageActionButtons(
     onCopy: (() -> Unit)? = null,
     // 是否是对话中最后一条消息，只有最后一条才显示重试按钮
     isLastMessage: Boolean = true,
+    // [FORK] 固定到上下文
+    isPinned: Boolean = false,
+    onTogglePin: (() -> Unit)? = null,
 ) {
     val settings = LocalSettings.current
 
@@ -256,6 +259,29 @@ fun ColumnScope.ChatMessageActionButtons(
                 }
             }
 
+            // [FORK] 固定到上下文（回答：放在收藏右边），选中时图标变色（仿收藏：写死鲜明色 + 颜色动画）
+            if (onTogglePin != null) {
+                val pinColor by animateColorAsState(
+                    targetValue = if (isPinned) Color(0xFF1E88E5) else actionIconColor,
+                    animationSpec = tween(durationMillis = 250),
+                    label = "pinColor"
+                )
+                Icon(
+                    imageVector = HugeIcons.Pin02,
+                    contentDescription = "Pin to context",
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = LocalIndication.current,
+                            onClick = { onTogglePin() }
+                        )
+                        .padding(8.dp)
+                        .size(16.dp),
+                    tint = pinColor
+                )
+            }
+
             // Battle Mode 标识图标：多条来自不同模型的回答可切换时显示，点击打开排序面板
             val isBattleMode = node.messages.size > 1 &&
                 node.messages.mapNotNull { it.modelId }.toSet().size > 1
@@ -363,6 +389,29 @@ fun ColumnScope.ChatMessageActionButtons(
                 )
             }
 
+            // [FORK] 固定到上下文（提问：放在复制右边），选中时图标变色（仿收藏：写死鲜明色 + 颜色动画）
+            if (onTogglePin != null) {
+                val pinColor by animateColorAsState(
+                    targetValue = if (isPinned) Color(0xFF1E88E5) else actionIconColor,
+                    animationSpec = tween(durationMillis = 250),
+                    label = "pinColor"
+                )
+                Icon(
+                    imageVector = HugeIcons.Pin02,
+                    contentDescription = "Pin to context",
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = LocalIndication.current,
+                            onClick = { onTogglePin() }
+                        )
+                        .padding(8.dp)
+                        .size(16.dp),
+                    tint = pinColor
+                )
+            }
+
             // 更多
             Icon(
                 imageVector = HugeIcons.MoreVertical,
@@ -406,9 +455,6 @@ fun ChatMessageActionsSheet(
     isFavorite: Boolean = false,
     onToggleFavorite: (() -> Unit)? = null,
     onWebViewPreview: () -> Unit,
-    // [FORK] 固定到上下文
-    isPinned: Boolean = false,
-    onTogglePin: (() -> Unit)? = null,
     onDismissRequest: () -> Unit
 ) {
     var showTranslateDialog by remember { mutableStateOf(false) }
@@ -456,39 +502,7 @@ fun ChatMessageActionsSheet(
                 }
             }
 
-            // [FORK] 固定到上下文
-            if (onTogglePin != null) {
-                Card(
-                    onClick = {
-                        onDismissRequest()
-                        onTogglePin()
-                    },
-                    shape = MaterialTheme.shapes.medium,
-                    colors = if (isPinned) CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.primaryContainer
-                    ) else CardDefaults.cardColors()
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(16.dp),
-                        modifier = Modifier
-                            .padding(16.dp)
-                            .fillMaxWidth()
-                    ) {
-                        Icon(
-                            imageVector = HugeIcons.Pin02,
-                            contentDescription = null,
-                            modifier = Modifier.padding(4.dp),
-                            tint = if (isPinned) MaterialTheme.colorScheme.primary else LocalContentColor.current
-                        )
-                        Text(
-                            text = if (isPinned) "取消固定到上下文" else "固定到上下文",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = if (isPinned) MaterialTheme.colorScheme.primary else LocalContentColor.current
-                        )
-                    }
-                }
-            }
+            // [FORK] 固定到上下文按钮已移至消息下方的操作按钮行（提问在复制右边、回答在收藏右边）
 
             // Delete
             Card(

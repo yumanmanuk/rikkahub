@@ -102,6 +102,7 @@ import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.getAssistantById
 import me.rerere.rikkahub.data.model.Conversation
+import me.rerere.rikkahub.data.model.pinnedGroupCount
 import me.rerere.rikkahub.data.model.MessageNode
 import me.rerere.rikkahub.service.ChatError
 import me.rerere.rikkahub.ui.components.message.ChatMessage
@@ -124,6 +125,9 @@ private const val ScrollBottomKey = "ScrollBottomKey"
  * nonce 用于保证同一 index 重复点击时 LaunchedEffect 也能重新触发。
  */
 data class JumpRequest(val index: Int, val nonce: Int)
+
+// [FORK] 预览页筛选模式：全部 → 收藏 → 固定 循环切换
+private enum class PreviewFilter { ALL, FAVORITE, PINNED }
 
 @Composable
 fun ChatList(
@@ -468,7 +472,9 @@ private fun ChatListNormal(
                             onToolAnswer = onToolAnswer,
                             lastMessage = when (node.role) {
                                 me.rerere.ai.core.MessageRole.USER -> index == lastUserMessageIndex
-                                else -> index == lastAssistantMessageIndex
+                                // 只有当该回答确实是最后一条提问的回答（其后没有新的提问）时才允许重试，
+                                // 避免用户发起新提问但模型未响应/被中断时，上一条问答的回答仍显示重试按钮
+                                else -> index == lastAssistantMessageIndex && lastAssistantMessageIndex > lastUserMessageIndex
                             },
                             onScrollToQuestion = if (node.currentMessage.role == me.rerere.ai.core.MessageRole.ASSISTANT && index > 0) {
                                 val targetIndex = index - 1
@@ -737,7 +743,8 @@ private fun ChatListPreview(
     onJumpToMessage: (Int) -> Unit
 ) {
     var searchQuery by remember { mutableStateOf("") }
-    var showOnlyFavorites by remember { mutableStateOf(false) }
+    // [FORK] 三态筛选：全部 / 仅收藏 / 仅固定
+    var previewFilter by remember { mutableStateOf(PreviewFilter.ALL) }
 
     // 统计数据：对话轮次、提问总字数、回答总字数
     val conversationStats = remember(conversation.messageNodes) {
@@ -760,19 +767,17 @@ private fun ChatListPreview(
         Triple(rounds, questionChars, answerChars)
     }
 
-    // 统计收藏和固定到上下文的数量
+    // 统计收藏和固定的“组”数（一问一答算一组，口径一致）
     val favoriteAndPinnedStats = remember(conversation.messageNodes) {
         var favoriteCount = 0
-        var pinnedCount = 0
         conversation.messageNodes.forEach { node ->
             if (node.isFavorite) favoriteCount++
-            if (node.isPinned) pinnedCount++
         }
-        Pair(favoriteCount, pinnedCount)
+        Pair(favoriteCount, conversation.pinnedGroupCount())
     }
 
     // 过滤消息，同时保留原始 index 避免后续 O(n) indexOf 查找
-    val filteredMessages = remember(conversation.messageNodes, searchQuery, showOnlyFavorites) {
+    val filteredMessages = remember(conversation.messageNodes, searchQuery, previewFilter) {
         var messages = conversation.messageNodes.mapIndexed { index, node -> index to node }
 
         // 先按搜索词过滤
@@ -780,16 +785,21 @@ private fun ChatListPreview(
             messages = messages.filter { (_, node) -> node.currentMessage.toText().contains(searchQuery, ignoreCase = true) }
         }
 
-        // 再按点赞/固定状态过滤
-        if (showOnlyFavorites) {
-            messages = messages.filter { (_, node) ->
-                node.isFavorite || node.isPinned || node.currentMessage.role == me.rerere.ai.core.MessageRole.USER
+        // [FORK] 再按筛选模式过滤：仅收藏 / 仅固定
+        if (previewFilter != PreviewFilter.ALL) {
+            fun matches(node: MessageNode): Boolean = when (previewFilter) {
+                PreviewFilter.FAVORITE -> node.isFavorite
+                PreviewFilter.PINNED -> node.isPinned
+                PreviewFilter.ALL -> false
             }
-            // 当显示点赞/固定消息时，同时显示对应的提问（前一个消息如果是USER）
+            messages = messages.filter { (_, node) ->
+                matches(node) || node.currentMessage.role == me.rerere.ai.core.MessageRole.USER
+            }
+            // 当显示收藏/固定消息时，同时显示对应的提问（前一个消息如果是USER）
             val result = mutableListOf<Pair<Int, MessageNode>>()
             val addedIndices = mutableSetOf<Int>()
             messages.forEach { (index, node) ->
-                val isProtected = node.isFavorite || node.isPinned
+                val isProtected = matches(node)
                 if (isProtected && node.currentMessage.role == me.rerere.ai.core.MessageRole.ASSISTANT) {
                     // 添加对应的提问（前一个消息）
                     if (index > 0 && !addedIndices.contains(index - 1)) {
@@ -802,7 +812,7 @@ private fun ChatListPreview(
                         addedIndices.add(index)
                     }
                 } else if (isProtected && node.currentMessage.role == me.rerere.ai.core.MessageRole.USER) {
-                    // pin 的提问：带出自身
+                    // 收藏/固定的提问：带出自身
                     if (!addedIndices.contains(index)) {
                         result.add(index to node)
                         addedIndices.add(index)
@@ -815,7 +825,7 @@ private fun ChatListPreview(
                 } else if (node.currentMessage.role == me.rerere.ai.core.MessageRole.USER) {
                     // 检查下一个消息是否是收藏/固定的回答
                     if (index + 1 < conversation.messageNodes.size &&
-                        (conversation.messageNodes[index + 1].isFavorite || conversation.messageNodes[index + 1].isPinned) &&
+                        matches(conversation.messageNodes[index + 1]) &&
                         !addedIndices.contains(index)) {
                         result.add(index to node)
                         addedIndices.add(index)
@@ -834,12 +844,12 @@ private fun ChatListPreview(
             .fillMaxSize()
             .hazeSource(state = hazeState),
     ) {
-        // 统计信息：普通模式显示轮次/字数，收藏模式显示收藏/固定数量
+        // 统计信息：全部模式显示轮次/字数，收藏/固定模式显示对应数量
         Text(
-            text = if (showOnlyFavorites) {
-                "收藏 ${favoriteAndPinnedStats.first}条，固定 ${favoriteAndPinnedStats.second}条"
-            } else {
-                "${conversationStats.first}轮  提问${"%,d".format(conversationStats.second)}字  回答${"%,d".format(conversationStats.third)}字"
+            text = when (previewFilter) {
+                PreviewFilter.FAVORITE -> "收藏 ${favoriteAndPinnedStats.first} 组"
+                PreviewFilter.PINNED -> "固定 ${favoriteAndPinnedStats.second} 组"
+                PreviewFilter.ALL -> "${conversationStats.first}轮  提问${"%,d".format(conversationStats.second)}字  回答${"%,d".format(conversationStats.third)}字"
             },
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
@@ -885,11 +895,17 @@ private fun ChatListPreview(
                 maxLines = 1,
             )
 
-            // 筛选按钮
+            // [FORK] 筛选按钮：全部 → 收藏 → 固定 循环切换
             Surface(
-                onClick = { showOnlyFavorites = !showOnlyFavorites },
+                onClick = {
+                    previewFilter = when (previewFilter) {
+                        PreviewFilter.ALL -> PreviewFilter.FAVORITE
+                        PreviewFilter.FAVORITE -> PreviewFilter.PINNED
+                        PreviewFilter.PINNED -> PreviewFilter.ALL
+                    }
+                },
                 shape = CircleShape,
-                color = if (showOnlyFavorites) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
+                color = if (previewFilter != PreviewFilter.ALL) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
                 modifier = Modifier.size(48.dp)
             ) {
                 Box(
@@ -897,10 +913,18 @@ private fun ChatListPreview(
                     modifier = Modifier.fillMaxSize()
                 ) {
                     Icon(
-                        imageVector = if (showOnlyFavorites) HugeIcons.Favourite else HugeIcons.Filter,
-                        contentDescription = if (showOnlyFavorites) "Show all messages" else "Show favorites only",
+                        imageVector = when (previewFilter) {
+                            PreviewFilter.ALL -> HugeIcons.Filter
+                            PreviewFilter.FAVORITE -> HugeIcons.Favourite
+                            PreviewFilter.PINNED -> HugeIcons.Pin02
+                        },
+                        contentDescription = when (previewFilter) {
+                            PreviewFilter.ALL -> "Show favorites"
+                            PreviewFilter.FAVORITE -> "Show pinned"
+                            PreviewFilter.PINNED -> "Show all messages"
+                        },
                         modifier = Modifier.size(20.dp),
-                        tint = if (showOnlyFavorites) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                        tint = if (previewFilter != PreviewFilter.ALL) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
                     )
                 }
             }

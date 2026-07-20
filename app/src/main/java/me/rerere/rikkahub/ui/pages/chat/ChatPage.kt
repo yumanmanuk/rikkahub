@@ -101,12 +101,14 @@ import me.rerere.rikkahub.data.files.FilesManager
 import me.rerere.rikkahub.data.model.Assistant
 import me.rerere.rikkahub.data.model.Conversation
 import me.rerere.rikkahub.data.model.ConversationParams
+import me.rerere.rikkahub.data.model.pinnedGroupCount
 import me.rerere.rikkahub.data.model.SystemPromptMode
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import me.rerere.rikkahub.data.repository.WorkspaceRepository
 import me.rerere.rikkahub.service.ChatError
+import me.rerere.rikkahub.service.collectProtectedMessageIds
 import me.rerere.rikkahub.ui.components.ai.ChatInput
 import me.rerere.rikkahub.ui.components.ai.FilesPicker
 import me.rerere.rikkahub.ui.components.ai.completion.WorkspaceCompletionProvider
@@ -1010,6 +1012,10 @@ private fun ConversationParamsSheet(
             HorizontalDivider()
 
             // Context Message Size
+            // [FORK] 拖动滑块时的实时显示值：IntSliderItem 松手才提交，用它让下方数字/内訳实时更新
+            var contextSizeDisplay by remember(params.contextMessageSize, assistant.contextMessageSize) {
+                mutableStateOf(params.contextMessageSize ?: assistant.contextMessageSize)
+            }
             FormItem(
                 modifier = Modifier.padding(8.dp),
                 label = {
@@ -1045,19 +1051,55 @@ private fun ConversationParamsSheet(
                     IntSliderItem(
                         value = size,
                         onValueChange = { newSize ->
+                            contextSizeDisplay = newSize
                             val newParams = params.copy(contextMessageSize = newSize)
                             params = newParams
                             onUpdate(newParams)
                         },
+                        onValueChanging = { contextSizeDisplay = it },
                         valueRange = 0..512,
                     )
                     Text(
-                        text = if (size > 0) stringResource(
-                            R.string.assistant_page_context_message_count, size
+                        text = if (contextSizeDisplay > 0) stringResource(
+                            R.string.assistant_page_context_message_count, contextSizeDisplay
                         ) else stringResource(R.string.assistant_page_context_message_unlimited),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.75f),
                     )
+                }
+            }
+
+            // [FORK] 实时内訳：固定 / 普通 / 总预算（固定由手动 pin 控制，不再自动砍）
+            run {
+                val budget = contextSizeDisplay
+                val pinnedIds = conversation.collectProtectedMessageIds()
+                val pinnedCount = conversation.currentMessages.count { it.id in pinnedIds }
+                val pinnedGroups = conversation.pinnedGroupCount()
+                Column(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    if (budget <= 0) {
+                        Text(
+                            text = "上下文长度不限，全部消息都会发送（当前固定 $pinnedGroups 组）",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.75f),
+                        )
+                    } else {
+                        val normalShown = (budget - pinnedCount).coerceAtLeast(0)
+                        Text(
+                            text = "固定 $pinnedGroups 组（占 $pinnedCount 条）· 普通最多 $normalShown 条 · 总预算 $budget 条（约 ${budget / 2} 组）",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.75f),
+                        )
+                        if (pinnedCount >= budget) {
+                            Text(
+                                text = "⚠️ 固定已占 $pinnedCount 条 ≥ 总预算 $budget 条",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                        }
+                    }
                 }
             }
             HorizontalDivider()

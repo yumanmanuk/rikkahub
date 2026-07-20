@@ -136,14 +136,13 @@ class MessageTest {
         val messages = createTestMessages(6)
         // 标记 index 1 和 4 为 protected
         val protected = setOf(messages[1].id, messages[4].id)
-        // size=2 时,normal = [0,2,3,5],takeLast(2) = [3,5]
-        // 合并:protected [1, 4] + normal 末尾 [3, 5],按时序得 [1, 3, 4, 5]
+        // [FORK] 总预算语义:size=2 含固定。protected [1,4] 已占 2 条,remaining=0,
+        // 至少保留最新 1 条普通消息 [5]。合并按时序: [1, 4, 5]
         val result = messages.limitContext(2, protected)
-        assertEquals(4, result.size)
+        assertEquals(3, result.size)
         assertEquals(messages[1].id, result[0].id)
-        assertEquals(messages[3].id, result[1].id)
-        assertEquals(messages[4].id, result[2].id)
-        assertEquals(messages[5].id, result[3].id)
+        assertEquals(messages[4].id, result[1].id)
+        assertEquals(messages[5].id, result[2].id)
     }
 
     @Test
@@ -184,15 +183,12 @@ class MessageTest {
         val messages = createTestMessages(8)
         val protected = setOf(messages[1].id, messages[3].id)
         val result = messages.limitContext(3, protected)
-        // normal = [0,2,4,5,6,7], size=3, takeLast(3) = [5,6,7]
-        // protected = [1, 3]
-        // 按时序: [1, 3, 5, 6, 7]
-        assertEquals(5, result.size)
+        // [FORK] 总预算语义:size=3 含固定。protected [1,3] 占 2 条,remaining=1,
+        // 普通取最新 1 条 [7]。按时序: [1, 3, 7]
+        assertEquals(3, result.size)
         assertEquals(messages[1].id, result[0].id)
         assertEquals(messages[3].id, result[1].id)
-        assertEquals(messages[5].id, result[2].id)
-        assertEquals(messages[6].id, result[3].id)
-        assertEquals(messages[7].id, result[4].id)
+        assertEquals(messages[7].id, result[2].id)
     }
 
     @Test
