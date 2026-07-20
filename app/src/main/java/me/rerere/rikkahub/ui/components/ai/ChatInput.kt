@@ -332,6 +332,8 @@ fun ChatInput(
                                 onClick = {
                                     when (asrState.status) {
                                         ASRStatus.Listening -> asr.stop()
+                                        // 连接过程中点击 = 取消连接
+                                        ASRStatus.Connecting -> asr.stop()
                                         // Error 状态：先 stop() 重置到 Idle，避免再次 start() 导致重复报错
                                         ASRStatus.Error -> asr.stop()
                                         ASRStatus.Idle -> {
@@ -349,7 +351,7 @@ fun ChatInput(
                                             }
                                         }
 
-                                        ASRStatus.Connecting, ASRStatus.Stopping -> {}
+                                        ASRStatus.Stopping -> {}
                                     }
                                 }
                             )

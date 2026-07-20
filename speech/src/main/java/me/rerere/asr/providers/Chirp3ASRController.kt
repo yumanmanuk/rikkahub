@@ -30,6 +30,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -93,6 +94,8 @@ class Chirp3ASRController(
     // 与其他三个 controller 保持一致的回调字段模式，避免闭包引用泄漏与 GC 不及时
     private var onTranscriptChange: ((String) -> Unit)? = null
 
+    // 连接/重试协程，用于 Connecting 阶段用户点击停止时取消
+    private var connectJob: Job? = null
     private var recorderJob: Job? = null
     private var audioRecord: AudioRecord? = null
 
@@ -124,7 +127,7 @@ class Chirp3ASRController(
             )
         }
 
-        scope.launch {
+        connectJob = scope.launch {
             // 最多重试 MAX_CONNECT_RETRIES 次，只对 UNAVAILABLE（网络未就绪、VPN 没连上等）进行退避重试
             val maxRetries = MAX_CONNECT_RETRIES
             var attempt = 0
@@ -147,6 +150,8 @@ class Chirp3ASRController(
                         .setCredentialsProvider(FixedCredentialsProvider(credentials))
                         .build()
                     client = SpeechClient.create(settings)
+                    // create 是阻塞调用、不响应取消；stop() 取消连接后在此抛出 CancellationException
+                    ensureActive()
 
                     // 3. 构造响应观察者，启 streaming call
                     val responseObserver = object : ApiStreamObserver<StreamingRecognizeResponse> {
@@ -220,6 +225,8 @@ class Chirp3ASRController(
                     break
 
                 } catch (e: kotlinx.coroutines.CancellationException) {
+                    // 连接被取消（Connecting 阶段点击停止）：关闭已创建的 client，避免泄漏
+                    closeCanceledClient()
                     throw e
                 } catch (e: StatusRuntimeException) {
                     // UNAVAILABLE = 网络不可达（VPN 未就绪 / 网络抖动），可重试
@@ -313,6 +320,9 @@ class Chirp3ASRController(
     }
 
     override fun stop() {
+        // 取消仍在进行中的连接/重试协程（Connecting 阶段点击停止）
+        connectJob?.cancel()
+        connectJob = null
         recorderJob?.cancel()
         releaseRecorder()
         val obs = requestStream.getAndSet(null)
@@ -331,7 +341,18 @@ class Chirp3ASRController(
                 }
             }
         } else {
+            // Connecting 阶段取消：stream 尚未建立，关闭已创建的 client 后直接回 Idle
+            closeCanceledClient()
             _state.update { it.copy(status = ASRStatus.Idle) }
+        }
+    }
+
+    // 关闭连接取消后可能已创建的 client（gRPC close 是阻塞调用，放到 closeScope 的 IO 线程）
+    private fun closeCanceledClient() {
+        val toClose = client
+        client = null
+        if (toClose != null) {
+            closeScope.launch { runCatching { toClose.close() } }
         }
     }
 

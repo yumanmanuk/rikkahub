@@ -60,6 +60,10 @@ class VolcengineASRController(
     private var recorderJob: Job? = null
     private var audioRecord: AudioRecord? = null
     private var onTranscriptChange: ((String) -> Unit)? = null
+
+    // 用户主动点击停止（含 Connecting 阶段取消连接）后置为 true，用于静默回调中的失败事件
+    @Volatile
+    private var cancelRequested = false
     private var lastText = ""
 
     override fun start(onTranscriptChange: (String) -> Unit) {
@@ -74,6 +78,7 @@ class VolcengineASRController(
         }
 
         this.onTranscriptChange = onTranscriptChange
+        cancelRequested = false
         lastText = ""
         _state.update {
             ASRState(
@@ -92,6 +97,11 @@ class VolcengineASRController(
 
         webSocket = httpClient.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
+                // stop() 之后握手才完成：直接丢弃该连接，不进入 Listening
+                if (cancelRequested || webSocket !== this@VolcengineASRController.webSocket) {
+                    runCatching { webSocket.close(1000, "cancelled") }
+                    return
+                }
                 val payload = buildFullClientRequestPayload()
                 val compressed = gzipCompress(payload)
                 val frame = buildFrame(
@@ -111,12 +121,18 @@ class VolcengineASRController(
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+                // 用户主动取消（cancelRequested）或旧连接的迟到事件，静默处理
+                if (cancelRequested || webSocket !== this@VolcengineASRController.webSocket) {
+                    Log.d(TAG, "Volcengine ASR websocket failure after cancel, ignored", t)
+                    return
+                }
                 Log.e(TAG, "Volcengine ASR websocket failed", t)
                 releaseRecorder()
                 setError(t.message ?: "ASR websocket failed")
             }
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+                if (webSocket !== this@VolcengineASRController.webSocket) return
                 releaseRecorder()
                 _state.update { it.copy(status = ASRStatus.Idle, errorMessage = null) }
             }
@@ -124,22 +140,31 @@ class VolcengineASRController(
     }
 
     override fun stop() {
+        cancelRequested = true
         recorderJob?.cancel()
         releaseRecorder()
         val socket = webSocket
         if (socket != null) {
+            // 握手未完成时 close()/send() 会排队等待 onOpen，无法中止连接，需用 cancel() 立即取消
+            val cancelHandshake = state.value.status == ASRStatus.Connecting
             _state.update { it.copy(status = ASRStatus.Stopping) }
-            val lastFrame = buildFrame(
-                messageType = MSG_AUDIO_ONLY,
-                flags = FLAG_LAST_PACKET,
-                serialization = SER_NONE,
-                compression = COMP_NONE,
-                payload = ByteArray(0)
-            )
-            socket.send(lastFrame.toByteString())
+            if (!cancelHandshake) {
+                val lastFrame = buildFrame(
+                    messageType = MSG_AUDIO_ONLY,
+                    flags = FLAG_LAST_PACKET,
+                    serialization = SER_NONE,
+                    compression = COMP_NONE,
+                    payload = ByteArray(0)
+                )
+                socket.send(lastFrame.toByteString())
+            }
             scope.launch {
-                delay(1000)
-                socket.close(1000, "stop")
+                if (cancelHandshake) {
+                    socket.cancel()
+                } else {
+                    delay(1000)
+                    socket.close(1000, "stop")
+                }
                 if (webSocket === socket) {
                     webSocket = null
                     _state.update { it.copy(status = ASRStatus.Idle) }

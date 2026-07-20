@@ -53,6 +53,10 @@ class DashScopeASRController(
     override val state: StateFlow<ASRState> = _state.asStateFlow()
 
     private var webSocket: WebSocket? = null
+
+    // 用户主动点击停止（含 Connecting 阶段取消连接）后置为 true，用于静默回调中的失败事件
+    @Volatile
+    private var cancelRequested = false
     private var recorderJob: Job? = null
     private var audioRecord: AudioRecord? = null
     private var onTranscriptChange: ((String) -> Unit)? = null
@@ -71,6 +75,7 @@ class DashScopeASRController(
         }
 
         this.onTranscriptChange = onTranscriptChange
+        cancelRequested = false
         completedTranscripts.clear()
         partialTranscripts.clear()
         _state.update {
@@ -88,6 +93,11 @@ class DashScopeASRController(
 
         webSocket = httpClient.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
+                // stop() 之后握手才完成：直接丢弃该连接，不进入 Listening
+                if (cancelRequested || webSocket !== this@DashScopeASRController.webSocket) {
+                    runCatching { webSocket.close(1000, "cancelled") }
+                    return
+                }
                 webSocket.send(provider.sessionUpdateEvent().toString())
                 _state.update { it.copy(status = ASRStatus.Listening, errorMessage = null) }
                 startRecorder(webSocket)
@@ -98,12 +108,18 @@ class DashScopeASRController(
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+                // 用户主动取消（cancelRequested）或旧连接的迟到事件，静默处理
+                if (cancelRequested || webSocket !== this@DashScopeASRController.webSocket) {
+                    Log.d(TAG, "DashScope ASR websocket failure after cancel, ignored", t)
+                    return
+                }
                 Log.e(TAG, "DashScope ASR websocket failed", t)
                 releaseRecorder()
                 setError(t.message ?: "ASR websocket failed")
             }
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+                if (webSocket !== this@DashScopeASRController.webSocket) return
                 releaseRecorder()
                 _state.update {
                     it.copy(
@@ -116,14 +132,21 @@ class DashScopeASRController(
     }
 
     override fun stop() {
+        cancelRequested = true
         recorderJob?.cancel()
         releaseRecorder()
         val socket = webSocket
         if (socket != null) {
+            // 握手未完成时 close() 会排队等待 onOpen，无法中止连接，需用 cancel() 立即取消
+            val cancelHandshake = state.value.status == ASRStatus.Connecting
             _state.update { it.copy(status = ASRStatus.Stopping) }
             scope.launch {
-                delay(500)
-                socket.close(1000, "stop")
+                if (cancelHandshake) {
+                    socket.cancel()
+                } else {
+                    delay(500)
+                    socket.close(1000, "stop")
+                }
                 if (webSocket === socket) {
                     webSocket = null
                     _state.update { it.copy(status = ASRStatus.Idle) }
