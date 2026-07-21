@@ -92,6 +92,7 @@ import me.rerere.hugeicons.stroke.ArrowUp02
 import me.rerere.hugeicons.stroke.Cancel01
 import me.rerere.hugeicons.stroke.ArrowUpDouble
 import me.rerere.hugeicons.stroke.ArrowUpDown
+import me.rerere.hugeicons.stroke.FloppyDisk
 import me.rerere.hugeicons.stroke.FullScreen
 import me.rerere.hugeicons.stroke.Zap
 import me.rerere.rikkahub.R
@@ -137,6 +138,8 @@ fun ChatInput(
     onCancelClick: () -> Unit,
     onSendClick: () -> Unit,
     onLongSendClick: () -> Unit,
+    // [FORK] 编辑态下点击发送是否会触发重试；false 时发送按钮显示“保存”图标
+    editWillRegenerate: Boolean = false,
 ) {
     val toaster = LocalToaster.current
     val assistant = settings.getCurrentAssistant()
@@ -397,6 +400,14 @@ fun ChatInput(
                                     Icon(
                                         imageVector = HugeIcons.Cancel01,
                                         contentDescription = stringResource(R.string.stop),
+                                        tint = contentColor,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                } else if (state.isEditing() && !editWillRegenerate) {
+                                    // [FORK] 编辑且点击仅保存（不触发重试）时显示保存图标，区分“发送并重试”语义
+                                    Icon(
+                                        imageVector = HugeIcons.FloppyDisk,
+                                        contentDescription = stringResource(R.string.chat_page_save),
                                         tint = contentColor,
                                         modifier = Modifier.size(18.dp)
                                     )

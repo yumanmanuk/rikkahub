@@ -95,6 +95,7 @@ import java.util.concurrent.ConcurrentHashMap
 import kotlin.uuid.Uuid
 
 private const val TAG = "ChatService"
+private const val INIT_SLOW_LOG_THRESHOLD_MS = 1000L
 
 internal fun backgroundTextGenerationParams(
     model: Model,
@@ -279,6 +280,16 @@ class ChatService(
         return getOrCreateSession(conversationId).state
     }
 
+    // 会话是否已完成初始化（真实数据已加载）
+    fun getConversationInitializedFlow(conversationId: Uuid): StateFlow<Boolean> {
+        return getOrCreateSession(conversationId).initialized
+    }
+
+    // 会话初始化当前所处阶段（诊断用）
+    fun getConversationInitStage(conversationId: Uuid): String {
+        return sessions[conversationId]?.initStage ?: "no_session"
+    }
+
     fun getGenerationJobStateFlow(conversationId: Uuid): Flow<Job?> {
         val session = sessions[conversationId] ?: return flowOf(null)
         return session.generationJob
@@ -311,21 +322,42 @@ class ChatService(
     // ---- 初始化对话 ----
 
     suspend fun initializeConversation(conversationId: Uuid) {
-        getOrCreateSession(conversationId) // 确保 session 存在
-        val conversation = conversationRepo.getConversationById(conversationId)
-        if (conversation != null) {
-            updateConversation(conversationId, conversation)
-            settingsStore.updateAssistant(conversation.assistantId)
-        } else {
-            // 新建对话, 并添加预设消息
-            val currentSettings = settingsStore.settingsFlowRaw.first()
-            val assistant = currentSettings.getCurrentAssistant()
-            val newConversation = Conversation.ofId(
-                id = conversationId,
-                assistantId = assistant.id,
-                newConversation = true
-            ).updateCurrentMessages(assistant.presetMessages)
-            updateConversation(conversationId, newConversation)
+        val session = getOrCreateSession(conversationId) // 确保 session 存在
+        val startTime = System.currentTimeMillis()
+        var dbMs = -1L
+        try {
+            session.initStage = "db_query"
+            val conversation = conversationRepo.getConversationById(conversationId)
+            dbMs = System.currentTimeMillis() - startTime
+            if (conversation != null) {
+                session.initStage = "update_assistant"
+                updateConversation(conversationId, conversation)
+                settingsStore.updateAssistant(conversation.assistantId)
+            } else {
+                // 新建对话, 并添加预设消息
+                session.initStage = "read_settings"
+                val currentSettings = settingsStore.settingsFlowRaw.first()
+                val assistant = currentSettings.getCurrentAssistant()
+                val newConversation = Conversation.ofId(
+                    id = conversationId,
+                    assistantId = assistant.id,
+                    newConversation = true
+                ).updateCurrentMessages(assistant.presetMessages)
+                updateConversation(conversationId, newConversation)
+            }
+        } finally {
+            // 无论成功失败都标记初始化完成，失败时退化为旧行为（展示空会话而非永久 loading）
+            session.initStage = "done"
+            session.markInitialized()
+            val totalMs = System.currentTimeMillis() - startTime
+            // 初始化缓慢时写入应用内错误日志模块，便于无 logcat 场景定位冷启动卡顿
+            if (totalMs >= INIT_SLOW_LOG_THRESHOLD_MS) {
+                Logging.logError(
+                    tag = TAG,
+                    title = "会话初始化缓慢",
+                    message = "id=$conversationId, db=${dbMs}ms, total=${totalMs}ms"
+                )
+            }
         }
     }
 
@@ -1297,7 +1329,6 @@ class ChatService(
         val settings = settingsStore.settingsFlow.first()
         val assistant = settings.getAssistantById(currentConversation.assistantId)
             ?: settings.getCurrentAssistant()
-        val processedParts = preprocessUserInputParts(parts, assistant)
         var edited = false
 
         val updatedNodes = currentConversation.messageNodes.map { node ->
@@ -1307,13 +1338,17 @@ class ChatService(
             edited = true
 
             // 直接替换原消息，不新增分支
-            val newMessage = UIMessage(
-                role = node.role,
-                parts = processedParts,
-            )
+            // 用 copy 仅替换 parts，保留原消息的 modelId / modelName / usage 等元数据，
+            // 否则编辑 assistant 回答（如 Battle Mode）后会丢失模型名称与 token 用量显示
+            val newParts = if (node.role == MessageRole.USER) {
+                // 用户输入正则预处理仅适用于用户消息
+                preprocessUserInputParts(parts, assistant)
+            } else {
+                parts
+            }
             val newMessages = node.messages.toMutableList().also { list ->
                 val idx = list.indexOfFirst { it.id == messageId }
-                if (idx != -1) list[idx] = newMessage
+                if (idx != -1) list[idx] = list[idx].copy(parts = newParts)
             }
             node.copy(
                 messages = newMessages,

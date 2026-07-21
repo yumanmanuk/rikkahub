@@ -6,6 +6,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -91,6 +92,7 @@ import me.rerere.hugeicons.stroke.Menu03
 import me.rerere.hugeicons.stroke.Crane
 import me.rerere.hugeicons.stroke.ArrowRight01
 import me.rerere.hugeicons.stroke.PencilEdit01
+import me.rerere.common.android.Logging
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.findProvider
@@ -113,6 +115,7 @@ import me.rerere.rikkahub.ui.components.ai.ChatInput
 import me.rerere.rikkahub.ui.components.ai.FilesPicker
 import me.rerere.rikkahub.ui.components.ai.completion.WorkspaceCompletionProvider
 import me.rerere.rikkahub.ui.components.ai.useCropLauncher
+import me.rerere.rikkahub.ui.components.ui.RabbitLoadingIndicator
 import me.rerere.rikkahub.ui.components.ui.permission.PermissionCamera
 import me.rerere.rikkahub.ui.components.ui.permission.PermissionManager
 import me.rerere.rikkahub.ui.components.ui.permission.rememberPermissionState
@@ -137,8 +140,19 @@ import org.koin.core.parameter.parametersOf
 import java.io.File
 import kotlin.uuid.Uuid
 
+private const val TAG = "ChatPage"
+private const val CHAT_LOADING_TIMEOUT_MS = 3000L
+
+// 聊天内容渲染门控：会话数据加载完成且初始滚动位置已记录后，才渲染聊天内容；
+// forcedOpen 为超时兜底，加载异常时按旧行为放行，避免永久卡在 loading
+internal fun shouldShowChatContent(
+    conversationLoaded: Boolean,
+    chatListReady: Boolean,
+    forcedOpen: Boolean = false,
+): Boolean = (conversationLoaded && chatListReady) || forcedOpen
+
 @Composable
-fun ChatPage(id: Uuid, text: String?, files: List<Uri>, nodeId: Uuid? = null) {
+fun ChatPage(id: Uuid, text: String?, files: List<Uri>, nodeId: Uuid? = null, showLoading: Boolean = false) {
     val vm: ChatVM = koinViewModel(
         parameters = {
             parametersOf(id.toString())
@@ -150,6 +164,7 @@ fun ChatPage(id: Uuid, text: String?, files: List<Uri>, nodeId: Uuid? = null) {
 
     val setting by vm.settings.collectAsStateWithLifecycle()
     val conversation by vm.conversation.collectAsStateWithLifecycle()
+    val conversationLoaded by vm.conversationLoaded.collectAsStateWithLifecycle()
     val loadingJob by vm.conversationJob.collectAsStateWithLifecycle()
     val hasActiveSlots by vm.hasActiveSlots.collectAsStateWithLifecycle()
     val processingStatus by vm.processingStatus.collectAsStateWithLifecycle()
@@ -217,25 +232,38 @@ fun ChatPage(id: Uuid, text: String?, files: List<Uri>, nodeId: Uuid? = null) {
     }
 
     val chatListState = rememberLazyListState()
-    LaunchedEffect(nodeId, conversation.messageNodes.size) {
-        if (!vm.chatListInitialized && conversation.messageNodes.isNotEmpty()) {
+    // 内容就绪门闩（合并了原“初始滚动”与“就绪门闩”两处逻辑，避免两个 flag/Effect 漂移）：
+    // 以 conversationLoaded 为权威的“数据已加载”信号，加载完成后先趁列表不可见把初始滚动位置
+    // 写入 LazyListState（未组合时滚动请求会挂起，首帧测量直接落到目标位），再置 chatListReady
+    // 放行渲染，从而既滚到底/目标节点，又避免列表先在顶部闪现一帧再跳底。
+    LaunchedEffect(nodeId, conversationLoaded, conversation.messageNodes.size) {
+        if (vm.chatListReady || !conversationLoaded) return@LaunchedEffect
+        if (conversation.messageNodes.isNotEmpty()) {
             if (nodeId != null) {
                 val index = conversation.messageNodes.indexOfFirst { it.id == nodeId }
                 if (index >= 0) {
                     // 跳到该回答的提问节点（前一个节点），让用户先看到问题再看回答
-                    val questionIndex = (index - 1).coerceAtLeast(0)
-                    chatListState.scrollToItem(questionIndex)
+                    chatListState.scrollToItem((index - 1).coerceAtLeast(0))
                 }
             } else {
+                // requestScrollToItem 在列表未布局时也能生效，修复初始进入自动滚动可能失效的问题
                 chatListState.requestScrollToItem(conversation.currentMessages.size + 5)
             }
         }
+        vm.chatListReady = true
     }
 
-    // 标记初始化完成（对话消息加载后即置为已初始化）
-    LaunchedEffect(conversation.messageNodes.size) {
-        if (conversation.messageNodes.isNotEmpty()) {
-            vm.chatListInitialized = true
+    // 加载超时兜底：数据加载异常缓慢（如冷启动数据库阻塞）时按旧行为放行，
+    // 数据到达后 UI 仍会自动填充，同时打日志便于定位根因
+    LaunchedEffect(Unit) {
+        delay(CHAT_LOADING_TIMEOUT_MS)
+        if (!vm.conversationLoaded.value && !vm.chatListReady) {
+            Logging.logError(
+                tag = TAG,
+                title = "会话加载超时",
+                message = "超过 " + CHAT_LOADING_TIMEOUT_MS + "ms 未就绪；当前阶段: " + vm.getConversationInitStage()
+            )
+            vm.chatListForcedOpen = true
         }
     }
 
@@ -253,6 +281,8 @@ fun ChatPage(id: Uuid, text: String?, files: List<Uri>, nodeId: Uuid? = null) {
             ) {
                 ChatPageContent(
                     inputState = inputState,
+                    conversationLoaded = conversationLoaded,
+                    showLoading = showLoading,
                     loadingJob = loadingJob,
                     hasActiveSlots = hasActiveSlots,
                     processingStatus = processingStatus,
@@ -287,6 +317,8 @@ fun ChatPage(id: Uuid, text: String?, files: List<Uri>, nodeId: Uuid? = null) {
             ) {
                 ChatPageContent(
                     inputState = inputState,
+                    conversationLoaded = conversationLoaded,
+                    showLoading = showLoading,
                     loadingJob = loadingJob,
                     hasActiveSlots = hasActiveSlots,
                     processingStatus = processingStatus,
@@ -314,6 +346,8 @@ fun ChatPage(id: Uuid, text: String?, files: List<Uri>, nodeId: Uuid? = null) {
 @Composable
 private fun ChatPageContent(
     inputState: ChatInputState,
+    conversationLoaded: Boolean,
+    showLoading: Boolean,
     loadingJob: Job?,
     hasActiveSlots: Boolean = false,
     processingStatus: String? = null,
@@ -371,215 +405,230 @@ private fun ChatPageContent(
             .bringIntoViewResponder(noopBringIntoViewResponder)
     ) {
         AssistantBackground(setting = setting, modifier = Modifier.hazeSource(hazeState))
-        Scaffold(
-            topBar = {
-                TopBar(
-                    settings = setting,
+        if (showLoading && !shouldShowChatContent(conversationLoaded, vm.chatListReady, vm.chatListForcedOpen)) {
+            // 会话数据尚未从数据库加载完成，先展示 loading，避免闪现空会话骨架
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center,
+            ) {
+                RabbitLoadingIndicator(modifier = Modifier.size(32.dp))
+            }
+        } else {
+            Scaffold(
+                topBar = {
+                    TopBar(
+                        settings = setting,
+                        conversation = conversation,
+                        bigScreen = bigScreen,
+                        drawerState = drawerState,
+                        previewMode = previewMode,
+                        vm = vm,
+                        onClickMenu = {
+                            previewMode = !previewMode
+                        },
+                        onUpdateTitle = {
+                            vm.updateTitle(it)
+                        },
+                        onUpdateConversationParams = {
+                            vm.updateConversationParams(it)
+                        },
+                        onSaveTemporary = { vm.saveTemporaryConversation() },
+                        onDeleteTemporary = { navigateToChatPage(navController) },
+                    )
+                },
+                bottomBar = {
+                    // 编辑态下点击发送是否会触发重试：决定发送按钮显示“发送”(↑) 还是“保存”(FloppyDisk) 图标
+                    val editWillRegenerate = remember(conversation, inputState.editingMessage) {
+                        inputState.editingMessage?.let { conversation.editWillRegenerate(it) } == true
+                    }
+                    ChatInput(
+                        state = inputState,
+                        editWillRegenerate = editWillRegenerate,
+                        loading = loadingJob != null || hasActiveSlots,
+                        settings = setting,
+                        hazeState = hazeState,
+                        completionProviders = completionProviders,
+                        onCancelClick = {
+                            vm.stopGeneration()
+                        },
+                        enableSearch = enableWebSearch,
+                        onToggleSearch = {
+                            val current = setting.getCurrentAssistant()
+                            vm.updateSettings(
+                                setting.copy(
+                                    assistants = setting.assistants.map { assistant ->
+                                        if (assistant.id == current.id) {
+                                            assistant.copy(enableWebSearch = !enableWebSearch)
+                                        } else {
+                                            assistant
+                                        }
+                                    }
+                                )
+                            )
+                        },
+                        onSendClick = {
+                            if (currentChatModel == null) {
+                                toaster.show("请先选择模型", type = ToastType.Error)
+                                return@ChatInput
+                            }
+                            if (inputState.isEditing()) {
+                                vm.handleMessageEdit(
+                                    parts = inputState.getContents(),
+                                    messageId = inputState.editingMessage!!,
+                                    regenerate = !inputState.isEditingAssistant(),
+                                )
+                            } else {
+                                vm.handleMessageSend(inputState.getContents())
+                            }
+                            inputState.clearInput()
+                        },
+                        onLongSendClick = {
+                            if (inputState.isEditing()) {
+                                vm.handleMessageEdit(
+                                    parts = inputState.getContents(),
+                                    messageId = inputState.editingMessage!!,
+                                    regenerate = inputState.isEditingAssistant(), // 编辑AI回答时长按触发重新生成
+                                )
+                            } else {
+                                vm.handleMessageSend(content = inputState.getContents(), answer = false)
+                            }
+                            inputState.clearInput()
+                        },
+                        onUpdateChatModel = {
+                            vm.setChatModel(assistant = setting.getCurrentAssistant(), model = it)
+                        },
+                        onUpdateAssistant = {
+                            vm.updateSettings(
+                                setting.copy(
+                                    assistants = setting.assistants.map { assistant ->
+                                        if (assistant.id == it.id) {
+                                            it
+                                        } else {
+                                            assistant
+                                        }
+                                    }
+                                )
+                            )
+                        },
+                        onUpdateSearchService = { index ->
+                            vm.updateSettings(
+                                setting.copy(
+                                    searchServiceSelected = index
+                                )
+                            )
+                        },
+                        onMoreClick = {
+                            showFilesSheet = true
+                        },
+                        onJumperClick = {
+                            showMessageJumperOverlay = !showMessageJumperOverlay
+                        },
+                    )
+                },
+                containerColor = Color.Transparent,
+                contentWindowInsets = WindowInsets(0),
+            ) { innerPadding ->
+                ChatList(
+                    innerPadding = innerPadding,
                     conversation = conversation,
-                    bigScreen = bigScreen,
-                    drawerState = drawerState,
-                    previewMode = previewMode,
-                    vm = vm,
-                    onClickMenu = {
-                        previewMode = !previewMode
-                    },
-                    onUpdateTitle = {
-                        vm.updateTitle(it)
-                    },
-                    onUpdateConversationParams = {
-                        vm.updateConversationParams(it)
-                    },
-                    onSaveTemporary = { vm.saveTemporaryConversation() },
-                    onDeleteTemporary = { navigateToChatPage(navController) },
-                )
-            },
-            bottomBar = {
-                ChatInput(
-                    state = inputState,
+                    state = chatListState,
                     loading = loadingJob != null || hasActiveSlots,
+                    processingStatus = processingStatus,
+                    previewMode = previewMode,
                     settings = setting,
                     hazeState = hazeState,
-                    completionProviders = completionProviders,
-                    onCancelClick = {
-                        vm.stopGeneration()
+                    showJumper = showMessageJumperOverlay,
+                    onDismissJumper = { showMessageJumperOverlay = false },
+                    jumpRequest = jumpRequest,
+                    errors = errors,
+                    onDismissError = onDismissError,
+                    onClearAllErrors = onClearAllErrors,
+                    onRegenerate = {
+                        vm.regenerateAtMessage(it)
                     },
-                    enableSearch = enableWebSearch,
-                    onToggleSearch = {
-                        val current = setting.getCurrentAssistant()
-                        vm.updateSettings(
-                            setting.copy(
-                                assistants = setting.assistants.map { assistant ->
-                                    if (assistant.id == current.id) {
-                                        assistant.copy(enableWebSearch = !enableWebSearch)
+                    onEdit = {
+                        inputState.editingMessage = it.id
+                        inputState.editingMessageRole = it.role
+                        inputState.setContents(it.parts)
+                    },
+                    onForkMessage = {
+                        scope.launch {
+                            val fork = vm.forkMessage(message = it)
+                            navigateToChatPage(navController, chatId = fork.id)
+                        }
+                    },
+                    onDelete = {
+                        if (loadingJob != null || hasActiveSlots) {
+                            vm.showDeleteBlockedWhileGeneratingError()
+                        } else {
+                            vm.deleteMessage(it)
+                        }
+                    },
+                    onDeleteBeforeMessage = {
+                        if (loadingJob != null || hasActiveSlots) {
+                            vm.showDeleteBlockedWhileGeneratingError()
+                        } else {
+                            vm.deleteMessagesBeforeMessage(it)
+                        }
+                    },
+                    onDeleteAfterMessage = {
+                        if (loadingJob != null || hasActiveSlots) {
+                            vm.showDeleteBlockedWhileGeneratingError()
+                        } else {
+                            vm.deleteMessagesAfterMessage(it)
+                        }
+                    },
+                    onUpdateMessage = { newNode ->
+                        vm.updateConversation(
+                            conversation.copy(
+                                messageNodes = conversation.messageNodes.map { node ->
+                                    if (node.id == newNode.id) {
+                                        newNode
                                     } else {
-                                        assistant
+                                        node
                                     }
                                 }
-                            )
+                            ))
+                        vm.saveConversationAsync()
+                    },
+                    onClickSuggestion = { suggestion ->
+                        inputState.editingMessage = null
+                        inputState.editingMessageRole = null
+                        inputState.setMessageText(suggestion)
+                    },
+                    onTranslate = { message, locale ->
+                        vm.translateMessage(message, locale)
+                    },
+                    onClearTranslation = { message ->
+                        vm.clearTranslationField(message.id)
+                    },
+                    onJumpToMessage = { index ->
+                        // 先切到普通模式，再通过 jumpRequest 通知 ChatListNormal
+                        // ChatListNormal 内部会原子地“禁用自动贴底 + 滚动到目标”，防止贴底覆盖跳转位置
+                        previewMode = false
+                        jumpNonce++
+                        jumpRequest = JumpRequest(index, jumpNonce)
+                    },
+                    onToolApproval = { toolCallId, approved, reason ->
+                        vm.handleToolApproval(toolCallId, approved, reason)
+                    },
+                    onToolAnswer = { toolCallId, answer ->
+                        vm.handleToolAnswer(toolCallId, answer)
+                    },
+                    onToggleFavorite = { node ->
+                        vm.toggleMessageFavorite(node)
+                    },
+                    onConversationSystemPromptChange = { newPrompt ->
+                        val newParams = conversation.conversationParams.copy(
+                            systemPrompt = newPrompt?.ifBlank { null },
                         )
+                        vm.updateConversation(conversation.copy(conversationParams = newParams))
+                        vm.saveConversationAsync()
                     },
-                    onSendClick = {
-                        if (currentChatModel == null) {
-                            toaster.show("请先选择模型", type = ToastType.Error)
-                            return@ChatInput
-                        }
-                        if (inputState.isEditing()) {
-                            vm.handleMessageEdit(
-                                parts = inputState.getContents(),
-                                messageId = inputState.editingMessage!!,
-                                regenerate = !inputState.isEditingAssistant(),
-                            )
-                        } else {
-                            vm.handleMessageSend(inputState.getContents())
-                        }
-                        inputState.clearInput()
-                    },
-                    onLongSendClick = {
-                        if (inputState.isEditing()) {
-                            vm.handleMessageEdit(
-                                parts = inputState.getContents(),
-                                messageId = inputState.editingMessage!!,
-                                regenerate = inputState.isEditingAssistant(), // 编辑AI回答时长按触发重新生成
-                            )
-                        } else {
-                            vm.handleMessageSend(content = inputState.getContents(), answer = false)
-                        }
-                        inputState.clearInput()
-                    },
-                    onUpdateChatModel = {
-                        vm.setChatModel(assistant = setting.getCurrentAssistant(), model = it)
-                    },
-                    onUpdateAssistant = {
-                        vm.updateSettings(
-                            setting.copy(
-                                assistants = setting.assistants.map { assistant ->
-                                    if (assistant.id == it.id) {
-                                        it
-                                    } else {
-                                        assistant
-                                    }
-                                }
-                            )
-                        )
-                    },
-                    onUpdateSearchService = { index ->
-                        vm.updateSettings(
-                            setting.copy(
-                                searchServiceSelected = index
-                            )
-                        )
-                    },
-                    onMoreClick = {
-                        showFilesSheet = true
-                    },
-                    onJumperClick = {
-                        showMessageJumperOverlay = !showMessageJumperOverlay
-                    },
+                    // [FORK] 固定到上下文
+                    onTogglePin = { node -> vm.toggleMessagePin(node) },
                 )
-            },
-            containerColor = Color.Transparent,
-            contentWindowInsets = WindowInsets(0),
-        ) { innerPadding ->
-            ChatList(
-                innerPadding = innerPadding,
-                conversation = conversation,
-                state = chatListState,
-                loading = loadingJob != null || hasActiveSlots,
-                processingStatus = processingStatus,
-                previewMode = previewMode,
-                settings = setting,
-                hazeState = hazeState,
-                showJumper = showMessageJumperOverlay,
-                onDismissJumper = { showMessageJumperOverlay = false },
-                jumpRequest = jumpRequest,
-                errors = errors,
-                onDismissError = onDismissError,
-                onClearAllErrors = onClearAllErrors,
-                onRegenerate = {
-                    vm.regenerateAtMessage(it)
-                },
-                onEdit = {
-                    inputState.editingMessage = it.id
-                    inputState.editingMessageRole = it.role
-                    inputState.setContents(it.parts)
-                },
-                onForkMessage = {
-                    scope.launch {
-                        val fork = vm.forkMessage(message = it)
-                        navigateToChatPage(navController, chatId = fork.id)
-                    }
-                },
-                onDelete = {
-                    if (loadingJob != null || hasActiveSlots) {
-                        vm.showDeleteBlockedWhileGeneratingError()
-                    } else {
-                        vm.deleteMessage(it)
-                    }
-                },
-                onDeleteBeforeMessage = {
-                    if (loadingJob != null || hasActiveSlots) {
-                        vm.showDeleteBlockedWhileGeneratingError()
-                    } else {
-                        vm.deleteMessagesBeforeMessage(it)
-                    }
-                },
-                onDeleteAfterMessage = {
-                    if (loadingJob != null || hasActiveSlots) {
-                        vm.showDeleteBlockedWhileGeneratingError()
-                    } else {
-                        vm.deleteMessagesAfterMessage(it)
-                    }
-                },
-                onUpdateMessage = { newNode ->
-                    vm.updateConversation(
-                        conversation.copy(
-                            messageNodes = conversation.messageNodes.map { node ->
-                                if (node.id == newNode.id) {
-                                    newNode
-                                } else {
-                                    node
-                                }
-                            }
-                        ))
-                    vm.saveConversationAsync()
-                },
-                onClickSuggestion = { suggestion ->
-                    inputState.editingMessage = null
-                    inputState.editingMessageRole = null
-                    inputState.setMessageText(suggestion)
-                },
-                onTranslate = { message, locale ->
-                    vm.translateMessage(message, locale)
-                },
-                onClearTranslation = { message ->
-                    vm.clearTranslationField(message.id)
-                },
-                onJumpToMessage = { index ->
-                    // 先切到普通模式，再通过 jumpRequest 通知 ChatListNormal
-                    // ChatListNormal 内部会原子地“禁用自动贴底 + 滚动到目标”，防止贴底覆盖跳转位置
-                    previewMode = false
-                    jumpNonce++
-                    jumpRequest = JumpRequest(index, jumpNonce)
-                },
-                onToolApproval = { toolCallId, approved, reason ->
-                    vm.handleToolApproval(toolCallId, approved, reason)
-                },
-                onToolAnswer = { toolCallId, answer ->
-                    vm.handleToolAnswer(toolCallId, answer)
-                },
-                onToggleFavorite = { node ->
-                    vm.toggleMessageFavorite(node)
-                },
-                onConversationSystemPromptChange = { newPrompt ->
-                    val newParams = conversation.conversationParams.copy(
-                        systemPrompt = newPrompt?.ifBlank { null },
-                    )
-                    vm.updateConversation(conversation.copy(conversationParams = newParams))
-                    vm.saveConversationAsync()
-                },
-                // [FORK] 固定到上下文
-                onTogglePin = { node -> vm.toggleMessagePin(node) },
-            )
+            }
         }
 
         if (showFilesSheet) {

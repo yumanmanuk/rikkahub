@@ -259,15 +259,17 @@ class RouteActivity : ComponentActivity() {
         }
         val migrationState by DatabaseMigrationTracker.state.collectAsStateWithLifecycle()
 
+        // 关闭“启动时创建新对话”且存在 lastConversationId 时，视为“恢复既有对话”，
+        // 启用加载门控，避免标题栏先闪“新聊天”再切换到真实对话；
+        // 新建对话（含无历史可恢复）则保持即时渲染，不显示 loading。
+        val restoredConversationId = if (readBooleanPreference("create_new_conversation_on_start", true)) {
+            null
+        } else {
+            readStringPreference("lastConversationId", null)
+        }
         val startScreen = Screen.Chat(
-            id = if (readBooleanPreference("create_new_conversation_on_start", true)) {
-                Uuid.random().toString()
-            } else {
-                readStringPreference(
-                    "lastConversationId",
-                    Uuid.random().toString()
-                ) ?: Uuid.random().toString()
-            }
+            id = restoredConversationId ?: Uuid.random().toString(),
+            showLoading = restoredConversationId != null,
         )
 
         val backStack = rememberNavBackStack(startScreen)
@@ -331,7 +333,8 @@ class RouteActivity : ComponentActivity() {
                                     id = Uuid.parse(key.id),
                                     text = key.text,
                                     files = key.files.map { it.toUri() },
-                                    nodeId = key.nodeId?.let { Uuid.parse(it) }
+                                    nodeId = key.nodeId?.let { Uuid.parse(it) },
+                                    showLoading = key.showLoading
                                 )
                             }
 
@@ -596,7 +599,9 @@ sealed interface Screen : NavKey {
         val id: String,
         val text: String? = null,
         val files: List<String> = emptyList(),
-        val nodeId: String? = null
+        val nodeId: String? = null,
+        // 是否启用加载门控：仅切换对话时为 true；App 启动/Intent 进入为 false（保持旧的即时渲染行为）
+        val showLoading: Boolean = false
     ) : Screen
 
     @Serializable

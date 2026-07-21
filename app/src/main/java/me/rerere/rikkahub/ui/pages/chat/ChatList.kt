@@ -167,6 +167,9 @@ fun ChatList(
     // 提升到 AnimatedContent 外部，保证预览模式滚动位置在切换时不丢失
     val previewListState = rememberLazyListState()
 
+    // [FORK] 筛选模式同样提升：退出预览再进入时保持上次选择（按会话分开记忆）
+    var previewFilter by rememberSaveable(conversation.id) { mutableStateOf(PreviewFilter.ALL) }
+
     AnimatedContent(
         targetState = previewMode,
         label = "ChatListMode",
@@ -183,6 +186,8 @@ fun ChatList(
                 onJumpToMessage = onJumpToMessage,
                 animatedVisibilityScope = this@AnimatedContent,
                 listState = previewListState,
+                previewFilter = previewFilter,
+                onPreviewFilterChange = { previewFilter = it },
             )
         } else {
             ChatListNormal(
@@ -740,11 +745,11 @@ private fun ChatListPreview(
     hazeState: HazeState,
     animatedVisibilityScope: AnimatedVisibilityScope,
     listState: LazyListState,
+    previewFilter: PreviewFilter,
+    onPreviewFilterChange: (PreviewFilter) -> Unit,
     onJumpToMessage: (Int) -> Unit
 ) {
     var searchQuery by remember { mutableStateOf("") }
-    // [FORK] 三态筛选：全部 / 仅收藏 / 仅固定
-    var previewFilter by remember { mutableStateOf(PreviewFilter.ALL) }
 
     // 统计数据：对话轮次、提问总字数、回答总字数
     val conversationStats = remember(conversation.messageNodes) {
@@ -898,11 +903,13 @@ private fun ChatListPreview(
             // [FORK] 筛选按钮：全部 → 收藏 → 固定 循环切换
             Surface(
                 onClick = {
-                    previewFilter = when (previewFilter) {
-                        PreviewFilter.ALL -> PreviewFilter.FAVORITE
-                        PreviewFilter.FAVORITE -> PreviewFilter.PINNED
-                        PreviewFilter.PINNED -> PreviewFilter.ALL
-                    }
+                    onPreviewFilterChange(
+                        when (previewFilter) {
+                            PreviewFilter.ALL -> PreviewFilter.FAVORITE
+                            PreviewFilter.FAVORITE -> PreviewFilter.PINNED
+                            PreviewFilter.PINNED -> PreviewFilter.ALL
+                        }
+                    )
                 },
                 shape = CircleShape,
                 color = if (previewFilter != PreviewFilter.ALL) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,

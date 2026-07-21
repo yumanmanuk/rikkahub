@@ -65,7 +65,14 @@ class ChatVM(
 ) : ViewModel() {
     private val _conversationId: Uuid = Uuid.parse(id)
     val conversation: StateFlow<Conversation> = chatService.getConversationFlow(_conversationId)
-    var chatListInitialized by mutableStateOf(false) // 聊天列表是否已经滚动到底部
+    val conversationLoaded: StateFlow<Boolean> = chatService.getConversationInitializedFlow(_conversationId)
+    // 会话初始化当前所处阶段（诊断冷启动加载卡顿用）
+    fun getConversationInitStage(): String = chatService.getConversationInitStage(_conversationId)
+    // 初始滚动位置是否已记录并放行渲染（在列表渲染前写入 LazyListState），
+    // 就绪前 UI 保持 loading，避免先渲染顶部再跳底的闪烁；亦兼作“初始滚动已完成”标记
+    var chatListReady by mutableStateOf(false)
+    // 加载超时兜底标记：数据加载异常缓慢时按旧行为放行渲染，避免用户被永久困在 loading
+    var chatListForcedOpen by mutableStateOf(false)
 
     // 聊天输入状态 - 保存在 ViewModel 中避免 TransactionTooLargeException
     val inputState = ChatInputState()
@@ -204,19 +211,19 @@ class ChatVM(
         // analytics.logEvent("ai_edit_message", null) // [FORK] Firebase removed
 
         viewModelScope.launch {
-            // editMessage 会把旧消息替换为新的 UIMessage（新 UUID），
-            // 所以必须在 editMessage 之前，用旧 messageId 确认是否为最后一条用户节点，并记录 node id
-            val nodesBefore = conversation.value.messageNodes
-            val editedNodeBefore = nodesBefore.firstOrNull { node -> node.messages.any { it.id == messageId } }
-            val lastUserNodeBefore = nodesBefore.lastOrNull { it.role == MessageRole.USER }
-            val shouldRegenerate = regenerate && editedNodeBefore != null && editedNodeBefore == lastUserNodeBefore
+            // editMessage 为原地替换（保留消息 id 与元数据），
+            // 但仍需在编辑前用 messageId 定位节点，确认是否为最后一条用户节点，并记录 node id
+            val conversationBefore = conversation.value
+            val editedNodeBefore = conversationBefore.getMessageNodeByMessageId(messageId)
+            // 重试门槛与输入框“发送/保存”图标共用 Conversation.editWillRegenerate，避免逻辑漂移
+            val shouldRegenerate = regenerate && conversationBefore.editWillRegenerate(messageId)
             // 记录节点 id，以便 editMessage 后在更新的状态中重新查找
             val editedNodeId = editedNodeBefore?.id
 
             chatService.editMessage(_conversationId, messageId, parts)
 
             if (shouldRegenerate && editedNodeId != null) {
-                // editMessage 已完成，从最新 conversation 中通过节点 id 找到该节点（消息 id 已变）
+                // editMessage 已完成，从最新 conversation 中通过节点 id 找到该节点
                 val updatedNodes = conversation.value.messageNodes
                 val updatedNode = updatedNodes.firstOrNull { it.id == editedNodeId }
                 if (updatedNode != null) {

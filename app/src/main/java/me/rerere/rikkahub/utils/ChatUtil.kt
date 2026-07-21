@@ -24,6 +24,8 @@ fun navigateToChatPage(
             text = initText,
             files = initFiles.map { it.toString() },
             nodeId = nodeId?.toString(),
+            // 切换对话场景启用加载门控，避免闪“新聊天”空态
+            showLoading = true,
         )
     )
 }

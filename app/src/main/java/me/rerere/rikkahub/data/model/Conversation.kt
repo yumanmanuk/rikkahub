@@ -121,6 +121,18 @@ data class Conversation(
         return messageNodes.firstOrNull { node -> node.messages.any { it.id == messageId } }
     }
 
+    /**
+     * [FORK] 编辑指定消息后点击发送是否会触发重新生成：
+     * 仅当被编辑消息属于“最后一条用户节点”时为 true。
+     * ChatVM 的重试门槛与输入框发送按钮图标共用此判断，避免两处逻辑漂移。
+     */
+    fun editWillRegenerate(messageId: Uuid): Boolean {
+        val editedNode = getMessageNodeByMessageId(messageId) ?: return false
+        if (editedNode.role != MessageRole.USER) return false
+        val lastUserNode = messageNodes.lastOrNull { it.role == MessageRole.USER }
+        return editedNode.id == lastUserNode?.id
+    }
+
     fun updateCurrentMessages(messages: List<UIMessage>): Conversation {
         val newNodes = this.messageNodes.toMutableList()
 
