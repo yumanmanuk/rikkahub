@@ -305,4 +305,147 @@ val ReasoningHigh: ImageVector
 
 private var _reasoningHigh: ImageVector? = null
 
+// [FORK] 超高思考深度图标：灯泡内加闪电符号，光线比 High 更长，便于与 High 区分
+val ReasoningXHigh: ImageVector
+    get() {
+        if (_reasoningXHigh != null) return _reasoningXHigh!!
+
+        _reasoningXHigh = ImageVector.Builder(
+            name = "ReasoningXHigh",
+            defaultWidth = 24.dp,
+            defaultHeight = 24.dp,
+            viewportWidth = 24f,
+            viewportHeight = 24f
+        ).apply {
+            path(
+                stroke = SolidColor(Color.Black),
+                strokeLineWidth = 2.0f,
+                strokeLineCap = StrokeCap.Round,
+                strokeLineJoin = StrokeJoin.Miter
+            ) {
+                moveTo(6.08938f, 14.9992f)
+                curveTo(5.71097f, 14.1486f, 5.5f, 13.2023f, 5.5f, 12.2051f)
+                curveTo(5.5f, 8.50154f, 8.41015f, 5.49921f, 12f, 5.49921f)
+                curveTo(15.5899f, 5.49921f, 18.5f, 8.50154f, 18.5f, 12.2051f)
+                curveTo(18.5f, 13.2023f, 18.289f, 14.1486f, 17.9106f, 14.9992f)
+            }
+            path(
+                stroke = SolidColor(Color.Black),
+                strokeLineWidth = 2.0f,
+                strokeLineCap = StrokeCap.Round,
+                strokeLineJoin = StrokeJoin.Miter
+            ) {
+                moveTo(14.517f, 19.3056f)
+                curveTo(15.5274f, 18.9788f, 15.9326f, 18.054f, 16.0466f, 17.1238f)
+                curveTo(16.0806f, 16.8459f, 15.852f, 16.6154f, 15.572f, 16.6154f)
+                lineTo(8.47685f, 16.6156f)
+                curveTo(8.18725f, 16.6156f, 7.95467f, 16.8614f, 7.98925f, 17.1489f)
+                curveTo(8.1009f, 18.0773f, 8.3827f, 18.7555f, 9.45345f, 19.3056f)
+                moveTo(14.517f, 19.3056f)
+                curveTo(14.517f, 19.3056f, 9.62971f, 19.3056f, 9.45345f, 19.3056f)
+                moveTo(14.517f, 19.3056f)
+                curveTo(14.3955f, 21.2506f, 13.8338f, 22.0209f, 12.0068f, 21.9993f)
+                curveTo(10.0526f, 22.0354f, 9.60303f, 21.0833f, 9.45345f, 19.3056f)
+            }
+            // 灯泡内的闪电符号
+            path(
+                stroke = SolidColor(Color.Black),
+                strokeLineWidth = 1.5f,
+                strokeLineCap = StrokeCap.Round,
+                strokeLineJoin = StrokeJoin.Round
+            ) {
+                moveTo(13.3f, 8.4f)
+                lineTo(10.7f, 12.3f)
+                lineTo(13.3f, 12.3f)
+                lineTo(10.7f, 15.4f)
+            }
+            // 8 个方向加长的光线
+            path(
+                stroke = SolidColor(Color.Black),
+                strokeLineWidth = 2.0f,
+                strokeLineCap = StrokeCap.Round,
+                strokeLineJoin = StrokeJoin.Miter
+            ) {
+                moveTo(12f, 1.09921f)
+                verticalLineTo(2.99921f)
+            }
+            path(
+                stroke = SolidColor(Color.Black),
+                strokeLineWidth = 2.0f,
+                strokeLineCap = StrokeCap.Round,
+                strokeLineJoin = StrokeJoin.Miter
+            ) {
+                moveTo(22.9f, 11.9992f)
+                horizontalLineTo(21f)
+            }
+            path(
+                stroke = SolidColor(Color.Black),
+                strokeLineWidth = 2.0f,
+                strokeLineCap = StrokeCap.Round,
+                strokeLineJoin = StrokeJoin.Miter
+            ) {
+                moveTo(3f, 11.9992f)
+                horizontalLineTo(1.1f)
+            }
+            path(
+                stroke = SolidColor(Color.Black),
+                strokeLineWidth = 2.0f,
+                strokeLineCap = StrokeCap.Round,
+                strokeLineJoin = StrokeJoin.Miter
+            ) {
+                moveTo(19.7068f, 4.29156f)
+                lineTo(18.3633f, 5.63503f)
+            }
+            path(
+                stroke = SolidColor(Color.Black),
+                strokeLineWidth = 2.0f,
+                strokeLineCap = StrokeCap.Round,
+                strokeLineJoin = StrokeJoin.Miter
+            ) {
+                moveTo(5.6368f, 5.636f)
+                lineTo(4.29333f, 4.29253f)
+            }
+            path(
+                stroke = SolidColor(Color.Black),
+                strokeLineWidth = 2.0f,
+                strokeLineCap = StrokeCap.Round,
+                strokeLineJoin = StrokeJoin.Miter
+            ) {
+                moveTo(16.1712f, 1.9298f)
+                lineTo(15.4441f, 3.6851f)
+            }
+            path(
+                stroke = SolidColor(Color.Black),
+                strokeLineWidth = 2.0f,
+                strokeLineCap = StrokeCap.Round,
+                strokeLineJoin = StrokeJoin.Miter
+            ) {
+                moveTo(7.8288f, 1.9298f)
+                lineTo(8.5559f, 3.6851f)
+            }
+            path(
+                stroke = SolidColor(Color.Black),
+                strokeLineWidth = 2.0f,
+                strokeLineCap = StrokeCap.Round,
+                strokeLineJoin = StrokeJoin.Miter
+            ) {
+                moveTo(22.0702f, 7.8288f)
+                lineTo(20.3149f, 8.5559f)
+            }
+            path(
+                stroke = SolidColor(Color.Black),
+                strokeLineWidth = 2.0f,
+                strokeLineCap = StrokeCap.Round,
+                strokeLineJoin = StrokeJoin.Miter
+            ) {
+                moveTo(1.9298f, 7.8288f)
+                lineTo(3.6851f, 8.5559f)
+            }
+        }.build()
+
+        return _reasoningXHigh!!
+    }
+
+private var _reasoningXHigh: ImageVector? = null
+
 
