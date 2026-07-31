@@ -82,6 +82,9 @@ import dev.chrisbanes.haze.blur.materials.HazeMaterials
 import dev.chrisbanes.haze.hazeEffect
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.map
 import me.rerere.ai.provider.Model
 import me.rerere.ai.provider.ModelAbility
 import me.rerere.ai.provider.ModelType
@@ -198,10 +201,18 @@ fun ChatInput(
             else -> {}
         }
     }
-    LaunchedEffect(asrState.errorMessage) {
-        asrState.errorMessage?.takeIf { it.isNotBlank() }?.let { message ->
-            toaster.show(message = message, type = ToastType.Error)
-        }
+    // ???????????????????????????????????? ASR controller ????????
+    val asrFlow = asr.state
+    LaunchedEffect(asrFlow) {
+        asrFlow
+            .map { it.errorMessage }
+            .distinctUntilChanged()
+            .drop(1)
+            .collect { message ->
+                if (!message.isNullOrBlank()) {
+                    toaster.show(message = message, type = ToastType.Error)
+                }
+            }
     }
 
     Surface(
