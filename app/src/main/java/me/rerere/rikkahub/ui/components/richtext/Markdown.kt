@@ -965,11 +965,14 @@ private fun TableNode(node: ASTNode, content: String, modifier: Modifier = Modif
                     modifier = Modifier
                         .clip(RoundedCornerShape(4.dp))
                         .onClick {
-                            createDocumentLauncher.launch(
-                                "table_${
-                                    Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault())
-                                }.csv"
-                            )
+                            // 文件名精确到分钟，格式 yyyy-MM-dd_HH-mm（避免冒号等非法文件名字符）
+                            val timestamp = Clock.System.now()
+                                .toLocalDateTime(TimeZone.currentSystemDefault())
+                                .toString()
+                                .take(16)
+                                .replace("T", "_")
+                                .replace(":", "-")
+                            createDocumentLauncher.launch("table_$timestamp.csv")
                         }
                         .padding(4.dp)
                         .size(iconSize)
