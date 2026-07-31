@@ -366,7 +366,7 @@ class ResponseAPIMessageTest {
     // ---------------- includeHistoryReasoning behavior (P0 fix) ----------------
 
     @Test
-    fun `reasoning item with encrypted content keeps id and encrypted_content and omits summary when history reasoning disabled`() {
+    fun `reasoning item with encrypted content keeps id and encrypted_content and emits empty summary when history reasoning disabled`() {
         val assistant = UIMessage(
             role = MessageRole.ASSISTANT,
             parts = listOf(
@@ -388,10 +388,10 @@ class ResponseAPIMessageTest {
         assertEquals("reasoning", reasoningItem["type"]?.jsonPrimitive?.content)
         assertEquals("rs_abc123", reasoningItem["id"]?.jsonPrimitive?.content)
         assertEquals("encrypted_blob_payload", reasoningItem["encrypted_content"]?.jsonPrimitive?.content)
-        assertFalse(
-            "summary must be omitted when includeHistoryReasoning=false",
-            reasoningItem.containsKey("summary"),
-        )
+        // summary 是 Responses API 必填字段: 关闭历史思考时发送空数组, 不回传思考内容
+        val summary = reasoningItem["summary"]?.jsonArray
+        assertTrue("summary must be present (required by Responses API)", summary != null)
+        assertTrue("summary must be empty when includeHistoryReasoning=false", summary!!.isEmpty())
     }
 
     @Test
@@ -422,7 +422,7 @@ class ResponseAPIMessageTest {
     }
 
     @Test
-    fun `reasoning item without encrypted content but with id keeps id and omits summary when history reasoning disabled`() {
+    fun `reasoning item without encrypted content but with id keeps id and emits empty summary when history reasoning disabled`() {
         val assistant = UIMessage(
             role = MessageRole.ASSISTANT,
             parts = listOf(
@@ -441,7 +441,9 @@ class ResponseAPIMessageTest {
         val reasoningItem = result[1].jsonObject
         assertEquals("rs_only_id", reasoningItem["id"]?.jsonPrimitive?.content)
         assertFalse(reasoningItem.containsKey("encrypted_content"))
-        assertFalse(reasoningItem.containsKey("summary"))
+        val summary = reasoningItem["summary"]?.jsonArray
+        assertTrue("summary must be present (required by Responses API)", summary != null)
+        assertTrue("summary must be empty when includeHistoryReasoning=false", summary!!.isEmpty())
     }
 
     @Test
@@ -501,10 +503,14 @@ class ResponseAPIMessageTest {
         assertTrue("reasoning item should be present", reasoningItem != null)
         assertEquals("rs_thread", reasoningItem!!["id"]?.jsonPrimitive?.content)
         assertEquals("blob_thread", reasoningItem["encrypted_content"]?.jsonPrimitive?.content)
-        assertFalse(
-            "summary should be omitted when provider includeHistoryReasoning=false",
-            reasoningItem.containsKey("summary"),
+        val summary = reasoningItem["summary"]?.jsonArray
+        assertTrue("summary must be present (required by Responses API)", summary != null)
+        assertTrue(
+            "summary should be empty when provider includeHistoryReasoning=false",
+            summary!!.isEmpty(),
         )
+    }
+
     @Test
     fun `function tools and built-in tools should coexist in the same tools array`() {
         val requestBody = invokeBuildRequestBody(
