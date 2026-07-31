@@ -60,7 +60,8 @@ import me.rerere.ai.provider.Model
 import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.hugeicons.HugeIcons
-import me.rerere.hugeicons.stroke.ArrowUpBig
+import me.rerere.hugeicons.stroke.AirplaneTakeOff02
+import me.rerere.hugeicons.stroke.CableCar
 import me.rerere.hugeicons.stroke.Copy01
 import me.rerere.hugeicons.stroke.Delete01
 import me.rerere.hugeicons.stroke.Edit01
@@ -113,6 +114,7 @@ fun ColumnScope.ChatMessageActionButtons(
     isFavorite: Boolean = false,
     onToggleFavorite: (() -> Unit)? = null,
     onScrollToQuestion: (() -> Unit)? = null,
+    onScrollToAnswer: (() -> Unit)? = null,
     onCopy: (() -> Unit)? = null,
     // 是否是对话中最后一条消息，只有最后一条才显示重试按钮
     isLastMessage: Boolean = true,
@@ -140,7 +142,7 @@ fun ColumnScope.ChatMessageActionButtons(
             // 向上跳转到提问处
             if (onScrollToQuestion != null) {
                 Icon(
-                    imageVector = HugeIcons.ArrowUpBig,
+                    imageVector = HugeIcons.AirplaneTakeOff02,
                     contentDescription = "Scroll to question",
                     modifier = Modifier
                         .clip(CircleShape)
@@ -282,9 +284,8 @@ fun ColumnScope.ChatMessageActionButtons(
                 )
             }
 
-            // Battle Mode 标识图标：多条来自不同模型的回答可切换时显示，点击打开排序面板
-            val isBattleMode = node.messages.size > 1 &&
-                node.messages.mapNotNull { it.modelId }.toSet().size > 1
+            // Battle Mode 标识图标：battle 节点（多条来自不同模型的回答）显示，点击打开排序面板
+            val isBattleMode = node.isBattleNodeEffective
             if (isBattleMode) {
                 var showBattleSortSheet by remember { mutableStateOf(false) }
                 Icon(
@@ -345,7 +346,20 @@ fun ColumnScope.ChatMessageActionButtons(
                 onUpdate = onUpdate,
             )
         } else {
-            // USER 消息按钮：重试 → 复制 → 更多 → 分支切换器，靠右对齐
+            // USER 消息按钮：向下跳转 → 时间 → 重试 → 复制 → 固定 → 更多 → 分支切换器，靠右对齐
+
+            if (onScrollToAnswer != null) {
+                Icon(
+                    imageVector = HugeIcons.CableCar,
+                    contentDescription = "Scroll to answer",
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .clickable { onScrollToAnswer() }
+                        .padding(8.dp)
+                        .size(16.dp),
+                    tint = actionIconColor
+                )
+            }
 
             if (settings.displaySetting.showDateTimeInMessage) {
                 Text(

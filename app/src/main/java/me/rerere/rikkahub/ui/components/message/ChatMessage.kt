@@ -126,6 +126,7 @@ fun ChatMessage(
     onToolApproval: ((toolCallId: String, approved: Boolean, reason: String) -> Unit)? = null,
     onToolAnswer: ((toolCallId: String, answer: String) -> Unit)? = null,
     onScrollToQuestion: (() -> Unit)? = null,
+    onScrollToAnswer: (() -> Unit)? = null,
     // [FORK] 固定到上下文
     isPinned: Boolean = false,
     onTogglePin: (() -> Unit)? = null,
@@ -143,6 +144,7 @@ fun ChatMessage(
     val navController = LocalNavController.current
     val context = LocalContext.current
     val colorScheme = MaterialTheme.colorScheme
+
     Column(
         modifier = modifier.fillMaxWidth(),
         horizontalAlignment = if (message.role == MessageRole.USER) Alignment.End else Alignment.Start,
@@ -238,7 +240,8 @@ fun ChatMessage(
             exit = slideOutVertically { it / 2 } + fadeOut()
         ) {
             Column(
-                modifier = Modifier.animateContentSize()
+                modifier = Modifier
+                    .animateContentSize()
             ) {
                 ChatMessageActionButtons(
                     message = message,
@@ -253,6 +256,7 @@ fun ChatMessage(
                     isFavorite = isFavorite,
                     onToggleFavorite = onToggleFavorite,
                     onScrollToQuestion = onScrollToQuestion,
+                    onScrollToAnswer = onScrollToAnswer,
                     onCopy = {
                         context.copyMessageToClipboard(message)
                     },

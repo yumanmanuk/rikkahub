@@ -489,8 +489,43 @@ private fun ChatListNormal(
                                     scope.launch { state.animateScrollToItem(targetIndex) }
                                 }
                             } else null,
-                            // [FORK] 固定到上下文
-                            isPinned = node.isPinned,
+                            onScrollToAnswer = if (
+                                node.currentMessage.role == me.rerere.ai.core.MessageRole.USER &&
+                                conversation.messageNodes.getOrNull(index + 1)?.currentMessage?.role == me.rerere.ai.core.MessageRole.ASSISTANT
+                            ) {
+                                val targetIndex = index + 1
+                                {
+                                    // 点击向下跳转时，暂停自动贴底，防止跳转到回答后又被拉回底部
+                                    shouldAutoFollow = false
+                                    scope.launch {
+                                        // 记录当前位置，测量后可无痕还原
+                                        val savedIndex = state.firstVisibleItemIndex
+                                        val savedOffset = state.firstVisibleItemScrollOffset
+                                        // 先瞬时定位到回答完成组合与测量；同一协程内立即还原，
+                                        // 中间不让出帧，这一步不会被真正绘制出来
+                                        state.scrollToItem(targetIndex)
+                                        val info = state.layoutInfo.visibleItemsInfo
+                                            .firstOrNull { it.index == targetIndex }
+                                        val scrollOffset = if (info != null) {
+                                            val inputBarHeightPx = with(density) {
+                                                innerPadding.calculateBottomPadding().toPx()
+                                            }
+                                            val viewportBottom =
+                                                state.layoutInfo.viewportEndOffset - inputBarHeightPx
+                                            val itemBottom = info.offset + info.size
+                                            // 回答比可视区高时需要额外下滚的距离；否则为 0（回答顶部对齐即可）
+                                            (itemBottom - viewportBottom).coerceAtLeast(0f).roundToInt()
+                                        } else 0
+                                        // 还原到原始位置，让动画从当前位置出发
+                                        state.scrollToItem(savedIndex, savedOffset)
+                                        // 单段平滑动画：带 scrollOffset 直接把回答底部(操作按钮区)带到输入栏上方，
+                                        // 一气呵成、无“先到顶再到底”的顿挫
+                                        state.animateScrollToItem(targetIndex, scrollOffset)
+                                    }
+                                }
+                            } else null,
+                            // [FORK] 固定到上下文：仅当前显示的分支正是锚定分支时才显示固定标识/高亮
+                            isPinned = node.pinnedMessageId != null && node.pinnedMessageId == node.currentMessage.id,
                             onTogglePin = if (onTogglePin != null) {
                                 { onTogglePin(node) }
                             } else null,
