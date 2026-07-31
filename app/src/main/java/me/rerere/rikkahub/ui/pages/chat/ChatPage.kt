@@ -1,6 +1,9 @@
 package me.rerere.rikkahub.ui.pages.chat
 
+import android.Manifest
+import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.util.Log
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -71,6 +74,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.core.net.toUri
 import com.dokar.sonner.ToastType
@@ -115,6 +119,8 @@ import me.rerere.rikkahub.ui.components.ai.ChatInput
 import me.rerere.rikkahub.ui.components.ai.FilesPicker
 import me.rerere.rikkahub.ui.components.ai.completion.WorkspaceCompletionProvider
 import me.rerere.rikkahub.ui.components.ai.useCropLauncher
+import me.rerere.rikkahub.ui.components.imagepicker.ImagePickerSheet
+import me.rerere.rikkahub.ui.components.imagepicker.ImageSortOrder
 import me.rerere.rikkahub.ui.components.ui.RabbitLoadingIndicator
 import me.rerere.rikkahub.ui.components.ui.permission.PermissionCamera
 import me.rerere.rikkahub.ui.components.ui.permission.PermissionManager
@@ -631,6 +637,11 @@ private fun ChatPageContent(
             }
         }
 
+        // 记住本对话内上次选择的相册文件夹与排序方式（切换对话或重启后回到默认）。
+        // 状态放在 ChatFilesPickerSheet 之外，避免文件选择弹窗关闭时被销毁。
+        var imagePickerBucketId by remember(conversation.id) { mutableStateOf<String?>(null) }
+        var imagePickerSortOrder by remember(conversation.id) { mutableStateOf(ImageSortOrder.Default) }
+
         if (showFilesSheet) {
             ChatFilesPickerSheet(
                 inputState = inputState,
@@ -638,6 +649,10 @@ private fun ChatPageContent(
                 conversation = conversation,
                 assistant = assistant,
                 vm = vm,
+                imagePickerBucketId = imagePickerBucketId,
+                onImagePickerBucketSelected = { imagePickerBucketId = it },
+                imagePickerSortOrder = imagePickerSortOrder,
+                onImagePickerSortOrderChange = { imagePickerSortOrder = it },
                 onDismiss = { showFilesSheet = false },
             )
         }
@@ -651,6 +666,10 @@ private fun ChatFilesPickerSheet(
     conversation: Conversation,
     assistant: Assistant,
     vm: ChatVM,
+    imagePickerBucketId: String?,
+    onImagePickerBucketSelected: (String?) -> Unit,
+    imagePickerSortOrder: ImageSortOrder,
+    onImagePickerSortOrderChange: (ImageSortOrder) -> Unit,
     onDismiss: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -721,39 +740,87 @@ private fun ChatFilesPickerSheet(
             preCropTempFile = null
         }
     )
+    // 处理从相册选中的图片：单张走裁剪（可在设置中跳过），多张直接加入输入框
+    fun processPickedImages(selectedUris: List<Uri>) {
+        if (selectedUris.isEmpty()) {
+            Log.d("ImagePickButton", "No images selected")
+            return
+        }
+        Log.d("ImagePickButton", "Selected URIs: $selectedUris")
+        if (setting.displaySetting.skipCropImage) {
+            inputState.addImages(filesManager.createChatFilesByContents(selectedUris))
+            dismissAll()
+        } else if (selectedUris.size == 1) {
+            val tempFile = File(context.appTempFolder, "pick_temp_${System.currentTimeMillis()}.jpg")
+            runCatching {
+                val source = selectedUris.first()
+                // HEIF/HEIC（尤其 HDR HEIF）交给 UCrop 前先解码转为 JPEG，规避裁剪解码失败
+                val converted = ImageUtils.isHeifImage(context, source) &&
+                    ImageUtils.convertHeifToJpeg(context, source, tempFile)
+                if (!converted) {
+                    context.contentResolver.openInputStream(source)?.use { input ->
+                        tempFile.outputStream().use { output -> input.copyTo(output) }
+                    }
+                }
+                preCropTempFile = tempFile
+                launchImageCrop(tempFile.toUri())
+            }.onFailure {
+                Log.e("ImagePickButton", "Failed to copy image to temp, falling back", it)
+                launchImageCrop(selectedUris.first())
+            }
+        } else {
+            inputState.addImages(filesManager.createChatFilesByContents(selectedUris))
+            dismissAll()
+        }
+    }
+
+    // 系统照片选择器（无相册权限时的兜底方案）
     val imagePickerLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { selectedUris ->
-            if (selectedUris.isNotEmpty()) {
-                Log.d("ImagePickButton", "Selected URIs: $selectedUris")
-                if (setting.displaySetting.skipCropImage) {
-                    inputState.addImages(filesManager.createChatFilesByContents(selectedUris))
-                    dismissAll()
-                } else if (selectedUris.size == 1) {
-                    val tempFile = File(context.appTempFolder, "pick_temp_${System.currentTimeMillis()}.jpg")
-                    runCatching {
-                        val source = selectedUris.first()
-                        // HEIF/HEIC（尤其 HDR HEIF）交给 UCrop 前先解码转为 JPEG，规避裁剪解码失败
-                        val converted = ImageUtils.isHeifImage(context, source) &&
-                            ImageUtils.convertHeifToJpeg(context, source, tempFile)
-                        if (!converted) {
-                            context.contentResolver.openInputStream(source)?.use { input ->
-                                tempFile.outputStream().use { output -> input.copyTo(output) }
-                            }
-                        }
-                        preCropTempFile = tempFile
-                        launchImageCrop(tempFile.toUri())
-                    }.onFailure {
-                        Log.e("ImagePickButton", "Failed to copy image to temp, falling back", it)
-                        launchImageCrop(selectedUris.first())
-                    }
-                } else {
-                    inputState.addImages(filesManager.createChatFilesByContents(selectedUris))
-                    dismissAll()
-                }
+            processPickedImages(selectedUris)
+        }
+
+    // 自研相册选择器（支持自定义相册文件夹，需要相册读取权限）
+    var showImagePicker by remember { mutableStateOf(false) }
+    var mediaDataVersion by remember { mutableIntStateOf(0) }
+    val mediaImagePermission = remember {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            Manifest.permission.READ_MEDIA_IMAGES
+        } else {
+            Manifest.permission.READ_EXTERNAL_STORAGE
+        }
+    }
+
+    fun hasFullMediaAccess(): Boolean =
+        ContextCompat.checkSelfPermission(context, mediaImagePermission) == PackageManager.PERMISSION_GRANTED
+
+    // Android 14+：用户仅授权了部分照片
+    fun hasPartialMediaAccess(): Boolean =
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE &&
+            !hasFullMediaAccess() &&
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED
+            ) == PackageManager.PERMISSION_GRANTED
+
+    // 权限请求结果：授权（含部分授权）打开自研选择器，否则回退到系统选择器
+    val mediaPermissionLauncher =
+        rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+            mediaDataVersion++
+            if (hasFullMediaAccess() || hasPartialMediaAccess()) {
+                showImagePicker = true
             } else {
-                Log.d("ImagePickButton", "No images selected")
+                imagePickerLauncher.launch("image/*")
             }
         }
+
+    // 选择器内“管理”部分授权时使用：仅刷新数据，不做回退
+    val manageMediaPermissionLauncher =
+        rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+            mediaDataVersion++
+        }
+
+    val isPartialMediaAccess = remember(mediaDataVersion) { hasPartialMediaAccess() }
 
     val videoPickerLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { selectedUris ->
@@ -841,12 +908,35 @@ private fun ChatFilesPickerSheet(
             onShowCompressDialogChange = { showCompressDialog = it },
             onDismiss = { dismissAll() },
             onTakePic = onLaunchCamera,
-            onPickImage = { imagePickerLauncher.launch("image/*") },
+            onPickImage = {
+                if (hasFullMediaAccess() || hasPartialMediaAccess()) {
+                    showImagePicker = true
+                } else {
+                    mediaPermissionLauncher.launch(mediaImagePermission)
+                }
+            },
             onPickVideo = { videoPickerLauncher.launch("video/*") },
             onPickAudio = { audioPickerLauncher.launch("audio/*") },
             onPickFile = { filePickerLauncher.launch(arrayOf("*/*")) },
             // 切换语音识别开关：asrEnabled 取反即可，controller 会自动响应
             onToggleAsr = { vm.updateSettings(setting.copy(asrEnabled = !setting.asrEnabled)) },
+        )
+    }
+
+    if (showImagePicker) {
+        ImagePickerSheet(
+            isPartialAccess = isPartialMediaAccess,
+            dataVersion = mediaDataVersion,
+            selectedBucketId = imagePickerBucketId,
+            onBucketSelected = onImagePickerBucketSelected,
+            sortOrder = imagePickerSortOrder,
+            onSortOrderChange = onImagePickerSortOrderChange,
+            onManagePartialAccess = { manageMediaPermissionLauncher.launch(mediaImagePermission) },
+            onDismiss = { showImagePicker = false },
+            onConfirm = { uris ->
+                showImagePicker = false
+                processPickedImages(uris)
+            },
         )
     }
 }
@@ -1062,21 +1152,21 @@ private fun ConversationParamsSheet(
 
             // Context Message Size
             // [FORK] 拖动滑块时的实时显示值：IntSliderItem 松手才提交，用它让下方数字/内訳实时更新
-            var contextSizeDisplay by remember(params.contextMessageSize, assistant.contextMessageSize) {
-                mutableStateOf(params.contextMessageSize ?: assistant.contextMessageSize)
+            var contextSizeDisplay by remember(params.contextMessageSize, assistant.contextMessageLimit) {
+                mutableStateOf(params.contextMessageSize ?: assistant.contextMessageLimit)
             }
             FormItem(
                 modifier = Modifier.padding(8.dp),
                 label = {
-                    Text(stringResource(R.string.assistant_page_context_message_size))
+                    Text(stringResource(R.string.assistant_page_context_message_limit))
                 },
                 description = {
                     if (params.contextMessageSize == null) {
                         Text(
                             text = "使用助手设置: ${
-                                if (assistant.contextMessageSize > 0)
-                                    stringResource(R.string.assistant_page_context_message_count, assistant.contextMessageSize)
-                                else stringResource(R.string.assistant_page_context_message_unlimited)
+                                if (assistant.contextMessageLimit > 0)
+                                    stringResource(R.string.assistant_page_context_message_limit_count, assistant.contextMessageLimit)
+                                else stringResource(R.string.assistant_page_context_message_limit_unlimited)
                             }",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -1088,7 +1178,7 @@ private fun ConversationParamsSheet(
                         checked = params.contextMessageSize != null,
                         onCheckedChange = { enabled ->
                             val newParams = params.copy(
-                                contextMessageSize = if (enabled) assistant.contextMessageSize else null
+                                contextMessageSize = if (enabled) assistant.contextMessageLimit else null
                             )
                             params = newParams
                             onUpdate(newParams)
@@ -1110,8 +1200,8 @@ private fun ConversationParamsSheet(
                     )
                     Text(
                         text = if (contextSizeDisplay > 0) stringResource(
-                            R.string.assistant_page_context_message_count, contextSizeDisplay
-                        ) else stringResource(R.string.assistant_page_context_message_unlimited),
+                            R.string.assistant_page_context_message_limit_count, contextSizeDisplay
+                        ) else stringResource(R.string.assistant_page_context_message_limit_unlimited),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.75f),
                     )
@@ -1122,7 +1212,8 @@ private fun ConversationParamsSheet(
             run {
                 val budget = contextSizeDisplay
                 val pinnedIds = conversation.collectProtectedMessageIds()
-                val pinnedCount = conversation.currentMessages.count { it.id in pinnedIds }
+                // [FORK] 按实际发送的上下文（固定节点取锚定分支）统计固定占用条数
+                val pinnedCount = conversation.contextMessages.count { it.id in pinnedIds }
                 val pinnedGroups = conversation.pinnedGroupCount()
                 Column(
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),

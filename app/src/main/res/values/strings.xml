@@ -397,6 +397,16 @@
   <string name="history_page_import_google_ai_studio">从 Google AI Studio 导入</string>
   <string name="history_page_import_success">Conversation imported successfully</string>
   <string name="history_page_import_failed">Import failed</string>
+  <string name="image_picker_all_photos">All Photos</string>
+  <string name="image_picker_empty">No photos</string>
+  <string name="image_picker_manage">Manage</string>
+  <string name="image_picker_partial_hint">Only photos you\'ve allowed are shown</string>
+  <string name="image_picker_select_album">Select Album</string>
+  <string name="image_picker_sort">Sort</string>
+  <string name="image_picker_sort_date_added">Date Added</string>
+  <string name="image_picker_sort_date_taken">Date Taken</string>
+  <string name="image_picker_sort_file_name">File Name</string>
+  <string name="image_picker_sort_file_size">File Size</string>
   <string name="imggen_page_aspect_ratio">Image Aspect Ratio</string>
   <string name="imggen_page_aspect_ratio_desc">Select aspect ratio for generated images</string>
   <string name="imggen_page_aspect_ratio_landscape">16:9 Landscape</string>
