@@ -702,7 +702,8 @@ private fun AddModelButton(
                     model.copy(
                         inputModalities = inputModalities,
                         outputModalities = outputModalities,
-                        abilities = abilities
+                        abilities = abilities,
+                        tools = ModelRegistry.MODEL_BUILT_IN_TOOLS.getData(model.modelId)
                     )
                 )
             },
@@ -718,7 +719,8 @@ private fun AddModelButton(
                             model.copy(
                                 inputModalities = ModelRegistry.MODEL_INPUT_MODALITIES.getData(model.modelId),
                                 outputModalities = ModelRegistry.MODEL_OUTPUT_MODALITIES.getData(model.modelId),
-                                abilities = ModelRegistry.MODEL_ABILITIES.getData(model.modelId)
+                                abilities = ModelRegistry.MODEL_ABILITIES.getData(model.modelId),
+                                tools = ModelRegistry.MODEL_BUILT_IN_TOOLS.getData(model.modelId)
                             )
                         }
                     )

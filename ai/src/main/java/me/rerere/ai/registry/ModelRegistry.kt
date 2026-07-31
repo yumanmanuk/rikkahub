@@ -1,5 +1,6 @@
 package me.rerere.ai.registry
 
+import me.rerere.ai.provider.BuiltInTools
 import me.rerere.ai.provider.Modality
 import me.rerere.ai.provider.ModelAbility
 
@@ -602,6 +603,14 @@ object ModelRegistry {
         buildList {
             if (ModelAbility.TOOL in abilities) add(ModelAbility.TOOL)
             if (ModelAbility.REASONING in abilities) add(ModelAbility.REASONING)
+        }
+    }
+
+    val MODEL_BUILT_IN_TOOLS = ModelData { modelId ->
+        buildSet {
+            if (GEMINI_SERIES.match(modelId) || modelId.contains("gpt-")) {
+                add(BuiltInTools.Search)
+            }
         }
     }
 

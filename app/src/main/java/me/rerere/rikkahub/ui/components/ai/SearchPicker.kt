@@ -160,7 +160,7 @@ private fun SearchPicker(
 
     // 模型是否支持内置搜索
     val supportsBuiltInSearch = model != null &&
-        (ModelRegistry.GEMINI_SERIES.match(model.modelId) || model.modelId.contains("gpt-"))
+        ModelRegistry.MODEL_BUILT_IN_TOOLS.getData(model.modelId).contains(BuiltInTools.Search)
     // 模型是否已开启内置搜索（可能是不支持的模型残留的孤儿状态）
     val hasBuiltInSearchEnabled = model?.tools?.contains(BuiltInTools.Search) == true
 
