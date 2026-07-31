@@ -88,20 +88,35 @@ data class Conversation(
         }
 
     /**
+     * [FORK] 发送给模型的上下文消息：
+     * 被固定(pinned)的节点强制使用固定时锚定的那条分支（pinnedMessageId），
+     * 未固定的节点跟随 selectIndex。纯只读取值，绝不修改 messageNodes。
+     */
+    val contextMessages
+        get(): List<UIMessage> {
+            return messageNodes.map { node -> node.contextMessage }
+        }
+
+    /**
      * [FORK] Battle Mode 独立上下文：
      * 对于 battle 节点，选取该 modelId 生成的那条 message 作为该模型的上下文；
      * 对于非 battle 节点，直接取当前选中的 message。
      * 若 battle 节点中找不到对应 modelId 的消息，则回退到 selectIndex。
      *
-     * [FORK] 收藏/固定语义：若 battle 节点被收藏或固定到上下文，
-     * 所有模型统一使用 selectIndex 对应的那条回答（即用户明确选定收藏的那条），
-     * 而非各自找 modelId 匹配的回答，确保收藏内容跨模型一致传递。
+     * [FORK] 收藏/固定语义：
+     * - 固定(pinned)的 battle 节点：所有模型统一使用固定时锚定的那条回答（pinnedMessageId），
+     *   与共享上下文的 contextMessages 口径一致；
+     * - 收藏(favorite)的 battle 节点：所有模型统一使用 selectIndex 对应的那条回答，
+     *   确保收藏内容跨模型一致传递。
      */
     fun getMessagesForModel(modelId: Uuid): List<UIMessage> {
         return messageNodes.map { node ->
-            if (node.isBattleNode) {
-                // 收藏/固定的 battle 节点：所有模型都使用用户选定（收藏）的那条回答
-                if (node.isFavorite || node.isPinned) {
+            if (node.isBattleNodeEffective) {
+                // 固定的 battle 节点：所有模型都使用固定锚定的那条回答
+                if (node.isPinned) {
+                    node.contextMessage
+                } else if (node.isFavorite) {
+                    // 收藏的 battle 节点：所有模型都使用用户选定（收藏）的那条回答
                     node.messages.getOrElse(node.selectIndex) { node.messages.first() }
                 } else {
                     node.messages.firstOrNull { it.modelId == modelId }
@@ -190,17 +205,38 @@ data class MessageNode(
     val isBattleNode: Boolean = false,
     @Transient
     val favoriteMessageId: Uuid? = null,
-    // [FORK] 固定到上下文：设置了上下文长度时，该节点不会被截断
+    // [FORK] 固定到上下文：锚定到具体某条分支消息，构建上下文时强制使用该分支（不随 selectIndex 变化），
+    // 且该 turn 不会被 limitContext 截断。null 表示未固定。
     @Transient
-    val isPinned: Boolean = false,
+    val pinnedMessageId: Uuid? = null,
 ) {
     // 节点是否有收藏（只要 favoriteMessageId 不为 null 即为 true）
     val isFavorite: Boolean get() = favoriteMessageId != null
+    // [FORK] 节点是否被固定（只要 pinnedMessageId 不为 null 即为 true）
+    val isPinned: Boolean get() = pinnedMessageId != null
+
+    /**
+     * [FORK] battle 节点判定：节点内存在多条来自不同模型的回答即视为 battle 节点（与 UI 图标口径一致）。
+     * 不依赖 isBattleNode 内存标记（@Transient 不持久化，重启/从 DB 重建后丢失），
+     * 因此会话内与重启后的判定结果完全一致。
+     * 只剩 1 条回答（单模型 battle 或被删到剩 1 条）时退化为普通回答：
+     * 不显示 battle 图标，重试按普通节点处理（截断后走 dispatchGeneration）。
+     */
+    val isBattleNodeEffective: Boolean
+        get() = messages.size > 1 && messages.mapNotNull { it.modelId }.toSet().size > 1
+
     val currentMessage get() = if (messages.isEmpty() || selectIndex !in messages.indices) {
         throw IllegalStateException("MessageNode has no valid current message: messages.size=${messages.size}, selectIndex=$selectIndex")
     } else {
         messages[selectIndex]
     }
+
+    /**
+     * [FORK] 构建上下文时使用的消息：固定节点取锚定分支，
+     * 找不到锚定分支（如分支已被删除）或未固定时回退到 selectIndex。
+     */
+    val contextMessage: UIMessage
+        get() = messages.firstOrNull { it.id == pinnedMessageId } ?: messages[selectIndex]
 
     val role get() = messages.firstOrNull()?.role ?: MessageRole.USER
 

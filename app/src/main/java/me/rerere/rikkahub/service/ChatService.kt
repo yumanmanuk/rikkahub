@@ -75,11 +75,13 @@ import me.rerere.rikkahub.data.datastore.getCurrentAssistant
 import me.rerere.rikkahub.data.datastore.getCurrentChatModel
 import me.rerere.rikkahub.data.files.FilesManager
 import me.rerere.rikkahub.data.model.Conversation
+import me.rerere.rikkahub.data.model.MessageNode
 import me.rerere.rikkahub.data.model.Assistant
 import me.rerere.rikkahub.data.model.AssistantAffectScope
 import me.rerere.rikkahub.data.model.replaceRegexes
 import me.rerere.rikkahub.data.model.toMessageNode
 import me.rerere.rikkahub.data.repository.ConversationRepository
+import me.rerere.rikkahub.data.repository.FavoriteRepository
 import me.rerere.rikkahub.data.repository.FolderRepository
 import me.rerere.rikkahub.data.repository.MemoryRepository
 import me.rerere.rikkahub.data.repository.WorkspaceRepository
@@ -156,6 +158,7 @@ class ChatService(
     private val folderRepository: FolderRepository,
     // [FORK] Battle Mode Service
     private val battleService: BattleService,
+    private val favoriteRepository: FavoriteRepository,
 ) {
     // workspace 系统提示注入 (依赖 workspaceRepository, 故在类内构造)
     private val workspaceReminderTransformer = WorkspaceReminderTransformer(workspaceRepository)
@@ -429,6 +432,79 @@ class ChatService(
 
     // ---- 重新生成消息 ----
 
+    /**
+     * [FORK] Battle 单 slot 重试前清理：重试会原位替换该回答的内容，
+     * 而 pin/收藏是对旧内容的背书，内容被替换后应由用户重新审视，故清除。
+     * 仅当被重试的 message 正是锚定/收藏的那条时才清除；
+     * 配对的 USER 提问 pin 保留（其内容未被重试改变）。
+     */
+    private suspend fun clearAnchorAndFavoriteOnSlotRetry(
+        conversationId: Uuid,
+        node: MessageNode,
+        messageId: Uuid,
+    ) {
+        val clearPin = node.pinnedMessageId == messageId
+        val clearFavorite = node.favoriteMessageId == messageId
+        if (!clearPin && !clearFavorite) return
+
+        if (clearFavorite) {
+            favoriteRepository.removeNodeFavorite(conversationId, node.id)
+        }
+        updateConversationState(conversationId) { conv ->
+            conv.copy(
+                messageNodes = conv.messageNodes.map { n ->
+                    if (n.id != node.id) {
+                        n
+                    } else {
+                        n.copy(
+                            pinnedMessageId = if (clearPin) null else n.pinnedMessageId,
+                            favoriteMessageId = if (clearFavorite) null else n.favoriteMessageId,
+                        )
+                    }
+                }
+            )
+        }
+        saveConversation(conversationId, getConversationFlow(conversationId).value)
+    }
+
+    /**
+     * [FORK] 同步清理悬空收藏：重试截断/删除消息/压缩上下文后，
+     * 收藏表中指向已删除节点或已删除消息的条目会变成无法打开的悬空数据。
+     * 以当前会话状态为准对账：节点不存在、或收藏的具体 message 已不在节点内，则删除该收藏，
+     * 并同步清掉内存节点上残留的 favoriteMessageId。
+     */
+    private suspend fun cleanupDanglingNodeFavorites(conversationId: Uuid) {
+        val refs = favoriteRepository.getNodeFavoriteRefsOfConversation(conversationId)
+        if (refs.isEmpty()) return
+
+        val conversation = getConversationFlow(conversationId).value
+        val messageIdsByNode = conversation.messageNodes.associate { node ->
+            node.id to node.messages.map { it.id }.toSet()
+        }
+        val danglingNodeIds = refs.mapNotNull { ref ->
+            val validIds = messageIdsByNode[ref.nodeId]
+            when {
+                validIds == null -> ref.nodeId  // 节点已删除
+                ref.messageId != null && ref.messageId !in validIds -> ref.nodeId  // 收藏的具体 message 已不在节点内
+                else -> null
+            }
+        }.distinct()
+        if (danglingNodeIds.isEmpty()) return
+
+        favoriteRepository.removeNodeFavorites(conversationId, danglingNodeIds)
+        updateConversationState(conversationId) { conv ->
+            conv.copy(
+                messageNodes = conv.messageNodes.map { node ->
+                    if (node.id in danglingNodeIds) {
+                        node.copy(favoriteMessageId = null)
+                    } else {
+                        node
+                    }
+                }
+            )
+        }
+    }
+
     fun regenerateAtMessage(
         conversationId: Uuid,
         message: UIMessage,
@@ -439,7 +515,7 @@ class ChatService(
         // 先判断是否为 Battle 单 slot 重试（不取消主 Job）
         val snapshot = session.state.value
         val node = snapshot.getMessageNodeByMessageId(message.id)
-        val isSingleSlotRetry = node?.isBattleNode == true &&
+        val isSingleSlotRetry = node?.isBattleNodeEffective == true &&
                 message.role == MessageRole.ASSISTANT &&
                 regenerateAssistantMsg
 
@@ -453,6 +529,7 @@ class ChatService(
             )
 
             appScope.launch {
+                clearAnchorAndFavoriteOnSlotRetry(conversationId, node, message.id)
                 battleService.rerunSlot(
                     conversationId = conversationId,
                     battleNodeId = node.id,
@@ -499,6 +576,7 @@ class ChatService(
                         messageNodes = conversation.messageNodes.subList(0, indexAt + 1)
                     )
                     saveConversation(conversationId, newConversation)
+                    cleanupDanglingNodeFavorites(conversationId)
                     dispatchGeneration(
                         conversationId = conversationId,
                         conversation = newConversation,
@@ -515,11 +593,12 @@ class ChatService(
                         // 从最新状态的 node 中取 modelId，而非依赖已过期的快照消息
                         val currentModelId = nodeInner?.messages?.firstOrNull { it.id == message.id }?.modelId
                             ?: message.modelId
-                        if (nodeInner != null && nodeInner.isBattleNode && currentModelId != null) {
+                        if (nodeInner != null && nodeInner.isBattleNodeEffective && currentModelId != null) {
                             // [FORK] Battle Mode: 消息属于 battle 节点，只重试当前显示的模型
                             val contextConversation = conversation.copy(
                                 messageNodes = conversation.messageNodes.subList(0, nodeIndex)
                             )
+                            clearAnchorAndFavoriteOnSlotRetry(conversationId, nodeInner, message.id)
                             battleService.rerunSlot(
                                 conversationId = conversationId,
                                 battleNodeId = nodeInner.id,
@@ -547,6 +626,7 @@ class ChatService(
                             // [FORK] 方案A：非 Battle 也持久化截断后的会话，让重试结果替换被重试的回答，
                             // 不再堆叠在其下方成为新节点。截断只发生在“被重试节点及其之后”，之前历史完整保留。
                             saveConversation(conversationId, contextConversation)
+                            cleanupDanglingNodeFavorites(conversationId)
                             dispatchGeneration(
                                 conversationId = conversationId,
                                 conversation = contextConversation,
@@ -724,13 +804,15 @@ class ChatService(
                 processingStatus = session.processingStatus,
                 messages = if (messageRange != null) {
                     // 重生成某条：按索引截取,不再走 pin/favorite 保护
-                    conversation.currentMessages.subList(
+                    // [FORK] contextMessages 与 currentMessages 一一对应（每节点一条），索引对齐，截取安全
+                    conversation.contextMessages.subList(
                         messageRange.start.coerceAtLeast(0),
-                        (messageRange.endInclusive + 1).coerceAtMost(conversation.currentMessages.size)
+                        (messageRange.endInclusive + 1).coerceAtMost(conversation.contextMessages.size)
                     )
                 } else {
                     // 正常发送：全量消息 + protectedMessageIds 让 GenerationHandler.limitContext 保留收藏/固定
-                    conversation.currentMessages
+                    // [FORK] 使用 contextMessages：被固定节点强制使用固定时锚定的分支，不随 selectIndex 变化
+                    conversation.contextMessages
                 },
                 protectedMessageIds = protectedMessageIds,
                 // [FORK] 显式传 conversationParams,确保对话专属 contextMessageSize 在 GenerationHandler.limitContext 中生效
@@ -1148,6 +1230,7 @@ class ChatService(
         )
 
         saveConversation(conversationId, newConversation)
+        cleanupDanglingNodeFavorites(conversationId)
     }
 
     // ---- 对话状态更新 ----
@@ -1441,6 +1524,7 @@ class ChatService(
 
         val updatedNodes = currentConversation.messageNodes.subList(targetNodeIndex, currentConversation.messageNodes.size)
         saveConversation(conversationId, currentConversation.copy(messageNodes = updatedNodes))
+        cleanupDanglingNodeFavorites(conversationId)
     }
 
     suspend fun deleteMessagesAfterMessage(
@@ -1457,6 +1541,7 @@ class ChatService(
 
         val updatedNodes = currentConversation.messageNodes.subList(0, targetNodeIndex + 1)
         saveConversation(conversationId, currentConversation.copy(messageNodes = updatedNodes))
+        cleanupDanglingNodeFavorites(conversationId)
     }
 
     suspend fun deleteMessage(
@@ -1475,6 +1560,7 @@ class ChatService(
         }
 
         saveConversation(conversationId, updatedConversation)
+        cleanupDanglingNodeFavorites(conversationId)
     }
 
     suspend fun deleteMessage(
@@ -1506,6 +1592,7 @@ class ChatService(
                 } else {
                     saveConversation(conversationId, afterDeleteUser)
                 }
+                cleanupDanglingNodeFavorites(conversationId)
                 return
             }
         }

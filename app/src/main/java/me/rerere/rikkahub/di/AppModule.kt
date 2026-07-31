@@ -103,6 +103,7 @@ val appModule = module {
             workspaceRepository = get(),
             folderRepository = get(),
             battleService = get(),
+            favoriteRepository = get(),
         )
     }
 

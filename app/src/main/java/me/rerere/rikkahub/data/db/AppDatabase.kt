@@ -34,7 +34,7 @@ import me.rerere.rikkahub.utils.JsonInstant
         WorkspaceEntity::class,
         FolderEntity::class,
     ],
-    version = 25,
+    version = 26,
     autoMigrations = []
     // 所有迁移均由 DataSourceModule.kt 中 addMigrations() 注册的手动 Migration 处理
     // Room AutoMigration 对每个 to-schema 与当前 Entity 做 diff，
@@ -60,7 +60,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun folderDao(): FolderDAO
 
     companion object {
-        const val VERSION = 25
+        const val VERSION = 26
 
         // v21→v22: 仅新增 workspace_cwd 列
         val Migration_21_22 = object : androidx.room.migration.Migration(21, 22) {

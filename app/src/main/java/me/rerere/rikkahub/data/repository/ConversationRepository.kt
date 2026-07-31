@@ -510,13 +510,20 @@ class ConversationRepository(
                         favoriteMessageIds[nodeId]
                             ?: messages.getOrNull(entity.selectIndex)?.id
                     } else null
+                    // [FORK] 计算 pinnedMessageId：
+                    // - 新格式（pinned_message_id 有值）：使用存储的具体分支 id
+                    // - 旧格式（is_pinned=1 但无分支 id）：回退到 selectIndex 对应的 message id（向后兼容）
+                    // - 未固定：null
+                    val pinMsgId: Uuid? = entity.pinnedMessageId
+                        ?.let { raw -> runCatching { Uuid.parse(raw) }.getOrNull() }
+                        ?: if (entity.isPinned) messages.getOrNull(entity.selectIndex)?.id else null
                     nodes.add(
                         MessageNode(
                             id = nodeId,
                             messages = messages,
                             selectIndex = entity.selectIndex,
                             favoriteMessageId = favMsgId,
-                            isPinned = entity.isPinned
+                            pinnedMessageId = pinMsgId
                         )
                     )
                 }
@@ -534,7 +541,8 @@ class ConversationRepository(
                 nodeIndex = index,
                 messages = JsonInstant.encodeToString(node.messages),
                 selectIndex = node.selectIndex,
-                isPinned = node.isPinned
+                isPinned = node.isPinned,
+                pinnedMessageId = node.pinnedMessageId?.toString()
             )
         }
         messageNodeDAO.insertAll(entities)

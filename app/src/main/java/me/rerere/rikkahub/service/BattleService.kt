@@ -212,7 +212,8 @@ class BattleService(
                             Log.d(BATTLE_TAG, "runBattle [${model.displayName}]: independentContext, msgs=${it.size}")
                         }
                     } else {
-                        conversation.currentMessages.also {
+                        // [FORK] 固定节点强制使用锚定分支，不随 selectIndex 变化
+                        conversation.contextMessages.also {
                             Log.d(BATTLE_TAG, "runBattle [${model.displayName}]: sharedContext, msgs=${it.size}")
                         }
                     }
@@ -336,7 +337,8 @@ class BattleService(
                 Log.d(BATTLE_TAG, "rerunSlot [${model.displayName}]: independentContext, msgs=${it.size}")
             }
         } else {
-            conversation.currentMessages.also {
+            // [FORK] 固定节点强制使用锚定分支，不随 selectIndex 变化
+            conversation.contextMessages.also {
                 Log.d(BATTLE_TAG, "rerunSlot [${model.displayName}]: sharedContext, msgs=${it.size}")
             }
         }
@@ -345,9 +347,16 @@ class BattleService(
         val protectedMsgIds = conversation.collectProtectedMessageIds()
 
         // 清空当前 slot 内容，给用户即时反馈
+        // [FORK] 同时清空 annotations(引用) 和 usage(token 统计)，
+        // 否则重试期间会残留上一次回答的"xx 条引用"和 token 数量
         updateConversationState(conversationId) { conv ->
             updateMessageInBattleNode(conv, battleNodeId, messageId) { msg ->
-                msg.copy(parts = emptyList(), finishedAt = null)
+                msg.copy(
+                    parts = emptyList(),
+                    annotations = emptyList(),
+                    usage = null,
+                    finishedAt = null,
+                )
             }
         }
 
@@ -534,7 +543,6 @@ class BattleService(
                 createSkillTools(
                     enabledSkills = assistant.enabledSkills,
                     allSkills = skillManager.listSkills(),
-                    skillManager = skillManager,
                 )
             )
         }

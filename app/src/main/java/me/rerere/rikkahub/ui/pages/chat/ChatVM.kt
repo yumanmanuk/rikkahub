@@ -454,29 +454,42 @@ class ChatVM(
         }
     }
 
-    // [FORK] 固定到上下文：切换节点的 isPinned 状态并持久化
-    // 提问与回答是配套的，固定/取消固定时同步更新配对节点（USER↔ASSISTANT 相邻节点）
+    // [FORK] 固定到上下文：固定时锚定到当前显示的具体分支（pinnedMessageId）并持久化，
+    // 之后切换 selectIndex 不影响上下文中使用的分支。
+    // 提问与回答是配套的，固定/取消固定时同步更新配对节点（USER↔ASSISTANT 相邻节点）。
+    // 在已固定节点的其他分支上点固定 = 把锚点移到该分支；在已锚定的分支上点固定 = 取消整组固定。
     fun toggleMessagePin(node: MessageNode) {
         viewModelScope.launch {
-            val newPinnedState = !node.isPinned
+            // 当前显示的分支已被锚定 → 取消固定；否则（未固定或锚在其他分支）→ 锚定到当前分支
+            val unpin = node.pinnedMessageId != null && node.pinnedMessageId == node.messages.getOrNull(node.selectIndex)?.id
             chatService.updateConversationState(_conversationId) { currentConversation ->
                 val nodes = currentConversation.messageNodes
                 val nodeIndex = nodes.indexOfFirst { it.id == node.id }
+                // 安全防护：定位不到目标节点时不做任何修改，避免误操作历史消息
+                if (nodeIndex < 0) return@updateConversationState currentConversation
                 // 找到配对节点的索引：固定回答时联动前一条提问，固定提问时联动后一条回答
                 val pairedIndex = when {
                     nodeIndex > 0 &&
                         nodes[nodeIndex].role == MessageRole.ASSISTANT &&
                         nodes[nodeIndex - 1].role == MessageRole.USER -> nodeIndex - 1
-                    nodeIndex >= 0 &&
-                        nodeIndex + 1 < nodes.size &&
+                    nodeIndex + 1 < nodes.size &&
                         nodes[nodeIndex].role == MessageRole.USER &&
                         nodes[nodeIndex + 1].role == MessageRole.ASSISTANT -> nodeIndex + 1
                     else -> -1
                 }
                 currentConversation.copy(
                     messageNodes = nodes.mapIndexed { index, existingNode ->
-                        if (existingNode.id == node.id || index == pairedIndex) {
-                            existingNode.copy(isPinned = newPinnedState)
+                        if (index == nodeIndex || index == pairedIndex) {
+                            // 只改 pinnedMessageId，不碰 messages/selectIndex，不存在删改历史消息的可能
+                            existingNode.copy(
+                                pinnedMessageId = if (unpin) {
+                                    null
+                                } else {
+                                    // 锚定到各自当前显示的分支；空节点（理论不存在）保持不变
+                                    existingNode.messages.getOrNull(existingNode.selectIndex)?.id
+                                        ?: existingNode.pinnedMessageId
+                                }
+                            )
                         } else {
                             existingNode
                         }

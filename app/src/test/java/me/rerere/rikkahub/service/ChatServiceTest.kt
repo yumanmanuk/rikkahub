@@ -22,7 +22,8 @@ class ChatServiceTest {
         val params = backgroundTextGenerationParams(model)
 
         assertEquals(model, params.model)
-        assertEquals(ReasoningLevel.OFF, params.reasoningLevel)
+        // 自 4559397b 起后台文本生成默认推理级别为 AUTO
+        assertEquals(ReasoningLevel.AUTO, params.reasoningLevel)
         assertEquals(headers, params.customHeaders)
         assertEquals(bodies, params.customBody)
     }
