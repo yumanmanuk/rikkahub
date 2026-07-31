@@ -37,7 +37,7 @@ fun ConversationParams.resolveWith(assistant: Assistant): ResolvedConversationPa
     return ResolvedConversationParams(
         temperature = temperature ?: assistant.temperature,
         topP = topP ?: assistant.topP,
-        contextMessageSize = contextMessageSize ?: assistant.contextMessageSize,
+        contextMessageSize = contextMessageSize ?: assistant.contextMessageLimit,
         systemPrompt = effectiveSystemPrompt,
     )
 }
