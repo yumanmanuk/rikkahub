@@ -5,6 +5,7 @@ import me.rerere.ai.core.MessageRole
 import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -28,6 +29,7 @@ class TimeReminderTransformerTest {
         // 首条用户消息前固定注入一条当前时间提醒
         assertEquals(2, result.size)
         assertTrue(getMessageText(result[0]).contains("<time_reminder>"))
+        assertFalse(getMessageText(result[0]).contains("since last message"))
         assertEquals("Hello", getMessageText(result[1]))
     }
 
@@ -40,6 +42,7 @@ class TimeReminderTransformerTest {
         val result = applyTimeReminder(messages)
         // 首条注入 + 2 条原始消息
         assertEquals(3, result.size)
+        assertEquals("World", getMessageText(result[2]))
     }
 
     @Test
@@ -51,6 +54,7 @@ class TimeReminderTransformerTest {
         val result = applyTimeReminder(messages)
         // 首条注入 + 2 条原始消息(间隔未超阈值, 不再注入)
         assertEquals(3, result.size)
+        assertEquals("World", getMessageText(result[2]))
     }
 
     @Test

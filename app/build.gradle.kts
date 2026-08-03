@@ -22,8 +22,8 @@ android {
         applicationId = "me.enzo.rikkahub"
         minSdk = 26
         targetSdk = 37
-        versionCode = 171
-        versionName = "2.4.3"
+        versionCode = 172
+        versionName = "2.4.5"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -72,7 +72,9 @@ android {
     buildTypes {
         release {
             signingConfig = signingConfigs.getByName("release")
-            isMinifyEnabled = true
+            optimization {
+                enable = true
+            }
             isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
