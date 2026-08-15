@@ -22,7 +22,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.SheetValue
+import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -92,7 +93,7 @@ fun SearchPickerButton(
                     )
                 } else if (enableSearch && currentService != null) {
                     AutoAIIcon(
-                        name = SearchServiceOptions.TYPES[currentService::class] ?: "Search",
+                        name = currentService.displayName,
                         color = Color.Transparent
                     )
                 } else {
@@ -108,7 +109,7 @@ fun SearchPickerButton(
     if (showSearchPicker) {
         ModalBottomSheet(
             onDismissRequest = { showSearchPicker = false },
-            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+            sheetState = rememberBottomSheetState(initialValue = SheetValue.Hidden, enabledValues = setOf(SheetValue.Hidden, SheetValue.Expanded))
         ) {
             Column(
                 modifier = Modifier
@@ -157,13 +158,19 @@ private fun SearchPicker(
 ) {
     val navBackStack = LocalNavController.current
 
-    // 模型内置搜索
-    if (model != null && (ModelRegistry.GEMINI_SERIES.match(model.modelId) || model.modelId.contains("gpt-"))) {
+    // 模型是否支持内置搜索
+    val supportsBuiltInSearch = model != null &&
+        ModelRegistry.MODEL_BUILT_IN_TOOLS.getData(model.modelId).contains(BuiltInTools.Search)
+    // 模型是否已开启内置搜索（可能是不支持的模型残留的孤儿状态）
+    val hasBuiltInSearchEnabled = model?.tools?.contains(BuiltInTools.Search) == true
+
+    // 模型支持内置搜索，或已开启内置搜索（后者保证残留状态也能被关闭）时显示开关
+    if (model != null && (supportsBuiltInSearch || hasBuiltInSearchEnabled)) {
         BuiltInSearchSetting(model = model)
     }
 
     // 如果没有开启内置搜索，显示搜索服务选择
-    if (model?.tools?.contains(BuiltInTools.Search) != true) {
+    if (!hasBuiltInSearchEnabled) {
         AppSearchSettings(
             enableSearch = enableSearch,
             onDismiss = onDismiss,
@@ -267,14 +274,14 @@ private fun AppSearchSettings(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     AutoAIIcon(
-                        name = SearchServiceOptions.TYPES[service::class] ?: "Search",
+                        name = service.displayName,
                         modifier = Modifier.size(24.dp)
                     )
                     Column(
                         modifier = Modifier.weight(1f),
                     ) {
                         Text(
-                            text = SearchServiceOptions.TYPES[service::class] ?: "Unknown",
+                            text = service.displayName,
                             style = MaterialTheme.typography.titleMedium,
                         )
                         SearchAbilityTagLine(

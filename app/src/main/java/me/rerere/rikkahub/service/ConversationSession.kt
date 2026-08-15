@@ -24,6 +24,18 @@ class ConversationSession(
     // 会话状态
     val state = MutableStateFlow(initial)
 
+    // 初始化完成标记（真实数据已从数据库加载后，UI 才可安全渲染，避免闪空态）
+    private val _initialized = MutableStateFlow(false)
+    val initialized: StateFlow<Boolean> = _initialized.asStateFlow()
+
+    fun markInitialized() {
+        _initialized.value = true
+    }
+
+    // 初始化所处阶段（诊断冷启动加载卡顿用）：created -> db_query -> update_assistant / read_settings -> done
+    @Volatile
+    var initStage: String = "created"
+
     // 原子引用计数
     private val refCount = AtomicInteger(0)
 
@@ -73,9 +85,13 @@ class ConversationSession(
         _generationJob.value?.cancel()
         _generationJob.value = job
         job?.invokeOnCompletion {
-            _generationJob.value = null
-            if (refCount.get() <= 0) {
-                scheduleIdleCheck()
+            // 只有当前 job 仍是同一实例时才清空
+            // 防止旧 job 的 cancel 回调覆盖已经设置好的新 job
+            if (_generationJob.value === job) {
+                _generationJob.value = null
+                if (refCount.get() <= 0) {
+                    scheduleIdleCheck()
+                }
             }
         }
     }

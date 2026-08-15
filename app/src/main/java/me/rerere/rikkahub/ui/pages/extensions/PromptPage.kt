@@ -60,7 +60,8 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.SheetValue
+import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -396,7 +397,7 @@ private fun ModeInjectionEditSheet(
     onConfirm: () -> Unit,
     onEdit: (PromptInjection.ModeInjection) -> Unit
 ) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val sheetState = rememberBottomSheetState(initialValue = SheetValue.Hidden, enabledValues = setOf(SheetValue.Hidden, SheetValue.Expanded))
     val scope = rememberCoroutineScope()
 
     ModalBottomSheet(
@@ -481,14 +482,18 @@ private fun ModeInjectionEditSheet(
                     )
                 }
 
-                Text(
-                    stringResource(R.string.prompt_page_injection_role),
-                    style = MaterialTheme.typography.titleSmall
-                )
-                InjectionRoleSelector(
-                    role = injection.role,
-                    onSelect = { onEdit(injection.copy(role = it)) }
-                )
+                AnimatedVisibility(visible = injection.position.usesStandaloneMessage()) {
+                    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                        Text(
+                            stringResource(R.string.prompt_page_injection_role),
+                            style = MaterialTheme.typography.titleSmall
+                        )
+                        InjectionRoleSelector(
+                            role = injection.role,
+                            onSelect = { onEdit(injection.copy(role = it)) }
+                        )
+                    }
+                }
 
                 OutlinedTextField(
                     value = injection.content,
@@ -528,6 +533,15 @@ private fun InjectionPositionSelector(
         optionToString = { getPositionLabel(it) },
         modifier = Modifier.fillMaxWidth()
     )
+}
+
+private fun InjectionPosition.usesStandaloneMessage(): Boolean = when (this) {
+    InjectionPosition.BEFORE_SYSTEM_PROMPT,
+    InjectionPosition.AFTER_SYSTEM_PROMPT -> false
+
+    InjectionPosition.TOP_OF_CHAT,
+    InjectionPosition.BOTTOM_OF_CHAT,
+    InjectionPosition.AT_DEPTH -> true
 }
 
 @Composable
@@ -806,7 +820,7 @@ private fun LorebookEditSheet(
     onConfirm: () -> Unit,
     onEdit: (Lorebook) -> Unit
 ) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val sheetState = rememberBottomSheetState(initialValue = SheetValue.Hidden, enabledValues = setOf(SheetValue.Hidden, SheetValue.Expanded))
     val scope = rememberCoroutineScope()
     val entryEditState = useEditState<PromptInjection.RegexInjection> { edited ->
         val index = book.entries.indexOfFirst { it.id == edited.id }
@@ -1138,14 +1152,18 @@ private fun RegexInjectionEditDialog(
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
                 )
 
-                Text(
-                    stringResource(R.string.prompt_page_injection_role),
-                    style = MaterialTheme.typography.titleSmall
-                )
-                InjectionRoleSelector(
-                    role = entry.role,
-                    onSelect = { onEdit(entry.copy(role = it)) }
-                )
+                AnimatedVisibility(visible = entry.position.usesStandaloneMessage()) {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text(
+                            stringResource(R.string.prompt_page_injection_role),
+                            style = MaterialTheme.typography.titleSmall
+                        )
+                        InjectionRoleSelector(
+                            role = entry.role,
+                            onSelect = { onEdit(entry.copy(role = it)) }
+                        )
+                    }
+                }
 
                 OutlinedTextField(
                     value = entry.content,

@@ -8,10 +8,19 @@ import kotlin.uuid.Uuid
 
 @Serializable
 data class BalanceOption(
-    val enabled: Boolean = false, // 是否开启余额获取功能
+    val enabled: Boolean = false, // 是否开启余额获取功�?
     val apiPath: String = "/credits", // 余额获取API路径
     val resultPath: String = "data.total_usage", // 余额获取JSON路径
 )
+
+@Serializable
+enum class ClaudePromptCacheTtl(val apiValue: String?) {
+    @SerialName("5m")
+    FIVE_MINUTES(null),
+
+    @SerialName("1h")
+    ONE_HOUR("1h")
+}
 
 @Serializable
 sealed class ProviderSetting {
@@ -55,6 +64,7 @@ sealed class ProviderSetting {
         var baseUrl: String = "https://api.openai.com/v1",
         var chatCompletionsPath: String = "/chat/completions",
         var useResponseApi: Boolean = false,
+        var includeHistoryReasoning: Boolean = false,
     ) : ProviderSetting() {
         override fun addModel(model: Model): ProviderSetting {
             return copy(models = models + model)
@@ -180,6 +190,7 @@ sealed class ProviderSetting {
         var apiKey: String = "",
         var baseUrl: String = "https://api.anthropic.com/v1",
         var promptCaching: Boolean = false,
+        var promptCacheTtl: ClaudePromptCacheTtl = ClaudePromptCacheTtl.FIVE_MINUTES,
     ) : ProviderSetting() {
         override fun addModel(model: Model): ProviderSetting {
             return copy(models = models + model)

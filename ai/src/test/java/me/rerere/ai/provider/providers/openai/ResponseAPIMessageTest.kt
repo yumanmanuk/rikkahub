@@ -5,17 +5,23 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import me.rerere.ai.core.InputSchema
 import me.rerere.ai.core.MessageRole
 import me.rerere.ai.core.ReasoningLevel
+import me.rerere.ai.core.Tool
+import me.rerere.ai.provider.BuiltInTools
 import me.rerere.ai.provider.Model
 import me.rerere.ai.provider.ModelAbility
 import me.rerere.ai.provider.ProviderSetting
 import me.rerere.ai.provider.TextGenerationParams
 import me.rerere.ai.ui.UIMessage
+import me.rerere.ai.ui.OpenAIReasoningMetadata
 import me.rerere.ai.ui.UIMessagePart
+import me.rerere.ai.ui.toMetadata
 import okhttp3.OkHttpClient
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -39,8 +45,11 @@ class ResponseAPIMessageTest {
     }
 
     // Helper to invoke buildMessages method
-    private fun invokeBuildMessages(messages: List<UIMessage>): JsonArray {
-        return api.buildMessages(messages)
+    private fun invokeBuildMessages(
+        messages: List<UIMessage>,
+        includeHistoryReasoning: Boolean = true,
+    ): JsonArray {
+        return api.buildMessages(messages, includeHistoryReasoning)
     }
 
     private fun invokeBuildRequestBody(
@@ -354,7 +363,235 @@ class ResponseAPIMessageTest {
         assertEquals("low", reasoning!!["effort"]?.jsonPrimitive?.content)
     }
 
+    // ---------------- includeHistoryReasoning behavior (P0 fix) ----------------
+
+    @Test
+    fun `reasoning item with encrypted content keeps id and encrypted_content and emits empty summary when history reasoning disabled`() {
+        val assistant = UIMessage(
+            role = MessageRole.ASSISTANT,
+            parts = listOf(
+                createReasoningPart(
+                    reasoning = "this is a long chain of thought that should not be uploaded",
+                    reasoningId = "rs_abc123",
+                    encryptedContent = "encrypted_blob_payload",
+                ),
+                UIMessagePart.Text("final answer"),
+            )
+        )
+        val result = invokeBuildMessages(
+            messages = listOf(UIMessage.user("hi"), assistant),
+            includeHistoryReasoning = false,
+        )
+        // user message + reasoning item + assistant text
+        assertEquals(3, result.size)
+        val reasoningItem = result[1].jsonObject
+        assertEquals("reasoning", reasoningItem["type"]?.jsonPrimitive?.content)
+        assertEquals("rs_abc123", reasoningItem["id"]?.jsonPrimitive?.content)
+        assertEquals("encrypted_blob_payload", reasoningItem["encrypted_content"]?.jsonPrimitive?.content)
+        // summary 是 Responses API 必填字段: 关闭历史思考时发送空数组, 不回传思考内容
+        val summary = reasoningItem["summary"]?.jsonArray
+        assertTrue("summary must be present (required by Responses API)", summary != null)
+        assertTrue("summary must be empty when includeHistoryReasoning=false", summary!!.isEmpty())
+    }
+
+    @Test
+    fun `reasoning item with encrypted content still emits summary when history reasoning enabled`() {
+        val assistant = UIMessage(
+            role = MessageRole.ASSISTANT,
+            parts = listOf(
+                createReasoningPart(
+                    reasoning = "preserved thought chain",
+                    reasoningId = "rs_keep",
+                    encryptedContent = "blob",
+                ),
+                UIMessagePart.Text("ok"),
+            )
+        )
+        val result = invokeBuildMessages(
+            messages = listOf(UIMessage.user("hi"), assistant),
+            includeHistoryReasoning = true,
+        )
+        val reasoningItem = result[1].jsonObject
+        assertEquals("rs_keep", reasoningItem["id"]?.jsonPrimitive?.content)
+        assertEquals("blob", reasoningItem["encrypted_content"]?.jsonPrimitive?.content)
+        val summary = reasoningItem["summary"]?.jsonArray
+        assertTrue("summary should be present when includeHistoryReasoning=true", summary != null)
+        val first = summary!![0].jsonObject
+        assertEquals("summary_text", first["type"]?.jsonPrimitive?.content)
+        assertEquals("preserved thought chain", first["text"]?.jsonPrimitive?.content)
+    }
+
+    @Test
+    fun `reasoning item without encrypted content but with id keeps id and emits empty summary when history reasoning disabled`() {
+        val assistant = UIMessage(
+            role = MessageRole.ASSISTANT,
+            parts = listOf(
+                createReasoningPart(
+                    reasoning = "should not appear",
+                    reasoningId = "rs_only_id",
+                    encryptedContent = null,
+                ),
+                UIMessagePart.Text("answer"),
+            )
+        )
+        val result = invokeBuildMessages(
+            messages = listOf(UIMessage.user("hi"), assistant),
+            includeHistoryReasoning = false,
+        )
+        val reasoningItem = result[1].jsonObject
+        assertEquals("rs_only_id", reasoningItem["id"]?.jsonPrimitive?.content)
+        assertFalse(reasoningItem.containsKey("encrypted_content"))
+        val summary = reasoningItem["summary"]?.jsonArray
+        assertTrue("summary must be present (required by Responses API)", summary != null)
+        assertTrue("summary must be empty when includeHistoryReasoning=false", summary!!.isEmpty())
+    }
+
+    @Test
+    fun `reasoning item with no id and no encrypted content is dropped entirely when history reasoning disabled`() {
+        val assistant = UIMessage(
+            role = MessageRole.ASSISTANT,
+            parts = listOf(
+                createReasoningPart(
+                    reasoning = "orphan thought",
+                    reasoningId = null,
+                    encryptedContent = null,
+                ),
+                UIMessagePart.Text("answer"),
+            )
+        )
+        val result = invokeBuildMessages(
+            messages = listOf(UIMessage.user("hi"), assistant),
+            includeHistoryReasoning = false,
+        )
+        // user message + assistant text (reasoning item skipped)
+        assertEquals(2, result.size)
+        assertNull(result[0].jsonObject["type"]?.jsonPrimitive?.content)
+        // second item should be the assistant text content, not a reasoning item
+        assertEquals("assistant", result[1].jsonObject["role"]?.jsonPrimitive?.content)
+    }
+
+    @Test
+    fun `buildRequestBody threads includeHistoryReasoning from provider setting into history reasoning item`() {
+        val assistant = UIMessage(
+            role = MessageRole.ASSISTANT,
+            parts = listOf(
+                createReasoningPart(
+                    reasoning = "should-not-be-uploaded",
+                    reasoningId = "rs_thread",
+                    encryptedContent = "blob_thread",
+                ),
+                UIMessagePart.Text("done"),
+            )
+        )
+        val provider = ProviderSetting.OpenAI(
+            baseUrl = "https://api.openai.com/v1",
+            useResponseApi = true,
+            includeHistoryReasoning = false,
+        )
+        val requestBody = api.buildRequestBody(
+            providerSetting = provider,
+            messages = listOf(UIMessage.user("hi"), assistant),
+            params = createReasoningParams(),
+            stream = false,
+        )
+        val input = requestBody["input"]?.jsonArray ?: error("input missing")
+        // find the reasoning item
+        val reasoningItem = input.firstNotNullOfOrNull { el ->
+            val obj = el.jsonObject
+            if (obj["type"]?.jsonPrimitive?.content == "reasoning") obj else null
+        }
+        assertTrue("reasoning item should be present", reasoningItem != null)
+        assertEquals("rs_thread", reasoningItem!!["id"]?.jsonPrimitive?.content)
+        assertEquals("blob_thread", reasoningItem["encrypted_content"]?.jsonPrimitive?.content)
+        val summary = reasoningItem["summary"]?.jsonArray
+        assertTrue("summary must be present (required by Responses API)", summary != null)
+        assertTrue(
+            "summary should be empty when provider includeHistoryReasoning=false",
+            summary!!.isEmpty(),
+        )
+    }
+
+    @Test
+    fun `function tools and built-in tools should coexist in the same tools array`() {
+        val requestBody = invokeBuildRequestBody(
+            providerSetting = ProviderSetting.OpenAI(baseUrl = "https://api.openai.com/v1"),
+            params = createToolParams(
+                tools = listOf(createFunctionTool("get_weather")),
+                builtInTools = setOf(BuiltInTools.Search)
+            )
+        )
+
+        val tools = requestBody["tools"]?.jsonArray
+        assertTrue("tools should exist", tools != null)
+        val types = tools!!.map { it.jsonObject["type"]?.jsonPrimitive?.content }
+        assertTrue("function tool should not be dropped", types.contains("function"))
+        assertTrue("built-in web_search should be present", types.contains("web_search"))
+        assertEquals(2, tools.size)
+    }
+
+    @Test
+    fun `function tools should be sent when no built-in tools configured`() {
+        val requestBody = invokeBuildRequestBody(
+            providerSetting = ProviderSetting.OpenAI(baseUrl = "https://api.openai.com/v1"),
+            params = createToolParams(tools = listOf(createFunctionTool("get_weather")))
+        )
+
+        val tools = requestBody["tools"]?.jsonArray
+        assertEquals(1, tools?.size)
+        assertEquals("function", tools!![0].jsonObject["type"]?.jsonPrimitive?.content)
+        assertEquals("get_weather", tools[0].jsonObject["name"]?.jsonPrimitive?.content)
+    }
+
+    @Test
+    fun `tools key should be absent when neither function nor built-in tools exist`() {
+        val requestBody = invokeBuildRequestBody(
+            providerSetting = ProviderSetting.OpenAI(baseUrl = "https://api.openai.com/v1"),
+            params = createToolParams()
+        )
+
+        assertFalse("tools key should not be written", requestBody.containsKey("tools"))
+    }
+
     // ==================== Helper Functions ====================
+
+    private fun createReasoningPart(
+        reasoning: String = "let me think step by step",
+        reasoningId: String? = null,
+        encryptedContent: String? = null,
+    ): UIMessagePart.Reasoning {
+        val meta = OpenAIReasoningMetadata(
+            reasoningId = reasoningId,
+            encryptedContent = encryptedContent,
+        )
+        return UIMessagePart.Reasoning(
+            reasoning = reasoning,
+            metadata = meta.toMetadata(),
+        )
+    }
+
+    private fun createToolParams(
+        tools: List<Tool> = emptyList(),
+        builtInTools: Set<BuiltInTools> = emptySet()
+    ): TextGenerationParams {
+        return TextGenerationParams(
+            model = Model(
+                modelId = "test-model",
+                displayName = "test-model",
+                abilities = listOf(ModelAbility.TOOL),
+                tools = builtInTools
+            ),
+            tools = tools
+        )
+    }
+
+    private fun createFunctionTool(name: String): Tool {
+        return Tool(
+            name = name,
+            description = "test tool",
+            parameters = { InputSchema.Obj(properties = JsonObject(emptyMap())) },
+            execute = { emptyList() }
+        )
+    }
 
     private fun createExecutedTool(
         callId: String,

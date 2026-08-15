@@ -8,7 +8,7 @@ plugins {
 
 android {
     namespace = "me.rerere.search"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         minSdk = 23
@@ -48,10 +48,13 @@ android {
 
 dependencies {
     implementation(project(":ai"))
+    implementation(project(":common"))
     implementation(libs.okhttp)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.kotlinx.coroutines.core)
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.material3)
     api(libs.jsoup)
+    implementation(libs.quickjs)
+    testImplementation(libs.junit)
 }

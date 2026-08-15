@@ -1,9 +1,8 @@
 package me.rerere.rikkahub.ui.pages.setting
 
 import android.os.Build
-import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -37,6 +36,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.material3.Icon
+import me.rerere.hugeicons.HugeIcons
+import me.rerere.hugeicons.stroke.ArrowRight01
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.datastore.ChatFontFamily
 import me.rerere.rikkahub.data.datastore.DisplaySetting
@@ -48,7 +50,8 @@ import me.rerere.rikkahub.ui.components.ui.permission.PermissionNotification
 import me.rerere.rikkahub.ui.components.ui.permission.rememberPermissionState
 import me.rerere.rikkahub.ui.hooks.rememberAmoledDarkMode
 import me.rerere.rikkahub.ui.hooks.rememberSharedPreferenceBoolean
-import me.rerere.rikkahub.ui.pages.setting.components.PresetThemeButtonGroup
+import me.rerere.rikkahub.Screen
+import me.rerere.rikkahub.ui.context.LocalNavController
 import me.rerere.rikkahub.ui.theme.CustomColors
 import me.rerere.rikkahub.utils.plus
 import org.koin.androidx.compose.koinViewModel
@@ -126,20 +129,17 @@ fun SettingDisplayPage(vm: SettingVM = koinViewModel()) {
                         },
                         colors = CustomColors.listItemColors,
                     )
-                    if (!settings.dynamicColor) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(4.dp))
-                                .background(MaterialTheme.colorScheme.surfaceBright)
-                        ) {
-                            PresetThemeButtonGroup(
-                                themeId = settings.themeId,
-                                modifier = Modifier.fillMaxWidth(),
-                                onChangeTheme = { vm.updateSettings(settings.copy(themeId = it)) }
-                            )
-                        }
-                    }
+                    val navController = LocalNavController.current
+                    ListItem(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(4.dp))
+                            .clickable { navController.navigate(Screen.SettingTheme) },
+                        headlineContent = { Text(stringResource(R.string.setting_page_theme_setting)) },
+                        supportingContent = { Text(stringResource(R.string.setting_page_theme_setting_desc)) },
+                        trailingContent = { Icon(HugeIcons.ArrowRight01, contentDescription = null) },
+                        colors = CustomColors.listItemColors,
+                    )
                     ListItem(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -165,6 +165,7 @@ fun SettingDisplayPage(vm: SettingVM = koinViewModel()) {
             }
 
             item {
+                val navController = LocalNavController.current
                 var createNewConversationOnStart by rememberSharedPreferenceBoolean(
                     "create_new_conversation_on_start",
                     true
@@ -173,6 +174,13 @@ fun SettingDisplayPage(vm: SettingVM = koinViewModel()) {
                     modifier = Modifier.padding(horizontal = 8.dp),
                     title = { Text(stringResource(R.string.setting_page_general_settings)) },
                 ) {
+                    // [FORK] 标签管理入口
+                    item(
+                        headlineContent = { Text("标签管理") },
+                        supportingContent = { Text("管理对话标签：新建、重命名、删除、排序") },
+                        trailingContent = { Icon(HugeIcons.ArrowRight01, contentDescription = null) },
+                        modifier = Modifier.clickable { navController.navigate(Screen.TagManage) },
+                    )
                     item(
                         headlineContent = { Text(stringResource(R.string.setting_display_page_create_new_conversation_on_start_title)) },
                         supportingContent = { Text(stringResource(R.string.setting_display_page_create_new_conversation_on_start_desc)) },
@@ -283,18 +291,7 @@ fun SettingDisplayPage(vm: SettingVM = koinViewModel()) {
                                 )
                             },
                         )
-                        item(
-                            headlineContent = { Text(stringResource(R.string.setting_display_page_show_date_below_name_title)) },
-                            supportingContent = { Text(stringResource(R.string.setting_display_page_show_date_below_name_desc)) },
-                            trailingContent = {
-                                Switch(
-                                    checked = displaySetting.showDateBelowName,
-                                    onCheckedChange = {
-                                        updateDisplaySetting(displaySetting.copy(showDateBelowName = it))
-                                    }
-                                )
-                            },
-                        )
+
                         item(
                             headlineContent = { Text(stringResource(R.string.setting_display_page_show_token_usage_title)) },
                             supportingContent = { Text(stringResource(R.string.setting_display_page_show_token_usage_desc)) },
@@ -343,14 +340,14 @@ fun SettingDisplayPage(vm: SettingVM = koinViewModel()) {
                                 )
                             },
                         )
-                        val chatFontFamilyOptions = listOf(
-                            ChatFontFamily.DEFAULT to stringResource(R.string.setting_display_page_chat_font_family_default),
-                            ChatFontFamily.SERIF to stringResource(R.string.setting_display_page_chat_font_family_serif),
-                            ChatFontFamily.MONOSPACE to stringResource(R.string.setting_display_page_chat_font_family_monospace),
-                        )
                         item(
                             headlineContent = { Text(stringResource(R.string.setting_display_page_chat_font_family_title)) },
                             supportingContent = {
+                                val chatFontFamilyOptions = listOf(
+                                    ChatFontFamily.DEFAULT to stringResource(R.string.setting_display_page_chat_font_family_default),
+                                    ChatFontFamily.SERIF to stringResource(R.string.setting_display_page_chat_font_family_serif),
+                                    ChatFontFamily.MONOSPACE to stringResource(R.string.setting_display_page_chat_font_family_monospace),
+                                )
                                 SingleChoiceSegmentedButtonRow(
                                     modifier = Modifier
                                         .padding(top = 4.dp)
@@ -371,6 +368,7 @@ fun SettingDisplayPage(vm: SettingVM = koinViewModel()) {
                                                     ChatFontFamily.DEFAULT -> FontFamily.Default
                                                     ChatFontFamily.SERIF -> FontFamily.Serif
                                                     ChatFontFamily.MONOSPACE -> FontFamily.Monospace
+                                                    ChatFontFamily.CUSTOM -> FontFamily.Default
                                                 }
                                             )
                                         }
@@ -407,6 +405,7 @@ fun SettingDisplayPage(vm: SettingVM = koinViewModel()) {
                                                 ChatFontFamily.DEFAULT -> FontFamily.Default
                                                 ChatFontFamily.SERIF -> FontFamily.Serif
                                                 ChatFontFamily.MONOSPACE -> FontFamily.Monospace
+                                                ChatFontFamily.CUSTOM -> FontFamily.Default
                                             }
                                         )
                                     )

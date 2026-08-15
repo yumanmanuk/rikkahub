@@ -11,6 +11,9 @@ import me.rerere.hugeicons.stroke.Search01
 import me.rerere.hugeicons.stroke.Cancel01
 import me.rerere.hugeicons.stroke.Filter
 import me.rerere.hugeicons.stroke.Favourite
+import me.rerere.hugeicons.stroke.InLove
+import me.rerere.hugeicons.stroke.Lock
+import me.rerere.hugeicons.stroke.Pin02
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.AnimatedVisibilityScope
@@ -42,6 +45,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListItemInfo
 import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -96,9 +100,9 @@ import kotlinx.coroutines.launch
 import me.rerere.ai.ui.UIMessage
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.datastore.Settings
-import me.rerere.rikkahub.data.datastore.findModelById
 import me.rerere.rikkahub.data.datastore.getAssistantById
 import me.rerere.rikkahub.data.model.Conversation
+import me.rerere.rikkahub.data.model.pinnedGroupCount
 import me.rerere.rikkahub.data.model.MessageNode
 import me.rerere.rikkahub.service.ChatError
 import me.rerere.rikkahub.ui.components.message.ChatMessage
@@ -106,6 +110,8 @@ import me.rerere.rikkahub.ui.components.ui.ErrorCardsDisplay
 import me.rerere.rikkahub.ui.components.ui.ListSelectableItem
 import me.rerere.rikkahub.ui.components.ui.RabbitLoadingIndicator
 import me.rerere.rikkahub.ui.components.ui.Tooltip
+
+import me.rerere.rikkahub.ui.theme.ChatFontProvider
 import me.rerere.rikkahub.utils.plus
 import me.rerere.rikkahub.utils.wordCount
 import kotlin.uuid.Uuid
@@ -113,6 +119,15 @@ import kotlin.uuid.Uuid
 private const val TAG = "ChatList"
 private const val LoadingIndicatorKey = "LoadingIndicator"
 private const val ScrollBottomKey = "ScrollBottomKey"
+
+/**
+ * 从缩略页跳转到指定消息的请求。
+ * nonce 用于保证同一 index 重复点击时 LaunchedEffect 也能重新触发。
+ */
+data class JumpRequest(val index: Int, val nonce: Int)
+
+// [FORK] 预览页筛选模式：全部 → 收藏 → 固定 循环切换
+private enum class PreviewFilter { ALL, FAVORITE, PINNED }
 
 @Composable
 fun ChatList(
@@ -134,15 +149,27 @@ fun ChatList(
     onForkMessage: (UIMessage) -> Unit = {},
     onDelete: (UIMessage) -> Unit = {},
     onDeleteBeforeMessage: (UIMessage) -> Unit = {},
+    onDeleteAfterMessage: (UIMessage) -> Unit = {},
     onUpdateMessage: (MessageNode) -> Unit = {},
     onClickSuggestion: (String) -> Unit = {},
     onTranslate: ((UIMessage, java.util.Locale) -> Unit)? = null,
     onClearTranslation: (UIMessage) -> Unit = {},
     onJumpToMessage: (Int) -> Unit = {},
+    // 缩略页跳转请求：非 null 时 ChatListNormal 会原子地禁用自动贴底再滚动
+    jumpRequest: JumpRequest? = null,
     onToolApproval: ((toolCallId: String, approved: Boolean, reason: String) -> Unit)? = null,
     onToolAnswer: ((toolCallId: String, answer: String) -> Unit)? = null,
     onToggleFavorite: ((MessageNode) -> Unit)? = null,
+    onConversationSystemPromptChange: ((String?) -> Unit)? = null,
+    // [FORK] 固定到上下文：仅当有上下文限制时才显示此选项
+    onTogglePin: ((MessageNode) -> Unit)? = null,
 ) {
+    // 提升到 AnimatedContent 外部，保证预览模式滚动位置在切换时不丢失
+    val previewListState = rememberLazyListState()
+
+    // [FORK] 筛选模式同样提升：退出预览再进入时保持上次选择（按会话分开记忆）
+    var previewFilter by rememberSaveable(conversation.id) { mutableStateOf(PreviewFilter.ALL) }
+
     AnimatedContent(
         targetState = previewMode,
         label = "ChatListMode",
@@ -158,6 +185,9 @@ fun ChatList(
                 hazeState = hazeState,
                 onJumpToMessage = onJumpToMessage,
                 animatedVisibilityScope = this@AnimatedContent,
+                listState = previewListState,
+                previewFilter = previewFilter,
+                onPreviewFilterChange = { previewFilter = it },
             )
         } else {
             ChatListNormal(
@@ -178,14 +208,19 @@ fun ChatList(
                 onForkMessage = onForkMessage,
                 onDelete = onDelete,
                 onDeleteBeforeMessage = onDeleteBeforeMessage,
+                onDeleteAfterMessage = onDeleteAfterMessage,
                 onUpdateMessage = onUpdateMessage,
                 onClickSuggestion = onClickSuggestion,
                 onTranslate = onTranslate,
                 onClearTranslation = onClearTranslation,
                 animatedVisibilityScope = this@AnimatedContent,
+                jumpRequest = jumpRequest,
                 onToolApproval = onToolApproval,
                 onToolAnswer = onToolAnswer,
                 onToggleFavorite = onToggleFavorite,
+                onConversationSystemPromptChange = onConversationSystemPromptChange,
+                // [FORK] 固定到上下文
+                onTogglePin = onTogglePin,
             )
         }
     }
@@ -210,6 +245,7 @@ private fun ChatListNormal(
     onForkMessage: (UIMessage) -> Unit,
     onDelete: (UIMessage) -> Unit,
     onDeleteBeforeMessage: (UIMessage) -> Unit,
+    onDeleteAfterMessage: (UIMessage) -> Unit,
     onUpdateMessage: (MessageNode) -> Unit,
     onClickSuggestion: (String) -> Unit,
     onTranslate: ((UIMessage, java.util.Locale) -> Unit)?,
@@ -218,15 +254,29 @@ private fun ChatListNormal(
     onToolApproval: ((toolCallId: String, approved: Boolean, reason: String) -> Unit)? = null,
     onToolAnswer: ((toolCallId: String, answer: String) -> Unit)? = null,
     onToggleFavorite: ((MessageNode) -> Unit)? = null,
+    onConversationSystemPromptChange: ((String?) -> Unit)? = null,
+    // 缩略页跳转请求，非 null 时原子地禁用自动贴底再跳转
+    jumpRequest: JumpRequest? = null,
+    // [FORK] 固定到上下文
+    onTogglePin: ((MessageNode) -> Unit)? = null,
 ) {
     val scope = rememberCoroutineScope()
     val loadingState by rememberUpdatedState(loading)
-    var isRecentScroll by remember { mutableStateOf(false) }
+
     var isUserDragging by remember { mutableStateOf(false) }
-    var shouldAutoFollow by remember { mutableStateOf(true) }
+    // 如果入场时就带有跳转请求，直接以 false 初始化，封堕贴底 LaunchedEffect 在跳转请求处理之前抓先触发
+    var shouldAutoFollow by remember { mutableStateOf(jumpRequest == null) }
     val conversationUpdated by rememberUpdatedState(conversation)
     val density = LocalDensity.current
     val activity = LocalContext.current as? me.rerere.rikkahub.RouteActivity
+
+    // 处理缩略页跳转请求：禁用自动贴底，然后瞬间跳转到目标位置（不带动画，和之前行为一致）
+    LaunchedEffect(jumpRequest) {
+        jumpRequest?.let { req ->
+            shouldAutoFollow = false
+            state.scrollToItem(req.index)
+        }
+    }
 
     DisposableEffect(Unit) {
         val listener: (Boolean) -> Boolean = { isVolumeUp ->
@@ -268,6 +318,23 @@ private fun ChatListNormal(
             sizeInfo = sizeInfo,
             onDismiss = { showSizeWarningDialog = false }
         )
+    }
+
+    val assistant = remember(settings.assistants, conversation.assistantId) {
+        settings.getAssistantById(conversation.assistantId)
+    }
+    val modelById = remember(settings.providers) {
+        settings.providers
+            .flatMap { it.models }
+            .associateBy { it.id }
+    }
+    val lastMessageIndex = conversation.messageNodes.lastIndex
+    // 分别记录 USER 和 ASSISTANT 角色的最后一条 node 的 index，用于控制重试按钮显示
+    val lastUserMessageIndex = conversation.messageNodes.indexOfLast {
+        it.role == me.rerere.ai.core.MessageRole.USER
+    }
+    val lastAssistantMessageIndex = conversation.messageNodes.indexOfLast {
+        it.role == me.rerere.ai.core.MessageRole.ASSISTANT
     }
 
     Box(
@@ -324,33 +391,28 @@ private fun ChatListNormal(
             }
         }
 
-        @Suppress("DEPRECATION")
-        LazyColumn(
-            state = state,
-            contentPadding = PaddingValues(horizontal = 24.dp, vertical = 16.dp) + PaddingValues(
-                bottom = 8.dp + innerPadding.calculateBottomPadding()
-            ),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-            modifier = Modifier
-                .fillMaxSize()
-                .hazeSource(state = hazeState)
-                .padding(top = innerPadding.calculateTopPadding())
-                .then(
-                    Modifier.bringIntoViewResponder(noopBringIntoViewResponder)
-                )
-        ) {
-                itemsIndexed(
-                    items = conversation.messageNodes,
-                    key = { index, item -> item.id },
-                ) { index, node ->
-                    Column {
-                        ListSelectableItem(
-                            key = node.id,
-                            onSelectChange = {
-                                if (!selectedItems.contains(node.id)) {
-                                    selectedItems.add(node.id)
-                                } else {
+        ChatFontProvider(displaySetting = settings.displaySetting) {
+            LazyColumn(
+                state = state,
+                contentPadding = PaddingValues(horizontal = 24.dp, vertical = 16.dp) + PaddingValues(bottom = 8.dp + innerPadding.calculateBottomPadding()),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .hazeSource(state = hazeState)
+                    .padding(top = innerPadding.calculateTopPadding()),
+            ) {
+            itemsIndexed(
+                items = conversation.messageNodes,
+                key = { index, item -> item.id },
+            ) { index, node ->
+                Column {
+                    ListSelectableItem(
+                        key = node.id,
+                        onSelectChange = {
+                            if (!selectedItems.contains(node.id)) {
+                                selectedItems.add(node.id)
+                            } else {
                                 selectedItems.remove(node.id)
                             }
                         },
@@ -359,10 +421,9 @@ private fun ChatListNormal(
                     ) {
                         ChatMessage(
                             node = node,
-                            model = node.currentMessage.modelId?.let { settings.findModelById(it) },
-                            assistant = settings.getAssistantById(conversation.assistantId),
-                            // [FORK] Battle Mode: 已完成的 slot 不显示 loading，使用 finishedAt 判断
-                            loading = loading && index == conversation.messageNodes.lastIndex && node.currentMessage.finishedAt == null,
+                            model = node.currentMessage.modelId?.let(modelById::get),
+                            assistant = assistant,
+                            loading = loading && index == lastMessageIndex,
                             onRegenerate = {
                                 onRegenerate(node.currentMessage)
                             },
@@ -377,6 +438,9 @@ private fun ChatListNormal(
                             },
                             onDeleteBefore = {
                                 onDeleteBeforeMessage(node.currentMessage)
+                            },
+                            onDeleteAfter = {
+                                onDeleteAfterMessage(node.currentMessage)
                             },
                             onShare = {
                                 selecting = true
@@ -402,7 +466,7 @@ private fun ChatListNormal(
                             onUpdate = {
                                 onUpdateMessage(it)
                             },
-                            isFavorite = node.isFavorite,
+                            isFavorite = node.favoriteMessageId == node.currentMessage.id,
                             onToggleFavorite = {
                                 onToggleFavorite?.invoke(node)
                             },
@@ -410,13 +474,71 @@ private fun ChatListNormal(
                             onClearTranslation = onClearTranslation,
                             onToolApproval = onToolApproval,
                             onToolAnswer = onToolAnswer,
-                            lastMessage = index == conversation.messageNodes.lastIndex,
+                            lastMessage = when (node.role) {
+                                me.rerere.ai.core.MessageRole.USER -> index == lastUserMessageIndex
+                                // 只有当该回答确实是最后一条提问的回答（其后没有新的提问）时才允许重试，
+                                // 避免用户发起新提问但模型未响应/被中断时，上一条问答的回答仍显示重试按钮
+                                else -> index == lastAssistantMessageIndex && lastAssistantMessageIndex > lastUserMessageIndex
+                            },
                             onScrollToQuestion = if (node.currentMessage.role == me.rerere.ai.core.MessageRole.ASSISTANT && index > 0) {
                                 val targetIndex = index - 1
-                                { scope.launch { state.animateScrollToItem(targetIndex) } }
+                                {
+                                    // 点击向上跳转时，暂停自动贴底，防止跳转到问题后又被拉回底部
+                                    shouldAutoFollow = false
+                                    scope.launch { state.animateScrollToItem(targetIndex) }
+                                }
+                            } else null,
+                            onScrollToAnswer = if (
+                                node.currentMessage.role == me.rerere.ai.core.MessageRole.USER &&
+                                conversation.messageNodes.getOrNull(index + 1)?.currentMessage?.role == me.rerere.ai.core.MessageRole.ASSISTANT
+                            ) {
+                                val targetIndex = index + 1
+                                {
+                                    // 点击向下跳转时，暂停自动贴底，防止跳转到回答后又被拉回底部
+                                    shouldAutoFollow = false
+                                    scope.launch {
+                                        // 记录当前位置，测量后可无痕还原
+                                        val savedIndex = state.firstVisibleItemIndex
+                                        val savedOffset = state.firstVisibleItemScrollOffset
+                                        // 先瞬时定位到回答完成组合与测量；同一协程内立即还原，
+                                        // 中间不让出帧，这一步不会被真正绘制出来
+                                        state.scrollToItem(targetIndex)
+                                        val info = state.layoutInfo.visibleItemsInfo
+                                            .firstOrNull { it.index == targetIndex }
+                                        val scrollOffset = if (info != null) {
+                                            val inputBarHeightPx = with(density) {
+                                                innerPadding.calculateBottomPadding().toPx()
+                                            }
+                                            val viewportBottom =
+                                                state.layoutInfo.viewportEndOffset - inputBarHeightPx
+                                            val itemBottom = info.offset + info.size
+                                            // 回答比可视区高时需要额外下滚的距离；否则为 0（回答顶部对齐即可）
+                                            (itemBottom - viewportBottom).coerceAtLeast(0f).roundToInt()
+                                        } else 0
+                                        // 还原到原始位置，让动画从当前位置出发
+                                        state.scrollToItem(savedIndex, savedOffset)
+                                        // 单段平滑动画：带 scrollOffset 直接把回答底部(操作按钮区)带到输入栏上方，
+                                        // 一气呵成、无“先到顶再到底”的顿挫
+                                        state.animateScrollToItem(targetIndex, scrollOffset)
+                                    }
+                                }
+                            } else null,
+                            // [FORK] 固定到上下文：仅当前显示的分支正是锚定分支时才显示固定标识/高亮
+                            isPinned = node.pinnedMessageId != null && node.pinnedMessageId == node.currentMessage.id,
+                            onTogglePin = if (onTogglePin != null) {
+                                { onTogglePin(node) }
                             } else null,
                         )
                     }
+                }
+            }
+
+            if (!loading && assistant?.allowConversationSystemPrompt == true && onConversationSystemPromptChange != null) {
+                item(key = "ConversationSystemPrompt") {
+                    ConversationSystemPromptButton(
+                        value = conversation.conversationParams.systemPrompt,
+                        onSystemPromptChange = onConversationSystemPromptChange,
+                    )
                 }
             }
 
@@ -448,10 +570,11 @@ private fun ChatListNormal(
                 Spacer(
                     Modifier
                         .fillMaxWidth()
-                        .height(5.dp)
+                        .height(3.dp)
                 )
             }
-        } // closes LazyColumn
+            }
+        }
 
         Box(
             modifier = Modifier
@@ -566,6 +689,7 @@ private fun ChatListNormal(
                     state = state,
                     userMessageIndices = userMessageIndices,
                     onDismissJumper = onDismissJumper,
+                    onDisableAutoFollow = { shouldAutoFollow = false },
                 )
             }
 
@@ -611,7 +735,8 @@ private fun extractMatchingSnippet(
 private fun buildHighlightedText(
     text: String,
     query: String,
-    highlightColor: Color
+    highlightColor: Color,
+    onHighlightColor: Color
 ): AnnotatedString {
     if (query.isBlank()) {
         return AnnotatedString(text)
@@ -625,11 +750,11 @@ private fun buildHighlightedText(
             // 添加高亮前的文本
             append(text.substring(startIndex, index))
 
-            // 添加高亮文本
+            // 添加高亮文本，使用语义配对色保证深浅色主题下都可读
             withStyle(
                 style = SpanStyle(
                     background = highlightColor,
-                    color = Color.Black
+                    color = onHighlightColor
                 )
             ) {
                 append(text.substring(index, index + query.length))
@@ -653,6 +778,9 @@ private fun ChatListPreview(
     settings: Settings,
     hazeState: HazeState,
     animatedVisibilityScope: AnimatedVisibilityScope,
+    listState: LazyListState,
+    previewFilter: PreviewFilter,
+    onPreviewFilterChange: (PreviewFilter) -> Unit,
     onJumpToMessage: (Int) -> Unit
 ) {
     var searchQuery by remember { mutableStateOf("") }
@@ -679,8 +807,38 @@ private fun ChatListPreview(
         Triple(rounds, questionChars, answerChars)
     }
 
+    // 统计数据：对话轮次、提问总字数、回答总字数
+    val conversationStats = remember(conversation.messageNodes) {
+        var rounds = 0
+        var questionChars = 0
+        var answerChars = 0
+        conversation.messageNodes.forEach { node ->
+            val msg = node.currentMessage
+            when (msg.role) {
+                me.rerere.ai.core.MessageRole.USER -> {
+                    rounds++
+                    questionChars += msg.toText().wordCount()
+                }
+                me.rerere.ai.core.MessageRole.ASSISTANT -> {
+                    answerChars += msg.toText().wordCount()
+                }
+                else -> {}
+            }
+        }
+        Triple(rounds, questionChars, answerChars)
+    }
+
+    // 统计收藏和固定的“组”数（一问一答算一组，口径一致）
+    val favoriteAndPinnedStats = remember(conversation.messageNodes) {
+        var favoriteCount = 0
+        conversation.messageNodes.forEach { node ->
+            if (node.isFavorite) favoriteCount++
+        }
+        Pair(favoriteCount, conversation.pinnedGroupCount())
+    }
+
     // 过滤消息，同时保留原始 index 避免后续 O(n) indexOf 查找
-    val filteredMessages = remember(conversation.messageNodes, searchQuery, showOnlyFavorites) {
+    val filteredMessages = remember(conversation.messageNodes, searchQuery, previewFilter) {
         var messages = conversation.messageNodes.mapIndexed { index, node -> index to node }
 
         // 先按搜索词过滤
@@ -688,30 +846,47 @@ private fun ChatListPreview(
             messages = messages.filter { (_, node) -> node.currentMessage.toText().contains(searchQuery, ignoreCase = true) }
         }
 
-        // 再按点赞状态过滤
-        if (showOnlyFavorites) {
-            messages = messages.filter { (_, node) ->
-                node.isFavorite || node.currentMessage.role == me.rerere.ai.core.MessageRole.USER
+        // [FORK] 再按筛选模式过滤：仅收藏 / 仅固定
+        if (previewFilter != PreviewFilter.ALL) {
+            fun matches(node: MessageNode): Boolean = when (previewFilter) {
+                PreviewFilter.FAVORITE -> node.isFavorite
+                PreviewFilter.PINNED -> node.isPinned
+                PreviewFilter.ALL -> false
             }
-            // 当显示点赞消息时，同时显示对应的提问（前一个消息如果是USER）
+            messages = messages.filter { (_, node) ->
+                matches(node) || node.currentMessage.role == me.rerere.ai.core.MessageRole.USER
+            }
+            // 当显示收藏/固定消息时，同时显示对应的提问（前一个消息如果是USER）
             val result = mutableListOf<Pair<Int, MessageNode>>()
             val addedIndices = mutableSetOf<Int>()
             messages.forEach { (index, node) ->
-                if (node.isFavorite && node.currentMessage.role == me.rerere.ai.core.MessageRole.ASSISTANT) {
+                val isProtected = matches(node)
+                if (isProtected && node.currentMessage.role == me.rerere.ai.core.MessageRole.ASSISTANT) {
                     // 添加对应的提问（前一个消息）
                     if (index > 0 && !addedIndices.contains(index - 1)) {
                         result.add(index - 1 to conversation.messageNodes[index - 1])
                         addedIndices.add(index - 1)
                     }
-                    // 添加当前点赞的回答
+                    // 添加当前收藏/固定的回答
                     if (!addedIndices.contains(index)) {
                         result.add(index to node)
                         addedIndices.add(index)
                     }
+                } else if (isProtected && node.currentMessage.role == me.rerere.ai.core.MessageRole.USER) {
+                    // 收藏/固定的提问：带出自身
+                    if (!addedIndices.contains(index)) {
+                        result.add(index to node)
+                        addedIndices.add(index)
+                    }
+                    // 带出紧跟的回答（若有）
+                    if (index + 1 < conversation.messageNodes.size && !addedIndices.contains(index + 1)) {
+                        result.add(index + 1 to conversation.messageNodes[index + 1])
+                        addedIndices.add(index + 1)
+                    }
                 } else if (node.currentMessage.role == me.rerere.ai.core.MessageRole.USER) {
-                    // 检查下一个消息是否是点赞的回答
+                    // 检查下一个消息是否是收藏/固定的回答
                     if (index + 1 < conversation.messageNodes.size &&
-                        conversation.messageNodes[index + 1].isFavorite &&
+                        matches(conversation.messageNodes[index + 1]) &&
                         !addedIndices.contains(index)) {
                         result.add(index to node)
                         addedIndices.add(index)
@@ -727,11 +902,16 @@ private fun ChatListPreview(
     Column(
         modifier = Modifier
             .padding(top = innerPadding.calculateTopPadding())
-            .fillMaxSize(),
+            .fillMaxSize()
+            .hazeSource(state = hazeState),
     ) {
-        // 统计信息
+        // 统计信息：全部模式显示轮次/字数，收藏/固定模式显示对应数量
         Text(
-            text = "${conversationStats.first}轮  提问${conversationStats.second}字  回答${conversationStats.third}字",
+            text = when (previewFilter) {
+                PreviewFilter.FAVORITE -> "收藏 ${favoriteAndPinnedStats.first} 组"
+                PreviewFilter.PINNED -> "固定 ${favoriteAndPinnedStats.second} 组"
+                PreviewFilter.ALL -> "${conversationStats.first}轮  提问${"%,d".format(conversationStats.second)}字  回答${"%,d".format(conversationStats.third)}字"
+            },
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
             modifier = Modifier
@@ -776,11 +956,19 @@ private fun ChatListPreview(
                 maxLines = 1,
             )
 
-            // 筛选按钮
+            // [FORK] 筛选按钮：全部 → 收藏 → 固定 循环切换
             Surface(
-                onClick = { showOnlyFavorites = !showOnlyFavorites },
+                onClick = {
+                    onPreviewFilterChange(
+                        when (previewFilter) {
+                            PreviewFilter.ALL -> PreviewFilter.FAVORITE
+                            PreviewFilter.FAVORITE -> PreviewFilter.PINNED
+                            PreviewFilter.PINNED -> PreviewFilter.ALL
+                        }
+                    )
+                },
                 shape = CircleShape,
-                color = if (showOnlyFavorites) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
+                color = if (previewFilter != PreviewFilter.ALL) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
                 modifier = Modifier.size(48.dp)
             ) {
                 Box(
@@ -788,10 +976,18 @@ private fun ChatListPreview(
                     modifier = Modifier.fillMaxSize()
                 ) {
                     Icon(
-                        imageVector = if (showOnlyFavorites) HugeIcons.Favourite else HugeIcons.Filter,
-                        contentDescription = if (showOnlyFavorites) "Show all messages" else "Show favorites only",
+                        imageVector = when (previewFilter) {
+                            PreviewFilter.ALL -> HugeIcons.Filter
+                            PreviewFilter.FAVORITE -> HugeIcons.Favourite
+                            PreviewFilter.PINNED -> HugeIcons.Pin02
+                        },
+                        contentDescription = when (previewFilter) {
+                            PreviewFilter.ALL -> "Show favorites"
+                            PreviewFilter.FAVORITE -> "Show pinned"
+                            PreviewFilter.PINNED -> "Show all messages"
+                        },
                         modifier = Modifier.size(20.dp),
-                        tint = if (showOnlyFavorites) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                        tint = if (previewFilter != PreviewFilter.ALL) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
                     )
                 }
             }
@@ -799,6 +995,7 @@ private fun ChatListPreview(
 
         // 消息预览
         LazyColumn(
+            state = listState,
             contentPadding = PaddingValues(16.dp) + PaddingValues(bottom = 32.dp + innerPadding.calculateBottomPadding()),
             verticalArrangement = Arrangement.spacedBy(20.dp),
             modifier = Modifier
@@ -841,13 +1038,23 @@ private fun ChatListPreview(
                             // 点赞标识
                             if (isFavorite) {
                                 Icon(
-                                    imageVector = HugeIcons.Favourite,
+                                    imageVector = HugeIcons.InLove,
                                     contentDescription = "Favorite",
                                     modifier = Modifier.size(16.dp),
-                                    tint = MaterialTheme.colorScheme.primary
+                                    tint = MaterialTheme.colorScheme.error
+                                )
+                            }
+                            // [FORK] 固定到上下文标识：仅 USER 消息显示
+                            if (isUser && node.isPinned) {
+                                Icon(
+                                    imageVector = HugeIcons.Pin02,
+                                    contentDescription = "固定到上下文",
+                                    modifier = Modifier.size(16.dp),
+                                    tint = MaterialTheme.colorScheme.tertiary
                                 )
                             }
                             val highlightColor = MaterialTheme.colorScheme.tertiaryContainer
+                            val onHighlightColor = MaterialTheme.colorScheme.onTertiaryContainer
                             val highlightedText = remember(searchQuery, message) {
                                 val fullText = message.toText().trim().ifBlank { "[...]" }
                                 val messageText = extractMatchingSnippet(
@@ -857,7 +1064,8 @@ private fun ChatListPreview(
                                 buildHighlightedText(
                                     text = messageText,
                                     query = searchQuery,
-                                    highlightColor = highlightColor
+                                    highlightColor = highlightColor,
+                                    onHighlightColor = onHighlightColor
                                 )
                             }
                             Text(
@@ -915,6 +1123,7 @@ private fun BoxScope.MessageJumper(
     state: LazyListState,
     userMessageIndices: List<Int> = emptyList(),
     onDismissJumper: () -> Unit = {},
+    onDisableAutoFollow: () -> Unit = {},
 ) {
     AnimatedVisibility(
         visible = show,
@@ -927,7 +1136,7 @@ private fun BoxScope.MessageJumper(
         )
     ) {
         Column(
-            modifier = Modifier.padding(8.dp),
+            modifier = Modifier.padding(horizontal = 2.dp, vertical = 4.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             // 去顶部（点击后自动关闭导航栏）
@@ -954,6 +1163,8 @@ private fun BoxScope.MessageJumper(
             // 上一个提问（不关闭导航栏）
             Surface(
                 onClick = {
+                    // 手动跳转时停止自动贴底，防止被 auto-follow 立即拉回底部
+                    onDisableAutoFollow()
                     scope.launch {
                         val current = state.firstVisibleItemIndex
                         // 找小于当前位置的最大 USER index
@@ -979,13 +1190,19 @@ private fun BoxScope.MessageJumper(
             // 下一个提问（不关闭导航栏）
             Surface(
                 onClick = {
+                    // 手动跳转时停止自动贴底，防止被 auto-follow 立即拉回底部
+                    onDisableAutoFollow()
                     scope.launch {
                         val current = state.firstVisibleItemIndex
                         // 找大于当前位置的最小 USER index
-                        val target = userMessageIndices.firstOrNull { it > current }
-                            ?: userMessageIndices.lastOrNull()
-                            ?: (current + 1)
-                        state.animateScrollToItem(target)
+                        val nextUserIndex = userMessageIndices.firstOrNull { it > current }
+                        if (nextUserIndex != null) {
+                            // 还有更靠下的提问，跳过去
+                            state.animateScrollToItem(nextUserIndex)
+                        } else {
+                            // 已经跨过最后一条提问，直接滚到底部
+                            state.animateScrollToItem((state.layoutInfo.totalItemsCount - 1).coerceAtLeast(0))
+                        }
                     }
                 },
                 shape = CircleShape,

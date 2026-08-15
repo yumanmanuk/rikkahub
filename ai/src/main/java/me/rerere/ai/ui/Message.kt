@@ -12,6 +12,7 @@ import me.rerere.ai.core.MessageRole
 import me.rerere.ai.core.TokenUsage
 import me.rerere.ai.provider.Model
 import me.rerere.ai.util.json
+import kotlin.math.roundToInt
 import kotlin.time.Clock
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
@@ -27,6 +28,8 @@ data class UIMessage(
         .toLocalDateTime(TimeZone.currentSystemDefault()),
     val finishedAt: LocalDateTime? = null,
     val modelId: Uuid? = null,
+    // modelId 在 settings 中找不到对应 Model 时的 fallback 显示名（如导入历史对话时使用）
+    val modelName: String? = null,
     val usage: TokenUsage? = null,
     val translation: String? = null
 ) {
@@ -157,13 +160,14 @@ data class UIMessage(
         } ?: this
     }
 
-    fun summaryAsText(): String {
-        return "[${role.name}]: " + parts.joinToString(separator = "\n") { part ->
+    fun summaryAsText(maxLength: Int = Int.MAX_VALUE): String {
+        val text = "[${role.name}]: " + parts.joinToString(separator = "\n") { part ->
             when (part) {
                 is UIMessagePart.Text -> part.text
                 else -> ""
             }
         }
+        return if (text.length > maxLength) text.take(maxLength) + "..." else text
     }
 
     fun toText() = parts.joinToString(separator = "\n") { part ->
@@ -234,7 +238,7 @@ fun List<UIMessage>.handleMessageChunk(chunk: MessageChunk, model: Model? = null
     val choice = chunk.choices.getOrNull(0) ?: return this
     val message = choice.delta ?: choice.message ?: return this
     if (this.last().role != message.role) {
-        return this + (UIMessage(modelId = model?.id, role = message.role, parts = emptyList()) + chunk)
+        return this + (UIMessage(modelId = model?.id, modelName = model?.displayName, role = message.role, parts = emptyList()) + chunk)
     } else {
         val last = this.last() + chunk
         return this.dropLast(1) + last
@@ -278,13 +282,83 @@ fun List<UIMessagePart>.isEmptyUIMessage(): Boolean {
     }
 }
 
-fun List<UIMessage>.limitContext(size: Int): List<UIMessage> {
-    if (size <= 0 || this.size <= size) return this
+/**
+ * 截断后保留的消息条数占上限的比例
+ *
+ * 越小则截断点前进的步幅越大, 连续命中缓存的轮数越多, 但一次丢弃的上下文也越多
+ */
+private const val CONTEXT_KEEP_RATIO = 0.5f
 
-    val startIndex = this.size - size
+/**
+ * 按阶梯式(滞回)策略限制上下文消息数量
+ *
+ * 与每轮平移一条的滑动窗口不同, 截断点只在消息数越过 [limit] 时才前进一大步,
+ * 在此之后的连续多轮里保持不动, 使请求前缀保持稳定, 从而命中提示词缓存。
+ * 截断点仅由消息条数推导, 不需要额外持久化状态, 且对追加消息天然稳定。
+ *
+ * [FORK] 总预算语义: [limit] 是"发送消息总条数"上限(含固定消息)。
+ * 固定消息([protectedMessageIds], 已在收集阶段按固定上限截断)优先占用预算,
+ * 普通消息按剩余预算做阶梯式截断, 最后按原时序合并两者。
+ *
+ * @param limit 触发截断的消息条数上限, 小于等于 0 表示不限制
+ * @param protectedMessageIds [FORK] 固定到上下文的消息 id, 不参与截断
+ */
+fun List<UIMessage>.limitContext(
+    limit: Int,
+    protectedMessageIds: Set<Uuid> = emptySet(),
+): List<UIMessage> {
+    // limit<=0 表示不限制上下文长度；全部消息都能放下时直接返回
+    if (limit <= 0 || this.size <= limit) return this
+
+    // [FORK] 无固定消息时直接阶梯式截断
+    if (protectedMessageIds.isEmpty()) {
+        return limitNormalContext(limit)
+    }
+
+    // [FORK] 固定消息优先占用预算, 普通消息用剩余预算
+    val protectedMsgs: List<UIMessage> = filter { it.id in protectedMessageIds }
+    val normalMsgs: List<UIMessage> = filter { it.id !in protectedMessageIds }
+
+    // 普通消息剩余预算；即使固定占满预算, 也至少保留最新一条普通消息(当前提问), 避免请求缺失当前输入
+    val remaining = (limit - protectedMsgs.size).coerceAtLeast(1)
+
+    val limitedNormalMsgs: List<UIMessage> = normalMsgs.limitNormalContext(remaining)
+
+    // 按原时序合并 protected 全部 + 截断后的 normal
+    val limitedNormalIds = limitedNormalMsgs.map { it.id }.toSet()
+    return filter { it.id in protectedMessageIds || it.id in limitedNormalIds }
+}
+
+/**
+ * 对消息列表按阶梯式(滞回)策略截断
+ *
+ * 保留的条数始终落在 `[limit * CONTEXT_KEEP_RATIO, limit)` 区间内。
+ */
+private fun List<UIMessage>.limitNormalContext(limit: Int): List<UIMessage> {
+    if (limit <= 0 || this.size <= limit) return this
+
+    // 截断后回落到的目标条数, 以及两次截断之间截断点前进的步幅
+    // limit 为 1 时无法构造滞回(步幅至少为 1), 此时退化为逐条平移的滑动窗口
+    val target = (limit * CONTEXT_KEEP_RATIO).roundToInt().coerceIn(1, limit)
+    val stride = (limit - target).coerceAtLeast(1)
+
+    // 每越过一级台阶, 截断点前进 stride 条; 台阶之内截断点不动
+    // 上界兜底保证至少保留一条消息, 正常路径(limit >= 2)不会触发
+    val startIndex = (((this.size - limit) / stride + 1) * stride).coerceAtMost(this.size - 1)
+
+    return this.subList(alignContextStart(startIndex), this.size)
+}
+
+/**
+ * 将截断起点回退到安全边界, 避免把 tool call 与其结果拆散, 或让上下文从半截的工具调用开始
+ *
+ * 只会向前(下标减小)调整, 因此不会破坏 [limitContext] 保留条数的下界。
+ * 调整只依赖 `[0, startIndex]` 区间内的消息, 这部分在追加新消息时不会变化, 结果因此保持稳定。
+ */
+private fun List<UIMessage>.alignContextStart(startIndex: Int): Int {
     var adjustedStartIndex = startIndex
 
-    // 循环往前查找，直到满足所有依赖条件
+    // 循环往前查找, 直到满足所有依赖条件
     var needsAdjustment = true
     val visitedIndices = mutableSetOf<Int>()
 
@@ -308,7 +382,7 @@ fun List<UIMessage>.limitContext(size: Int): List<UIMessage> {
             }
         }
 
-        // 如果当前消息包含未执行的tool call，往前查找对应的用户消息
+        // 如果当前消息包含未执行的tool call,往前查找对应的用户消息
         if (currentMessage.getTools().any { !it.isExecuted }) {
             for (i in adjustedStartIndex - 1 downTo 0) {
                 if (this[i].role == MessageRole.USER) {
@@ -320,7 +394,7 @@ fun List<UIMessage>.limitContext(size: Int): List<UIMessage> {
         }
     }
 
-    return this.subList(adjustedStartIndex, this.size)
+    return adjustedStartIndex
 }
 
 @Serializable

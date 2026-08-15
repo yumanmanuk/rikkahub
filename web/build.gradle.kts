@@ -1,11 +1,42 @@
+import org.apache.tools.ant.taskdefs.condition.Os
+
 plugins {
     alias(libs.plugins.android.library)
+}
+
+val webUiDir = rootProject.layout.projectDirectory.dir("web-ui")
+val webStaticResourcesDir = layout.projectDirectory.dir("src/main/resources/static")
+
+val buildWebUi = tasks.register<Exec>("buildWebUi") {
+    group = "build"
+    description = "Build web-ui and copy its static output into the web module resources."
+
+    workingDir = webUiDir.asFile
+    when {
+        Os.isFamily(Os.FAMILY_MAC) -> commandLine("zsh", "-ic", "pnpm run build")
+        Os.isFamily(Os.FAMILY_WINDOWS) -> commandLine("cmd", "/c", "pnpm run build")
+        else -> commandLine("pnpm", "run", "build")
+    }
+
+    inputs.files(
+        webUiDir.file("package.json"),
+        webUiDir.file("pnpm-lock.yaml"),
+        webUiDir.file("components.json"),
+        webUiDir.file("copy.ts"),
+        webUiDir.file("react-router.config.ts"),
+        webUiDir.file("tsconfig.json"),
+        webUiDir.file("vite.config.ts"),
+        webUiDir.file("vite-env.d.ts")
+    )
+    inputs.dir(webUiDir.dir("app"))
+    inputs.dir(webUiDir.dir("public"))
+    outputs.dir(webStaticResourcesDir)
 }
 
 android {
     namespace = "me.rerere.rikkahub.web"
     compileSdk {
-        version = release(36)
+        version = release(37)
     }
 
     defaultConfig {
@@ -28,6 +59,10 @@ android {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
+}
+
+tasks.named("preBuild") {
+    dependsOn(buildWebUi)
 }
 
 dependencies {

@@ -14,7 +14,7 @@ import me.rerere.rikkahub.R
 
 // [FORK] 使用 Google Fonts 可下载字体，接近 Google AI Studio 的阅读体验
 // 英文/数字/符号：DM Sans（接近 Google Sans，字形纤细现代）
-// 中文：Noto Sans SC Light（字形细腻，与 AI Studio 中文渲染最接近）
+// 中文：Noto Sans SC（字形细腻，与 AI Studio 中文渲染最接近）
 private val googleFontProvider = GoogleFont.Provider(
     providerAuthority = "com.google.android.gms.fonts",
     providerPackage = "com.google.android.gms",
@@ -24,7 +24,7 @@ private val googleFontProvider = GoogleFont.Provider(
 private val NotoSansSC = GoogleFont("Noto Sans SC")
 private val DMSans = GoogleFont("DM Sans")
 
-// 中文正文字体：Noto Sans SC Light，字重 W300
+// 中文正文字体：Noto Sans SC，英文：DM Sans
 val AppFontFamily = FontFamily(
     Font(googleFont = NotoSansSC, fontProvider = googleFontProvider, weight = FontWeight.Light),
     Font(googleFont = NotoSansSC, fontProvider = googleFontProvider, weight = FontWeight.Normal),
@@ -37,7 +37,7 @@ val AppFontFamily = FontFamily(
     Font(googleFont = DMSans, fontProvider = googleFontProvider, weight = FontWeight.SemiBold),
 )
 
-// [FORK] 全局 Typography 使用 AppFontFamily，正文字重 Light，行高 1.75em
+// [FORK] 全局 Typography 使用 AppFontFamily，正文字重 Normal
 val Typography = Typography(
     bodyLarge = TextStyle(
         fontFamily = AppFontFamily,
@@ -103,6 +103,8 @@ val Typography = Typography(
         fontSize = 24.sp,
     ),
 )
+
+val base = Typography()
 
 @OptIn(ExperimentalTextApi::class)
 val JetbrainsMono = FontFamily(

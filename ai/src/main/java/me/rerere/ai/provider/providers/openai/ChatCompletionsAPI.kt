@@ -2,13 +2,17 @@ package me.rerere.ai.provider.providers.openai
 
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.channels.onFailure
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.buffer
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonArrayBuilder
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.add
@@ -79,15 +83,19 @@ class ChatCompletionsAPI(
                 providerSetting = providerSetting
             )
 
+        val encoded = json.encodeToString(requestBody)
+        if (encoded.length < 600_000) {
+            Log.i(TAG, "generateText: $encoded")
+        } else {
+            Log.i(TAG, "generateText: (request body too large to log, size=${encoded.length})")
+        }
         val request = Request.Builder()
             .url("${providerSetting.baseUrl}${providerSetting.chatCompletionsPath}")
             .headers(params.customHeaders.toHeaders())
-            .post(json.encodeToString(requestBody).toRequestBody("application/json".toMediaType()))
+            .post(encoded.toRequestBody("application/json".toMediaType()))
             .addHeader("Authorization", "Bearer ${keyRoulette.next(providerSetting.apiKey, providerSetting.id.toString())}")
             .configureReferHeaders(providerSetting.baseUrl)
             .build()
-
-        Log.i(TAG, "generateText: ${json.encodeToString(requestBody)}")
 
         val response = client.newCall(request).await()
         if (!response.isSuccessful) {
@@ -136,16 +144,20 @@ class ChatCompletionsAPI(
             stream = true,
         )
 
+        val encoded = json.encodeToString(requestBody)
+        if (encoded.length < 600_000) {
+            Log.i(TAG, "streamText: $encoded")
+        } else {
+            Log.i(TAG, "streamText: (request body too large to log, size=${encoded.length})")
+        }
         val request = Request.Builder()
             .url("${providerSetting.baseUrl}${providerSetting.chatCompletionsPath}")
             .headers(params.customHeaders.toHeaders())
-            .post(json.encodeToString(requestBody).toRequestBody("application/json".toMediaType()))
+            .post(encoded.toRequestBody("application/json".toMediaType()))
             .addHeader("Authorization", "Bearer ${keyRoulette.next(providerSetting.apiKey, providerSetting.id.toString())}")
             .addHeader("Content-Type", "application/json")
             .configureReferHeaders(providerSetting.baseUrl)
             .build()
-
-        Log.i(TAG, "streamText: ${json.encodeToString(requestBody)}")
 
         // just for debugging response body
         // println(client.newCall(request).await().body?.string())
@@ -204,7 +216,9 @@ class ChatCompletionsAPI(
                             choices = choiceList,
                             usage = usage
                         )
-                        trySend(messageChunk)
+                        trySend(messageChunk).onFailure { e ->
+                            Log.w(TAG, "onEvent: chunk dropped (${e?.message})")
+                        }
                     }
             }
 
@@ -242,7 +256,8 @@ class ChatCompletionsAPI(
             println("[awaitClose] 关闭eventSource ")
             eventSource.cancel()
         }
-    }
+        // trySend 在缓冲满时会静默丢弃 delta，导致回复中间缺字 (#1295)，因此缓冲必须无界
+    }.buffer(Channel.UNLIMITED)
 
 
     private fun buildChatCompletionRequest(
@@ -254,7 +269,14 @@ class ChatCompletionsAPI(
         val host = providerSetting.baseUrl.toHttpUrl().host
         return buildJsonObject {
             put("model", params.model.modelId)
-            put("messages", buildMessages(messages))
+            put(
+                "messages",
+                buildMessages(
+                    messages = messages,
+                    includeHistoryReasoning = providerSetting.includeHistoryReasoning,
+                    supportInputModalities = params.model.inputModalities,
+                )
+            )
 
             if (isModelAllowTemperature(params.model)) {
                 if (params.temperature != null) put("temperature", params.temperature)
@@ -281,7 +303,7 @@ class ChatCompletionsAPI(
                 }
             }
 
-            if (params.model.abilities.contains(ModelAbility.REASONING)) {
+            if (params.model.abilities.contains(ModelAbility.REASONING) && params.reasoningLevel != null) {
                 val level = params.reasoningLevel
                 when (host) {
                     "openrouter.ai" -> {
@@ -354,6 +376,10 @@ class ChatCompletionsAPI(
                         }
                     }
 
+                    "aiping.cn" -> {
+                        put("enable_thinking", level.isEnabled)
+                    }
+
                     "open.bigmodel.cn" -> {
                         put("thinking", buildJsonObject {
                             put("type", if (!level.isEnabled) "disabled" else "enabled")
@@ -363,6 +389,11 @@ class ChatCompletionsAPI(
                     "api.moonshot.cn" -> {
                         put("thinking", buildJsonObject {
                             put("type", if (!level.isEnabled) "disabled" else "enabled")
+                            // K2.6 的 thinking.keep 默认为 null（忽略历史思考），思考开启时
+                            // 需显式传 "all" 才是保留式思考；文档推荐与 enabled 搭配（#1586）
+                            if (level.isEnabled && ModelRegistry.KIMI_K2_6.match(params.model.modelId)) {
+                                put("keep", "all")
+                            }
                         })
                     }
 
@@ -376,6 +407,29 @@ class ChatCompletionsAPI(
                                 else -> level.effort // HIGH -> "high"
                             }
                             put("reasoning_effort", deepseekEffort)
+                        }
+                    }
+
+                    "integrate.api.nvidia.com" -> {
+                        if ("deepseek-v4" in params.model.modelId.lowercase()) {
+                            if (level != ReasoningLevel.AUTO) {
+                                val effort = when (level) {
+                                    ReasoningLevel.XHIGH -> "max"
+                                    ReasoningLevel.OFF -> "none"
+                                    else -> "high"
+                                }
+                                put("reasoning_effort", effort)
+                            }
+                        } else {
+                            if (level != ReasoningLevel.AUTO) {
+                                put("reasoning_effort", if (level.effort == "none") "low" else level.effort)
+                            }
+                        }
+                    }
+
+                    "opencode.ai" -> {
+                        if (level != ReasoningLevel.AUTO) {
+                            put("reasoning_effort", level.effort)
                         }
                     }
 
@@ -415,19 +469,31 @@ class ChatCompletionsAPI(
         return !ModelRegistry.OPENAI_O_MODELS.match(model.modelId) && !ModelRegistry.GPT_5.match(model.modelId)
     }
 
-    private fun buildMessages(messages: List<UIMessage>) = buildJsonArray {
+    private fun buildMessages(
+        messages: List<UIMessage>,
+        includeHistoryReasoning: Boolean = true,
+        supportInputModalities: List<Modality> = listOf(Modality.TEXT, Modality.IMAGE),
+    ) = buildJsonArray {
         val filteredMessages = messages.filter { it.isValidToUpload() }
 
         filteredMessages.forEach { message ->
             if (message.role == MessageRole.ASSISTANT) {
-                addAssistantMessages(message, includeReasoning = true)
+                addAssistantMessages(
+                    message = message,
+                    includeReasoning = includeHistoryReasoning,
+                    supportInputModalities = supportInputModalities,
+                )
             } else {
                 addNonAssistantMessage(message)
             }
         }
     }
 
-    private fun JsonArrayBuilder.addAssistantMessages(message: UIMessage, includeReasoning: Boolean) {
+    private fun JsonArrayBuilder.addAssistantMessages(
+        message: UIMessage,
+        includeReasoning: Boolean,
+        supportInputModalities: List<Modality>,
+    ) {
         val groups = groupPartsByToolBoundary(message.parts)
         val contentBuffer = mutableListOf<UIMessagePart>()
         var reasoningPart: UIMessagePart.Reasoning? = null
@@ -464,9 +530,7 @@ class ChatCompletionsAPI(
                             put("role", "tool")
                             put("name", tool.toolName)
                             put("tool_call_id", tool.toolCallId)
-                            put(
-                                "content",
-                                tool.output.filterIsInstance<UIMessagePart.Text>().joinToString("\n") { it.text })
+                            put("content", tool.toToolResultContent(supportInputModalities))
                         })
                     }
                 }
@@ -556,7 +620,8 @@ class ChatCompletionsAPI(
                             put("type", "function")
                             put("function", buildJsonObject {
                                 put("name", tool.toolName)
-                                put("arguments", tool.input)
+                                // 使用 inputAsJson() 归一化，避免流式中断导致的残缺 JSON 被发送
+                                put("arguments", tool.inputAsJson().toString())
                             })
                         })
                     }
@@ -603,6 +668,53 @@ class ChatCompletionsAPI(
                 }
             }
         })
+    }
+
+    private fun UIMessagePart.Tool.toToolResultContent(supportInputModalities: List<Modality>): JsonElement {
+        // 只考虑文字和图片;只有模型支持图片输入时,图片才作为多模态内容回传,否则以文本占位,避免发给不支持的模型报错
+        val supportsImageInput = Modality.IMAGE in supportInputModalities
+        val hasImageToSend = output.any { it is UIMessagePart.Image && supportsImageInput }
+        return if (!hasImageToSend) {
+            JsonPrimitive(output.mapNotNull { part ->
+                when (part) {
+                    is UIMessagePart.Text -> part.text
+                    is UIMessagePart.Image -> "[Image output omitted: current model does not support image input]"
+                    else -> null
+                }
+            }.joinToString("\n"))
+        } else {
+            buildJsonArray {
+                output.forEach { part ->
+                    when (part) {
+                        is UIMessagePart.Text -> {
+                            if (part.text.isNotBlank()) {
+                                add(buildJsonObject {
+                                    put("type", "text")
+                                    put("text", part.text)
+                                })
+                            }
+                        }
+
+                        is UIMessagePart.Image -> {
+                            add(buildJsonObject {
+                                part.encodeBase64().onSuccess { encodedImage ->
+                                    put("type", "image_url")
+                                    put("image_url", buildJsonObject {
+                                        put("url", encodedImage.base64)
+                                    })
+                                }.onFailure {
+                                    Log.w(TAG, "encode tool result image failed: ${part.url}", it)
+                                    put("type", "text")
+                                    put("text", "Error: Failed to encode image to base64")
+                                }
+                            })
+                        }
+
+                        else -> {}
+                    }
+                }
+            }
+        }
     }
 
     private fun parseMessage(jsonObject: JsonObject): UIMessage {
@@ -696,7 +808,11 @@ class ChatCompletionsAPI(
             promptTokens = jsonObject["prompt_tokens"]?.jsonPrimitive?.intOrNull ?: 0,
             completionTokens = jsonObject["completion_tokens"]?.jsonPrimitive?.intOrNull ?: 0,
             totalTokens = jsonObject["total_tokens"]?.jsonPrimitive?.intOrNull ?: 0,
+            // 各 provider 汇报缓存命中的字段形状不统一，按方言兜底解析（#1576）：
+            // OpenAI 嵌套 -> Moonshot 顶层 cached_tokens -> DeepSeek prompt_cache_hit_tokens
             cachedTokens = jsonObject["prompt_tokens_details"]?.jsonObjectOrNull?.get("cached_tokens")?.jsonPrimitive?.intOrNull
+                ?: jsonObject["cached_tokens"]?.jsonPrimitive?.intOrNull
+                ?: jsonObject["prompt_cache_hit_tokens"]?.jsonPrimitive?.intOrNull
                 ?: 0
         )
     }

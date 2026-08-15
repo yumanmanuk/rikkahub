@@ -11,19 +11,16 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.core.net.toUri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import androidx.paging.PagingData
-import androidx.paging.cachedIn
-import androidx.paging.insertSeparators
-import androidx.paging.map
-// [FORK] Firebase removed
-// import com.google.firebase.analytics.FirebaseAnalytics
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import me.rerere.ai.core.MessageRole
 import me.rerere.ai.provider.Model
 import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
@@ -31,6 +28,7 @@ import me.rerere.ai.ui.isEmptyInputMessage
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.SettingsStore
+import me.rerere.rikkahub.data.datastore.getCurrentAssistant
 import me.rerere.rikkahub.data.datastore.getCurrentChatModel
 import me.rerere.rikkahub.data.files.FilesManager
 import me.rerere.rikkahub.data.model.Assistant
@@ -67,7 +65,14 @@ class ChatVM(
 ) : ViewModel() {
     private val _conversationId: Uuid = Uuid.parse(id)
     val conversation: StateFlow<Conversation> = chatService.getConversationFlow(_conversationId)
-    var chatListInitialized by mutableStateOf(false) // 聊天列表是否已经滚动到底部
+    val conversationLoaded: StateFlow<Boolean> = chatService.getConversationInitializedFlow(_conversationId)
+    // 会话初始化当前所处阶段（诊断冷启动加载卡顿用）
+    fun getConversationInitStage(): String = chatService.getConversationInitStage(_conversationId)
+    // 初始滚动位置是否已记录并放行渲染（在列表渲染前写入 LazyListState），
+    // 就绪前 UI 保持 loading，避免先渲染顶部再跳底的闪烁；亦兼作“初始滚动已完成”标记
+    var chatListReady by mutableStateOf(false)
+    // 加载超时兜底标记：数据加载异常缓慢时按旧行为放行渲染，避免用户被永久困在 loading
+    var chatListForcedOpen by mutableStateOf(false)
 
     // 聊天输入状态 - 保存在 ViewModel 中避免 TransactionTooLargeException
     val inputState = ChatInputState()
@@ -84,6 +89,13 @@ class ChatVM(
         chatService
             .getProcessingStatusFlow(_conversationId)
 
+    // Battle Mode: 活跃 slot 计数，用于单独重试 slot 时维持全局 loading
+    val hasActiveSlots: StateFlow<Boolean> =
+        chatService
+            .getActiveSlotCountFlow(_conversationId)
+            .map { it > 0 }
+            .stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
     val conversationJobs = chatService
         .getConversationJobs()
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
@@ -95,10 +107,14 @@ class ChatVM(
         // 初始化对话
         viewModelScope.launch {
             chatService.initializeConversation(_conversationId)
+            // [FORK] 临时对话：初始化完成后消费 pending 标记，避免竞争条件
+            if (chatService.consumePendingTemporary(_conversationId)) {
+                chatService.updateConversationState(_conversationId) { it.copy(isTemporary = true) }
+            } else {
+                // 非临时对话才写 lastConversationId，避免下次启动恢复到已丢弃的对话
+                context.writeStringPreference("lastConversationId", _conversationId.toString())
+            }
         }
-
-        // 记住对话ID, 方便下次启动恢复
-        context.writeStringPreference("lastConversationId", _conversationId.toString())
     }
 
     override fun onCleared() {
@@ -111,9 +127,9 @@ class ChatVM(
     val settings: StateFlow<Settings> =
         settingsStore.settingsFlow.stateIn(viewModelScope, SharingStarted.Eagerly, Settings.dummy())
 
-    // 网络搜索
+    // 网络搜索(每个助手独立)
     val enableWebSearch = settings.map {
-        it.enableWebSearch
+        it.getCurrentAssistant().enableWebSearch
     }.stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
     // 当前模型
@@ -195,18 +211,28 @@ class ChatVM(
         // analytics.logEvent("ai_edit_message", null) // [FORK] Firebase removed
 
         viewModelScope.launch {
+            // editMessage 为原地替换（保留消息 id 与元数据），
+            // 但仍需在编辑前用 messageId 定位节点，确认是否为最后一条用户节点，并记录 node id
+            val conversationBefore = conversation.value
+            val editedNodeBefore = conversationBefore.getMessageNodeByMessageId(messageId)
+            // 重试门槛与输入框“发送/保存”图标共用 Conversation.editWillRegenerate，避免逻辑漂移
+            val shouldRegenerate = regenerate && conversationBefore.editWillRegenerate(messageId)
+            // 记录节点 id，以便 editMessage 后在更新的状态中重新查找
+            val editedNodeId = editedNodeBefore?.id
+
             chatService.editMessage(_conversationId, messageId, parts)
-            if (regenerate) {
-                // 找到编辑后的消息（已经是新版本），触发重新生成
-                val editedMessage = conversation.value.messageNodes
-                    .firstOrNull { node -> node.messages.any { it.id == messageId } }
-                    ?.currentMessage
-                if (editedMessage != null) {
-                    chatService.regenerateAtMessage(_conversationId, editedMessage)
+
+            if (shouldRegenerate && editedNodeId != null) {
+                // editMessage 已完成，从最新 conversation 中通过节点 id 找到该节点
+                val updatedNodes = conversation.value.messageNodes
+                val updatedNode = updatedNodes.firstOrNull { it.id == editedNodeId }
+                if (updatedNode != null) {
+                    chatService.regenerateAtMessage(_conversationId, updatedNode.currentMessage)
                 }
             }
         }
     }
+
 
     fun handleCompressContext(additionalPrompt: String, targetTokens: Int, keepRecentMessages: Int): Job {
         return viewModelScope.launch {
@@ -235,6 +261,12 @@ class ChatVM(
     fun deleteMessagesBeforeMessage(message: UIMessage) {
         viewModelScope.launch {
             chatService.deleteMessagesBeforeMessage(_conversationId, message.id)
+        }
+    }
+
+    fun deleteMessagesAfterMessage(message: UIMessage) {
+        viewModelScope.launch {
+            chatService.deleteMessagesAfterMessage(_conversationId, message.id)
         }
     }
 
@@ -290,8 +322,22 @@ class ChatVM(
         }
     }
 
-    fun deleteConversation(conversation: Conversation) {
+    fun updateConversationTitle(conversation: Conversation, title: String) {
         viewModelScope.launch {
+            if (conversation.id == _conversationId) {
+                val updatedConversation = this@ChatVM.conversation.value.copy(title = title)
+                chatService.saveConversation(_conversationId, updatedConversation)
+            } else {
+                val full = conversationRepo.getConversationById(conversation.id) ?: return@launch
+                conversationRepo.updateConversation(full.copy(title = title))
+            }
+        }
+    }
+
+    fun deleteConversation(conversation: Conversation): Job {
+        return viewModelScope.launch {
+            // 先标记已删除，防止并发中的异步任务（如生成标题）在删库后重新将其 insert 回数据库
+            chatService.markConversationDeleted(conversation.id)
             conversationRepo.deleteConversation(conversation)
         }
     }
@@ -305,7 +351,11 @@ class ChatVM(
     fun moveConversationToAssistant(conversation: Conversation, targetAssistantId: Uuid) {
         viewModelScope.launch {
             val conversationFull = conversationRepo.getConversationById(conversation.id) ?: return@launch
-            val updatedConversation = conversationFull.copy(assistantId = targetAssistantId)
+            // 文件夹是助手内分组，切换助手后原文件夹在新助手下不可见，需清空归属避免会话丢失
+            val updatedConversation = conversationFull.copy(
+                assistantId = targetAssistantId,
+                folderId = null,
+            )
             if (conversation.id == _conversationId) {
                 chatService.saveConversation(_conversationId, updatedConversation)
                 settingsStore.updateAssistant(targetAssistantId)
@@ -356,10 +406,16 @@ class ChatVM(
 
     fun toggleMessageFavorite(node: MessageNode) {
         viewModelScope.launch {
-            val currentlyFavorited = favoriteRepository.isNodeFavorited(_conversationId, node.id)
-            if (currentlyFavorited) {
+            val currentMessage = node.currentMessage
+            // 当前显示的 message 是否是被收藏的那条
+            val isCurrentMessageFavorited = node.favoriteMessageId == currentMessage.id
+
+            if (isCurrentMessageFavorited) {
                 favoriteRepository.removeNodeFavorite(_conversationId, node.id)
             } else {
+                // 先移除旧收藏（换了一条 message 来收藏时），再添加新收藏
+                favoriteRepository.removeNodeFavorite(_conversationId, node.id)
+
                 // 查找前一条用户提问
                 val nodes = conversation.value.messageNodes
                 val nodeIndex = nodes.indexOfFirst { it.id == node.id }
@@ -377,6 +433,7 @@ class ChatVM(
                         nodeId = node.id,
                         node = node,
                         questionPreview = questionPreview,
+                        messageId = currentMessage.id,
                     )
                 )
             }
@@ -385,7 +442,9 @@ class ChatVM(
                 currentConversation.copy(
                     messageNodes = currentConversation.messageNodes.map { existingNode ->
                         if (existingNode.id == node.id) {
-                            existingNode.copy(isFavorite = !currentlyFavorited)
+                            existingNode.copy(
+                                favoriteMessageId = if (isCurrentMessageFavorited) null else currentMessage.id
+                            )
                         } else {
                             existingNode
                         }
@@ -393,6 +452,85 @@ class ChatVM(
                 )
             }
         }
+    }
+
+    // [FORK] 固定到上下文：固定时锚定到当前显示的具体分支（pinnedMessageId）并持久化，
+    // 之后切换 selectIndex 不影响上下文中使用的分支。
+    // 提问与回答是配套的，固定/取消固定时同步更新配对节点（USER↔ASSISTANT 相邻节点）。
+    // 在已固定节点的其他分支上点固定 = 把锚点移到该分支；在已锚定的分支上点固定 = 取消整组固定。
+    fun toggleMessagePin(node: MessageNode) {
+        viewModelScope.launch {
+            // 当前显示的分支已被锚定 → 取消固定；否则（未固定或锚在其他分支）→ 锚定到当前分支
+            val unpin = node.pinnedMessageId != null && node.pinnedMessageId == node.messages.getOrNull(node.selectIndex)?.id
+            chatService.updateConversationState(_conversationId) { currentConversation ->
+                val nodes = currentConversation.messageNodes
+                val nodeIndex = nodes.indexOfFirst { it.id == node.id }
+                // 安全防护：定位不到目标节点时不做任何修改，避免误操作历史消息
+                if (nodeIndex < 0) return@updateConversationState currentConversation
+                // 找到配对节点的索引：固定回答时联动前一条提问，固定提问时联动后一条回答
+                val pairedIndex = when {
+                    nodeIndex > 0 &&
+                        nodes[nodeIndex].role == MessageRole.ASSISTANT &&
+                        nodes[nodeIndex - 1].role == MessageRole.USER -> nodeIndex - 1
+                    nodeIndex + 1 < nodes.size &&
+                        nodes[nodeIndex].role == MessageRole.USER &&
+                        nodes[nodeIndex + 1].role == MessageRole.ASSISTANT -> nodeIndex + 1
+                    else -> -1
+                }
+                currentConversation.copy(
+                    messageNodes = nodes.mapIndexed { index, existingNode ->
+                        if (index == nodeIndex || index == pairedIndex) {
+                            // 只改 pinnedMessageId，不碰 messages/selectIndex，不存在删改历史消息的可能
+                            existingNode.copy(
+                                pinnedMessageId = if (unpin) {
+                                    null
+                                } else {
+                                    // 锚定到各自当前显示的分支；空节点（理论不存在）保持不变
+                                    existingNode.messages.getOrNull(existingNode.selectIndex)?.id
+                                        ?: existingNode.pinnedMessageId
+                                }
+                            )
+                        } else {
+                            existingNode
+                        }
+                    }
+                )
+            }
+            val updatedConversation = conversation.value
+            chatService.saveConversation(_conversationId, updatedConversation)
+        }
+    }
+
+    // [FORK] 对话标签：更新对话所属标签
+    fun updateConversationTag(conversationId: Uuid, tagId: Uuid?) {
+        viewModelScope.launch {
+            conversationRepo.updateConversationTag(conversationId, tagId)
+        }
+    }
+
+    // [FORK] 对话标签：新增标签到 Settings
+    fun addConversationTag(name: String) {
+        viewModelScope.launch {
+            settingsStore.update { s ->
+                val newTag = me.rerere.rikkahub.data.model.Tag(id = Uuid.random(), name = name.trim())
+                s.copy(conversationTags = s.conversationTags + newTag)
+            }
+        }
+    }
+    // [FORK] 临时对话：将临时对话转为永久保存
+    fun saveTemporaryConversation() {
+        viewModelScope.launch {
+            val current = conversation.value.copy(isTemporary = false)
+            chatService.updateConversationState(_conversationId) { current }
+            chatService.saveConversation(_conversationId, current)
+        }
+    }
+
+    // [FORK] 临时对话：在导航前预登记新对话 ID，导航后由 ChatVM.init 消费
+    fun prepareTemporaryConversation(): Uuid {
+        val newId = Uuid.random()
+        chatService.schedulePendingTemporary(newId)
+        return newId
     }
 
 }

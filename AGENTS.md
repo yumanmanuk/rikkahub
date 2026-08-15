@@ -1,6 +1,7 @@
 # Repository Guidelines
 
-本文档面向贡献者，概述本仓库的模块结构、开发流程与提交规范，便于快速上手并保持一致的协作质量。
+本文档面向贡献者，概述本仓库的模块结构、开发流程，便于快速上手并保持一致的协作质量。
+
 
 ## Build, Test, and Development Commands
 
@@ -14,6 +15,37 @@
 ```
 
 构建应用需要在 `app/` 下提供 `google-services.json`（用于 Firebase）。
+`web` 模块会在 `preBuild` 阶段构建 `web-ui/` 并复制静态资源，需要本地可用 `pnpm`。
+
+## Import 规则
+
+编写 Kotlin 代码时，**每次引用一个新的类、函数或扩展函数，必须同时添加对应的 `import` 语句**。不要使用完全限定名（fully qualified name）直接写在代码中，例如：
+
+```kotlin
+// ❌ 错误：缺少 import，且使用完全限定名
+sh.calvin.reorderable.ReorderableItem(reorderState, key = tag.id.toString()) { ... }
+
+// ✅ 正确：先 import，再直接使用
+import sh.calvin.reorderable.ReorderableItem
+ReorderableItem(reorderState, key = tag.id.toString()) { ... }
+```
+
+常见的容易遗漏 import 的场景：
+
+- `ColumnScope` / `RowScope` — `import androidx.compose.foundation.layout.ColumnScope`
+- `ReorderableItem` / `rememberReorderableLazyListState` — `import sh.calvin.reorderable.XXX`
+- `longPressDraggableHandle` — reorderable 库的扩展函数
+- `HugeIcons` 及各类图标 — `import me.rerere.hugeicons.HugeIcons` / `import me.rerere.hugeicons.stroke.XXX`
+- `LocalToaster.current` — `import me.rerere.rikkahub.ui.components.ui.LocalToaster`
+- `rememberLazyListState` — `import androidx.compose.foundation.lazy.rememberLazyListState`（与 `LazyListState` 是两个独立的 import，缺一个就会报错）
+- `rememberScrollState` / `verticalScroll` / `horizontalScroll` — `import androidx.compose.foundation.rememberScrollState` / `import androidx.compose.foundation.verticalScroll`
+- `collectAsStateWithLifecycle` — `import androidx.lifecycle.compose.collectAsStateWithLifecycle`
+- `toPaddingValues` / `asPaddingValues` 等扩展函数 — 注意对应包路径
+
+> ❗️ **重要提示（AI 助手必读）**：每次向现有文件新增一个类、函数、扩展函数的引用，必须先检查文件头部是否已有对应 `import`。
+> 就算同个包下的不同类（如 `LazyListState` 和 `rememberLazyListState`）也各自需要独立的 import，不要假定已包含。
+
+**在提交代码前，确保编译通过**（`./gradlew assembleDebug`），避免因遗漏 import 导致构建失败。
 
 ## Coding Style & Naming Conventions
 
@@ -23,7 +55,7 @@
 - XML/JSON：2 空格缩进。
 - Markdown/YAML：2 空格缩进，允许尾随空格（用于对齐）。
 
-命名习惯：模块名为小写目录（如 `ai/`、`tts/`），Kotlin 类遵循 PascalCase，测试类以 `*Test` 结尾。
+命名习惯：模块名为小写目录（如 `ai/`、`speech/`），Kotlin 类遵循 PascalCase，测试类以 `*Test` 结尾。
 
 ## Testing Guidelines
 
@@ -37,12 +69,14 @@
 - **app**: Main application module with UI, ViewModels, and core logic
 - **ai**: AI SDK abstraction layer for different providers (OpenAI, Google, Anthropic)
 - **common**: Common utilities and extensions
-- **document**: Document parsing module for handling PDF, DOCX, and PPTX files
+- **document**: Document parsing module for handling PDF, DOCX, PPTX, and EPUB files
 - **highlight**: Code syntax highlighting implementation
-- **search**: Search functionality SDK (Exa, Tavily, Zhipu)
-- **tts**: Text-to-speech implementation for different providers
+- **material3**: Material color utility extensions used by the app UI
+- **search**: Search functionality SDK for multiple providers (Exa, Tavily, Zhipu, Bing, Brave, SearXNG, and others)
+- **speech**: Speech module for TTS and ASR implementations
 - **web**: Embedded web server module that provides Ktor server startup function and hosts static frontend build files (
   built from web-ui/ React project)
+- **workspace**: Sandboxed per-workspace file system and shell execution environment exposed to the AI as tools.
 
 ## Concepts
 
@@ -53,7 +87,7 @@
 
 - **Conversation**: A persistent conversation thread between the user and an assistant. Each conversation maintains a
   list of MessageNodes in a tree structure to support message branching, along with metadata like title, creation time,
-  and pin status. Conversations can be truncated at a specific index and maintain chat suggestions. (
+  update time, pin status, chat suggestions, optional conversation-level system prompt, and prompt injection bindings. (
   app/src/main/java/me/rerere/rikkahub/data/model/Conversation.kt)
 
 - **UIMessage**: A platform-agnostic message abstraction that encapsulates chat messages with different types of content
@@ -83,9 +117,50 @@
 
 ## Internationalization
 
-- String resources located in `app/src/main/res/values-*/strings.xml`
+- String resources are usually located in `app/src/main/res/values*/strings.xml`; feature modules such as `search`
+  may also maintain their own `values*/strings.xml`
 - Use `stringResource(R.string.key_name)` in Compose
 - Page-specific strings should use page prefix (e.g., `setting_page_`)
 - If the user does not explicitly request localization, prioritize implementing functionality without considering
   localization. (e.g `Text("Hello world")`)
 - For `locale-tui` operations, use the `locale-tui-localization` skill.
+
+## Database Migration
+
+数据库迁移使用 Room 的 `AutoMigration` 或手动 `Migration`，相关文件：
+
+- 数据库定义：`app/src/main/java/me/rerere/rikkahub/data/db/AppDatabase.kt`
+- 手动迁移：`app/src/main/java/me/rerere/rikkahub/data/db/migrations/`
+- 备份/恢复：`app/src/main/java/me/rerere/rikkahub/data/sync/webdav/WebDavSync.kt`
+
+### 每次新增 schema 变更时必须做
+
+1. **递增 `version`**（`@Database` 注解）
+2. **同步更新 `AppDatabase.VERSION` 常量**（`companion object` 中），供备份恢复逻辑动态引用
+3. **添加对应 migration**：简单增删列用 `AutoMigration`，需要 schema 约束修复的用手动 `Migration`
+
+```kotlin
+// AppDatabase.kt 示例
+@Database(version = 20, autoMigrations = [
+    ...
+    AutoMigration(from = 19, to = 20),
+])
+abstract class AppDatabase : RoomDatabase() {
+    companion object {
+        const val VERSION = 20  // 必须与 @Database.version 保持一致
+    }
+}
+```
+
+### 手动 Migration 编写规范
+
+- **新增列**：使用 `ALTER TABLE ... ADD COLUMN`，用 `try-catch` 忽略 duplicate 错误（兼容旧备份恢复场景）
+- **修改列约束**（如 nullable → NOT NULL）：必须用**重建表**方式，不能只用 `ALTER TABLE`
+  - `CREATE TABLE new_table`（含正确约束）→ `INSERT ... SELECT` → `DROP TABLE old` → `RENAME`
+  - 用 `COALESCE(col, default)` 处理旧数据中可能的 NULL 值
+
+### 备份/恢复注意事项
+
+- **备份时**：在复制 `.db` 文件前执行 `PRAGMA wal_checkpoint(FULL)`，确保 WAL 数据写入主文件、`user_version` 准确
+- **恢复时**：`fixRestoredDbSchema` 会自动将备份 DB 的版本设为 `AppDatabase.VERSION - 1`，触发最后一个 Migration 做 schema 修复，**无需手动维护版本号**
+- 不要在 `fixRestoredDbSchema` 中手动预添加列，应由 Migration 统一处理

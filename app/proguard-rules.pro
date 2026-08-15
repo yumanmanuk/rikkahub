@@ -45,3 +45,40 @@
 -keepattributes Signature, InnerClasses, EnclosingMethod
 -keep class com.fasterxml.jackson.** { *; }
 -keep class com.auth0.jwt.** { *; }
+
+# R8 missing classes: suppressed warnings from transitive dependencies
+# (log4j, Jetty ALPN/NPN, reactor-blockhound - not used at runtime on Android)
+-dontwarn org.apache.log4j.Level
+-dontwarn org.apache.log4j.Logger
+-dontwarn org.apache.log4j.Priority
+-dontwarn org.apache.logging.log4j.Level
+-dontwarn org.apache.logging.log4j.LogManager
+-dontwarn org.apache.logging.log4j.Logger
+-dontwarn org.apache.logging.log4j.message.MessageFactory
+-dontwarn org.apache.logging.log4j.spi.ExtendedLogger
+-dontwarn org.apache.logging.log4j.spi.ExtendedLoggerWrapper
+-dontwarn org.eclipse.jetty.alpn.ALPN$ClientProvider
+-dontwarn org.eclipse.jetty.alpn.ALPN$Provider
+-dontwarn org.eclipse.jetty.alpn.ALPN$ServerProvider
+-dontwarn org.eclipse.jetty.alpn.ALPN
+-dontwarn org.eclipse.jetty.npn.NextProtoNego$ClientProvider
+-dontwarn org.eclipse.jetty.npn.NextProtoNego$Provider
+-dontwarn org.eclipse.jetty.npn.NextProtoNego$ServerProvider
+-dontwarn org.eclipse.jetty.npn.NextProtoNego
+-dontwarn reactor.blockhound.integration.BlockHoundIntegration
+
+# gRPC Netty shaded: 传递依赖引入，Android 运行时不使用，忽略缺失警告
+-dontwarn io.grpc.netty.shaded.io.grpc.netty.GrpcSslContexts
+-dontwarn io.grpc.netty.shaded.io.grpc.netty.InternalNettyChannelCredentials
+-dontwarn io.grpc.netty.shaded.io.grpc.netty.InternalProtocolNegotiator$ClientFactory
+-dontwarn io.grpc.netty.shaded.io.grpc.netty.NettyChannelBuilder
+-dontwarn io.grpc.netty.shaded.io.netty.channel.EventLoopGroup
+-dontwarn io.grpc.netty.shaded.io.netty.channel.nio.NioEventLoopGroup
+-dontwarn io.grpc.netty.shaded.io.netty.channel.socket.nio.NioSocketChannel
+-dontwarn io.grpc.netty.shaded.io.netty.handler.ssl.SslContext
+-dontwarn io.grpc.netty.shaded.io.netty.handler.ssl.SslContextBuilder
+-dontwarn io.grpc.netty.shaded.io.netty.util.AsciiString
+-dontwarn io.grpc.netty.shaded.io.netty.util.concurrent.DefaultThreadFactory
+-dontwarn io.grpc.netty.shaded.io.netty.util.concurrent.Future
+-dontwarn io.grpc.util.MultiChildLoadBalancer$AcceptResolvedAddrRetVal
+

@@ -5,6 +5,7 @@ import me.rerere.rikkahub.data.db.dao.FavoriteDAO
 import me.rerere.rikkahub.data.db.entity.FavoriteEntity
 import me.rerere.rikkahub.data.favorite.NodeFavoriteAdapter
 import me.rerere.rikkahub.data.model.FavoriteType
+import me.rerere.rikkahub.data.model.NodeFavoriteRef
 import me.rerere.rikkahub.data.model.NodeFavoriteTarget
 import kotlin.uuid.Uuid
 
@@ -38,6 +39,24 @@ class FavoriteRepository(
 
     suspend fun removeNodeFavorite(conversationId: Uuid, nodeId: Uuid): Int {
         return dao.deleteByRefKey(NodeFavoriteAdapter.buildRefKey(conversationId.toString(), nodeId.toString()))
+    }
+
+
+    suspend fun getNodeFavoriteRefsOfConversation(conversationId: Uuid): List<NodeFavoriteRef> {
+        return dao.getFavoriteEntitiesOfConversation(conversationId.toString())
+            .mapNotNull { NodeFavoriteAdapter.decodeRef(it) }
+    }
+
+    suspend fun removeNodeFavorites(conversationId: Uuid, nodeIds: List<Uuid>): Int {
+        if (nodeIds.isEmpty()) return 0
+        return dao.deleteByNodeIds(
+            conversationId.toString(),
+            nodeIds.map { it.toString() }
+        )
+    }
+
+    suspend fun removeAllNodeFavoritesOfConversation(conversationId: Uuid): Int {
+        return dao.deleteAllOfConversation(conversationId.toString())
     }
 
     suspend fun isNodeFavorited(conversationId: Uuid, nodeId: Uuid): Boolean {

@@ -1,11 +1,13 @@
 package me.rerere.rikkahub.data.sync.webdav
 
 import android.content.Context
+import android.database.sqlite.SQLiteDatabase
 import android.util.Log
 import io.ktor.client.HttpClient
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
+import me.rerere.rikkahub.data.db.AppDatabase
 import me.rerere.rikkahub.data.files.FileFolders
 import me.rerere.rikkahub.data.files.SkillPaths
 import me.rerere.rikkahub.data.datastore.Settings
@@ -23,6 +25,7 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
 
+
 private const val TAG = "WebDavSync"
 
 class WebDavSync(
@@ -30,6 +33,7 @@ class WebDavSync(
     private val json: Json,
     private val context: Context,
     private val httpClient: HttpClient,
+    private val appDatabase: AppDatabase,
 ) {
     private fun getClient(config: WebDavConfig): WebDavClient {
         return WebDavClient(config, httpClient)
@@ -151,17 +155,28 @@ class WebDavSync(
             if (config.items.contains(WebDavConfig.BackupItem.DATABASE)) {
                 val dbFile = context.getDatabasePath("rikka_hub")
                 if (dbFile.exists()) {
+                    // 关闭 Room 释放所有 SQLite handle，消除连接竞争
+                    try {
+                        appDatabase.close()
+                        Log.i(TAG, "prepareBackupFile: Room database closed")
+                    } catch (e: Exception) {
+                        Log.w(TAG, "prepareBackupFile: Failed to close Room (non-fatal)", e)
+                    }
+
+                    // TRUNCATE checkpoint：将所有已 commit 数据写入主 db 并重置 WAL
+                    // 完成后主 db 已包含全部数据，无需再单独备份 wal/shm
+                    try {
+                        SQLiteDatabase.openDatabase(
+                            dbFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE
+                        ).use { db ->
+                            db.execSQL("PRAGMA wal_checkpoint(TRUNCATE)")
+                            Log.i(TAG, "prepareBackupFile: WAL checkpoint(TRUNCATE) completed")
+                        }
+                    } catch (e: Exception) {
+                        Log.w(TAG, "prepareBackupFile: WAL checkpoint failed (non-fatal)", e)
+                    }
+
                     addFileToZip(zipOut, dbFile, "rikka_hub.db")
-                }
-
-                val walFile = File(dbFile.parentFile, "rikka_hub-wal")
-                if (walFile.exists()) {
-                    addFileToZip(zipOut, walFile, "rikka_hub-wal")
-                }
-
-                val shmFile = File(dbFile.parentFile, "rikka_hub-shm")
-                if (shmFile.exists()) {
-                    addFileToZip(zipOut, shmFile, "rikka_hub-shm")
                 }
             }
 
@@ -190,6 +205,18 @@ class WebDavSync(
                     )
                 } else {
                     Log.w(TAG, "prepareBackupFile: Skills folder does not exist or is not a directory")
+                }
+
+                val fontsFolder = File(context.filesDir, FileFolders.FONTS)
+                if (fontsFolder.exists() && fontsFolder.isDirectory) {
+                    Log.i(TAG, "prepareBackupFile: Backing up fonts from ${fontsFolder.absolutePath}")
+                    fontsFolder.listFiles()?.forEach { file ->
+                        if (file.isFile) {
+                            addFileToZip(zipOut, file, "${FileFolders.FONTS}/${file.name}")
+                        }
+                    }
+                } else {
+                    Log.w(TAG, "prepareBackupFile: Fonts folder does not exist or is not a directory")
                 }
             }
         }
@@ -225,38 +252,35 @@ class WebDavSync(
                             }
                         }
 
-                        "rikka_hub.db", "rikka_hub-wal", "rikka_hub-shm" -> {
+                        "rikka_hub.db" -> {
                             if (config.items.contains(WebDavConfig.BackupItem.DATABASE)) {
-                                val dbFile = when (zipEntry.name) {
-                                    "rikka_hub.db" -> context.getDatabasePath("rikka_hub")
-                                    "rikka_hub-wal" -> File(
-                                        context.getDatabasePath("rikka_hub").parentFile,
-                                        "rikka_hub-wal"
-                                    )
+                                val dbFile = context.getDatabasePath("rikka_hub")
 
-                                    "rikka_hub-shm" -> File(
-                                        context.getDatabasePath("rikka_hub").parentFile,
-                                        "rikka_hub-shm"
-                                    )
-
-                                    else -> null
+                                // 关闭 Room 释放所有 SQLite handle
+                                try {
+                                    appDatabase.close()
+                                    Log.i(TAG, "restoreFromBackupFile: Room database closed")
+                                } catch (e: Exception) {
+                                    Log.w(TAG, "restoreFromBackupFile: Failed to close Room (non-fatal)", e)
                                 }
 
-                                dbFile?.let { targetFile ->
-                                    Log.i(
-                                        TAG,
-                                        "restoreFromBackupFile: Restoring ${zipEntry.name} to ${targetFile.absolutePath}"
-                                    )
-                                    targetFile.parentFile?.mkdirs()
-                                    FileOutputStream(targetFile).use { outputStream ->
-                                        zipIn.copyTo(outputStream)
-                                    }
-                                    Log.i(
-                                        TAG,
-                                        "restoreFromBackupFile: Restored ${zipEntry.name} (${targetFile.length()} bytes)"
-                                    )
+                                // 删除旧的 wal/shm，避免旧 WAL 帧干扰新主 db
+                                val parentDir = dbFile.parentFile
+                                File(parentDir, "rikka_hub-wal").let { if (it.exists()) it.delete() }
+                                File(parentDir, "rikka_hub-shm").let { if (it.exists()) it.delete() }
+
+                                Log.i(TAG, "restoreFromBackupFile: Restoring rikka_hub.db to ${dbFile.absolutePath}")
+                                dbFile.parentFile?.mkdirs()
+                                FileOutputStream(dbFile).use { outputStream ->
+                                    zipIn.copyTo(outputStream)
                                 }
+                                Log.i(TAG, "restoreFromBackupFile: Restored rikka_hub.db (${dbFile.length()} bytes)")
                             }
+                        }
+
+                        // wal/shm 不再恢复：恢复时已删除旧 wal/shm，SQLite 启动时会自动重建
+                        "rikka_hub-wal", "rikka_hub-shm" -> {
+                            Log.i(TAG, "restoreFromBackupFile: Skipping legacy entry ${zipEntry.name}")
                         }
 
                         else -> {
@@ -294,6 +318,21 @@ class WebDavSync(
                                 zipEntry.name.startsWith("${FileFolders.SKILLS}/")
                             ) {
                                 restoreSkillEntry(zipIn, zipEntry.name)
+                            } else if (config.items.contains(WebDavConfig.BackupItem.FILES) &&
+                                zipEntry.name.startsWith("${FileFolders.FONTS}/")
+                            ) {
+                                val fileName = zipEntry.name.substringAfter("${FileFolders.FONTS}/")
+                                if (fileName.isNotEmpty() && !fileName.contains('/')) {
+                                    val fontsFolder = File(context.filesDir, FileFolders.FONTS).apply { mkdirs() }
+                                    val targetFile = File(fontsFolder, fileName)
+                                    FileOutputStream(targetFile).use { outputStream ->
+                                        zipIn.copyTo(outputStream)
+                                    }
+                                    Log.i(
+                                        TAG,
+                                        "restoreFromBackupFile: Restored ${zipEntry.name} (${targetFile.length()} bytes)"
+                                    )
+                                }
                             } else {
                                 Log.i(TAG, "restoreFromBackupFile: Skipping entry ${zipEntry.name}")
                             }
@@ -303,6 +342,10 @@ class WebDavSync(
                     zipIn.closeEntry()
                 }
             }
+        }
+
+        if (config.items.contains(WebDavConfig.BackupItem.DATABASE)) {
+            fixRestoredDbSchema(context)
         }
 
         Log.i(TAG, "restoreFromBackupFile: Restore completed successfully")
@@ -375,6 +418,38 @@ class WebDavSync(
         zipOut.write(content.toByteArray())
         zipOut.closeEntry()
         Log.i(TAG, "addVirtualFileToZip: $name (${content.length} bytes)")
+    }
+
+    private fun fixRestoredDbSchema(context: Context) {
+        val dbPath = context.getDatabasePath("rikka_hub")
+        if (!dbPath.exists()) return
+        try {
+            SQLiteDatabase.openDatabase(dbPath.absolutePath, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+                // WAL checkpoint 确保所有数据写入主 db 文件
+                try { db.execSQL("PRAGMA wal_checkpoint(FULL)") } catch (_: Exception) {}
+
+                // 读取备份数据库的实际版本号
+                val currentVersion = db.rawQuery("PRAGMA user_version", null)
+                    .use { c -> if (c.moveToFirst()) c.getInt(0) else 0 }
+                Log.i(TAG, "fixRestoredDbSchema: backup DB user_version = $currentVersion")
+
+                val targetVersion = AppDatabase.VERSION
+                if (currentVersion >= targetVersion) {
+                    // 备份已是最新版本，强制标记为当前版本（防止意外的 user_version 偏移）
+                    db.execSQL("PRAGMA user_version = $targetVersion")
+                    Log.i(TAG, "fixRestoredDbSchema: already up-to-date, set to $targetVersion")
+                } else {
+                    // 备份版本低于当前版本，保持原始 user_version 不变
+                    // Room 会在 app 启动时自动从 currentVersion 逐步迁移到 targetVersion
+                    // 所有迁移均已注册（@AutoMigration + .addMigrations() 手动迁移）
+                    // 注意：不能强制设为 VERSION-1，否则会跳过中间迁移（如 22→23），
+                    //       导致后续迁移引用的列（如 conversation_tag_id）不存在而崩溃
+                    Log.i(TAG, "fixRestoredDbSchema: backup at v$currentVersion, Room will run all migrations up to v$targetVersion")
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "fixRestoredDbSchema: failed (non-fatal)", e)
+        }
     }
 }
 

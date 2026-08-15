@@ -14,6 +14,7 @@ import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.datastore.getCurrentAssistant
 import me.rerere.rikkahub.data.model.Conversation
 import me.rerere.rikkahub.data.repository.ConversationRepository
+import me.rerere.rikkahub.service.ChatService
 import kotlin.uuid.Uuid
 
 private const val TAG = "HistoryVM"
@@ -21,6 +22,7 @@ private const val TAG = "HistoryVM"
 class HistoryVM(
     private val conversationRepo: ConversationRepository,
     private val settingsStore: SettingsStore,
+    private val chatService: ChatService,
 ) : ViewModel() {
     val assistant = settingsStore.settingsFlow
         .map { it.getCurrentAssistant() }
@@ -32,8 +34,19 @@ class HistoryVM(
         Log.e(TAG, "Error: ${it.message}")
     }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
+    fun searchConversations(query: String): Flow<List<Conversation>> {
+        val currentAssistant = assistant.value
+        return if (currentAssistant != null) {
+            conversationRepo.searchConversationsOfAssistant(currentAssistant.id, query)
+        } else {
+            conversationRepo.searchConversations(query)
+        }
+    }
+
     fun deleteConversation(conversation: Conversation) {
         viewModelScope.launch {
+            // 先标记已删除，防止并发中的异步任务（如生成标题）在删库后重新将其 insert 回数据库
+            chatService.markConversationDeleted(conversation.id)
             conversationRepo.deleteConversation(conversation)
         }
     }
@@ -63,4 +76,5 @@ class HistoryVM(
     suspend fun getFullConversation(conversationId: Uuid): Conversation? {
         return conversationRepo.getConversationById(conversationId)
     }
+
 }

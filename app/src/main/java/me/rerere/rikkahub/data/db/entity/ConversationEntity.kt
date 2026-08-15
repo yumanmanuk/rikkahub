@@ -24,4 +24,14 @@ data class ConversationEntity(
     val isPinned: Boolean,
     @ColumnInfo("conversation_params", defaultValue = "{}")
     val conversationParams: String = "{}",
+    @ColumnInfo("mode_injection_ids", defaultValue = "[]")
+    val modeInjectionIds: String = "[]",
+    @ColumnInfo("lorebook_ids", defaultValue = "[]")
+    val lorebookIds: String = "[]",
+    @ColumnInfo("conversation_tag_id", defaultValue = "")
+    val conversationTagId: String? = "",
+    @ColumnInfo("workspace_cwd", defaultValue = "")
+    val workspaceCwd: String = "",
+    @ColumnInfo("folder_id", defaultValue = "")
+    val folderId: String = "",
 )

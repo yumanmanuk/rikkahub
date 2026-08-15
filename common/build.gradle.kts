@@ -3,11 +3,12 @@ import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
     alias(libs.plugins.android.library)
+    alias(libs.plugins.kotlin.serialization)
 }
 
 android {
     namespace = "me.rerere.common"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         minSdk = 26
@@ -51,12 +52,15 @@ dependencies {
 
     // floating
     // https://github.com/Petterpx/FloatingX
-    api("io.github.petterpx:floatingx:2.3.7")
-    api("io.github.petterpx:floatingx-compose:2.3.7")
+    api(libs.floatingx)
+    api(libs.floatingx.compose)
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)
     implementation(libs.material)
+
+    // quickjs
+    api(libs.quickjs)
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

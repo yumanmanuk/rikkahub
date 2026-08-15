@@ -18,7 +18,7 @@ import kotlinx.coroutines.launch
 import me.rerere.tts.model.PlaybackState
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.datastore.getSelectedTTSProvider
-import me.rerere.rikkahub.utils.stripMarkdown
+import me.rerere.rikkahub.utils.stripMarkdownForTts
 import me.rerere.tts.model.TTSResponse
 import me.rerere.tts.provider.TTSManager
 import me.rerere.tts.provider.TTSProviderSetting
@@ -110,6 +110,18 @@ interface CustomTtsState {
     /** Set playback [speed]. */
     fun setSpeed(speed: Float)
 
+    /**
+     * 当前 provider 是否是 SystemTTS(决定是否在浮窗显示"重建引擎"按钮)。
+     * 用于在云端 TTS 场景下隐藏"重建"按钮。
+     */
+    fun isSystemTtsActive(): Boolean
+
+    /**
+     * 主动请求重建 SystemTTS 引擎(用于消除累积的 vocoder 漂移 / 偶发杂音)。
+     * 仅对 SystemTTS provider 生效,云端 provider 是 no-op。
+     */
+    fun resetEngine()
+
     /** Cleanup resources. */
     fun cleanup()
 }
@@ -140,7 +152,7 @@ private class CustomTtsStateImpl(
     }
 
     override fun speak(text: String, flushCalled: Boolean) {
-        val processed = text.stripMarkdown()
+        val processed = text.stripMarkdownForTts()
         // 启动前台服务，防止后台/锁屏时被杀进程
         try {
             val intent = Intent(context, TtsPlaybackService::class.java).apply {
@@ -178,6 +190,13 @@ private class CustomTtsStateImpl(
 
     override fun setSpeed(speed: Float) {
         controller.setSpeed(speed)
+    }
+
+    override fun isSystemTtsActive(): Boolean = controller.isSystemTtsActive()
+
+    override fun resetEngine() {
+        controller.resetSystemTtsEngine()
+        Log.i(TAG, "TTS engine reset requested by user via floating window")
     }
 
     override fun cleanup() {

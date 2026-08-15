@@ -1,8 +1,11 @@
 package me.rerere.ai.provider.providers.openai
 
 import android.util.Log
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.channels.onFailure
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.buffer
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArrayBuilder
@@ -31,9 +34,12 @@ import me.rerere.ai.provider.providers.PartGroup
 import me.rerere.ai.provider.providers.groupPartsByToolBoundary
 import me.rerere.ai.registry.ModelRegistry
 import me.rerere.ai.ui.MessageChunk
+import me.rerere.ai.ui.OpenAIReasoningMetadata
 import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessageChoice
 import me.rerere.ai.ui.UIMessagePart
+import me.rerere.ai.ui.metadataAs
+import me.rerere.ai.ui.toMetadata
 import me.rerere.ai.util.KeyRoulette
 import me.rerere.ai.util.configureReferHeaders
 import me.rerere.ai.util.encodeBase64
@@ -73,10 +79,16 @@ class ResponseAPI(
             params = params,
             stream = false,
         )
+        val encoded = json.encodeToString(requestBody)
+        if (encoded.length < 600_000) {
+            Log.i(TAG, "generateText: $encoded")
+        } else {
+            Log.i(TAG, "generateText: (request body too large to log, size=${encoded.length})")
+        }
         val request = Request.Builder()
             .url("${providerSetting.baseUrl}/responses")
             .headers(params.customHeaders.toHeaders())
-            .post(json.encodeToString(requestBody).toRequestBody("application/json".toMediaType()))
+            .post(encoded.toRequestBody("application/json".toMediaType()))
             .addHeader(
                 "Authorization",
                 "Bearer ${keyRoulette.next(providerSetting.apiKey, providerSetting.id.toString())}"
@@ -85,15 +97,12 @@ class ResponseAPI(
             .configureReferHeaders(providerSetting.baseUrl)
             .build()
 
-        Log.i(TAG, "generateText: ${json.encodeToString(requestBody)}")
-
         val response = client.newCall(request).await()
         if (!response.isSuccessful) {
             throw Exception("Failed to get response: ${response.code} ${response.body.string()}")
         }
 
         val bodyStr = response.body?.string() ?: ""
-        Log.i(TAG, "generateText: $bodyStr")
         val bodyJson = json.parseToJsonElement(bodyStr).jsonObject
         val output = parseResponseOutput(bodyJson)
 
@@ -111,18 +120,22 @@ class ResponseAPI(
             params = params,
             stream = true,
         )
+        val encoded = json.encodeToString(requestBody)
+        if (encoded.length < 600_000) {
+            Log.i(TAG, "streamText: $encoded")
+        } else {
+            Log.i(TAG, "streamText: (request body too large to log, size=${encoded.length})")
+        }
         val request = Request.Builder()
             .url("${providerSetting.baseUrl}/responses")
             .headers(params.customHeaders.toHeaders())
-            .post(json.encodeToString(requestBody).toRequestBody("application/json".toMediaType()))
+            .post(encoded.toRequestBody("application/json".toMediaType()))
             .addHeader(
                 "Authorization",
                 "Bearer ${keyRoulette.next(providerSetting.apiKey, providerSetting.id.toString())}"
             )
             .configureReferHeaders(providerSetting.baseUrl)
             .build()
-
-        Log.i(TAG, "streamText: ${json.encodeToString(requestBody)}")
 
         val listener = object : EventSourceListener() {
             override fun onEvent(
@@ -139,7 +152,9 @@ class ResponseAPI(
                 val json = json.parseToJsonElement(data).jsonObject
                 val chunk = parseResponseDelta(json)
                 if (chunk != null) {
-                    trySend(chunk)
+                    trySend(chunk).onFailure { e ->
+                        Log.w(TAG, "onEvent: chunk dropped (${e?.message})")
+                    }
                 }
                 if (type == "response.completed") {
                     close()
@@ -180,7 +195,8 @@ class ResponseAPI(
             println("[awaitClose] 关闭eventSource ")
             eventSource.cancel()
         }
-    }
+        // trySend 在缓冲满时会静默丢弃 delta，导致回复中间缺字 (#1295)，因此缓冲必须无界
+    }.buffer(Channel.UNLIMITED)
 
     internal fun buildRequestBody(
         providerSetting: ProviderSetting.OpenAI,
@@ -193,9 +209,7 @@ class ResponseAPI(
         return buildJsonObject {
             put("model", params.model.modelId)
             put("stream", stream)
-            if (!params.model.tools.contains(BuiltInTools.ImageGeneration)) {
-                put("store", false)
-            }
+            put("store", false)
 
             if (isModelAllowTemperature(params.model)) {
                 if (params.temperature != null) put("temperature", params.temperature)
@@ -212,10 +226,10 @@ class ResponseAPI(
             }
 
             // messages
-            put("input", buildMessages(messages))
+            put("input", buildMessages(messages, providerSetting.includeHistoryReasoning))
 
             // reasoning
-            if (params.model.abilities.contains(ModelAbility.REASONING)) {
+            if (params.model.abilities.contains(ModelAbility.REASONING) && params.reasoningLevel != null) {
                 val level = params.reasoningLevel
                 put("reasoning", buildJsonObject {
                     if (capabilities.supportsReasoningSummary) {
@@ -233,26 +247,28 @@ class ResponseAPI(
             }
 
             // tools
-            if (params.model.abilities.contains(ModelAbility.TOOL) && params.tools.isNotEmpty()) {
+            // Response API 的 tools 是扁平数组, 函数工具和内置工具可以共存, 必须写在同一个 key 下,
+            // 否则后写入的会覆盖前者
+            val useFunctionTools =
+                params.model.abilities.contains(ModelAbility.TOOL) && params.tools.isNotEmpty()
+            if (useFunctionTools || params.model.tools.isNotEmpty()) {
                 putJsonArray("tools") {
-                    params.tools.forEach { tool ->
-                        add(buildJsonObject {
-                            put("type", "function")
-                            put("name", tool.name)
-                            put("description", tool.description)
-                            put(
-                                "parameters",
-                                json.encodeToJsonElement(
-                                    tool.parameters()
+                    if (useFunctionTools) {
+                        params.tools.forEach { tool ->
+                            add(buildJsonObject {
+                                put("type", "function")
+                                put("name", tool.name)
+                                put("description", tool.description)
+                                put(
+                                    "parameters",
+                                    json.encodeToJsonElement(
+                                        tool.parameters()
+                                    )
                                 )
-                            )
-                        })
+                            })
+                        }
                     }
-                }
-            }
-            // built-in tools
-            if (params.model.tools.isNotEmpty()) {
-                putJsonArray("tools") {
+                    // built-in tools
                     params.model.tools.forEach { builtInTool ->
                         when (builtInTool) {
                             BuiltInTools.Search -> {
@@ -276,19 +292,19 @@ class ResponseAPI(
         }.mergeCustomBody(params.customBody)
     }
 
-    internal fun buildMessages(messages: List<UIMessage>) = buildJsonArray {
+    internal fun buildMessages(messages: List<UIMessage>, includeHistoryReasoning: Boolean = true) = buildJsonArray {
         messages
             .filter { it.isValidToUpload() && it.role != MessageRole.SYSTEM }
             .forEach { message ->
                 if (message.role == MessageRole.ASSISTANT) {
-                    addAssistantItems(message)
+                    addAssistantItems(message, includeHistoryReasoning)
                 } else {
                     addUserItems(message)
                 }
             }
     }
 
-    private fun JsonArrayBuilder.addAssistantItems(message: UIMessage) {
+    private fun JsonArrayBuilder.addAssistantItems(message: UIMessage, includeHistoryReasoning: Boolean) {
         val groups = groupPartsByToolBoundary(message.parts)
         val contentBuffer = mutableListOf<UIMessagePart>()
 
@@ -298,46 +314,43 @@ class ResponseAPI(
                     group.parts.forEach { part ->
                         when (part) {
                             is UIMessagePart.Reasoning -> {
-                                // 先输出累积的文本/图片内容
+                                // flush pending text/image before emitting reasoning item
                                 if (contentBuffer.isNotEmpty()) {
                                     addContentItem(MessageRole.ASSISTANT, contentBuffer)
                                     contentBuffer.clear()
                                 }
-                                // 输出 reasoning item
+                                // includeHistoryReasoning gates the optional summary text;
+                                // id + encrypted_content are the Responses API chain anchors and stay on.
+                                val reasoningMetadata = part.metadataAs<OpenAIReasoningMetadata>()
+                                val reasoningId = reasoningMetadata?.reasoningId
+                                val encryptedContent = reasoningMetadata?.encryptedContent
+                                // If history reasoning is disabled and there is no chain anchor, skip the item entirely.
+                                if (!includeHistoryReasoning && reasoningId == null && encryptedContent == null) {
+                                    return@forEach
+                                }
                                 add(buildJsonObject {
                                     put("type", "reasoning")
-                                    part.metadata?.get("reasoning_id")?.jsonPrimitiveOrNull?.contentOrNull?.let {
-                                        put("id", it)
-                                    }
+                                    reasoningId?.let { put("id", it) }
+                                    // summary 字段是 Responses API 的必填字段，不能省略
+                                    // includeHistoryReasoning=false 时发送空数组，不回传思考内容但满足 API 约束
                                     put("summary", buildJsonArray {
-                                        add(buildJsonObject {
-                                            put("type", "summary_text")
-                                            put("text", part.reasoning)
-                                        })
+                                        if (includeHistoryReasoning) {
+                                            add(buildJsonObject {
+                                                put("type", "summary_text")
+                                                put("text", part.reasoning)
+                                            })
+                                        }
                                     })
-                                    part.metadata?.get("encrypted_content")?.jsonPrimitiveOrNull?.contentOrNull?.let {
-                                        put(
-                                            "encrypted_content",
-                                            part.metadata?.get("encrypted_content")?.jsonPrimitive?.contentOrNull ?: ""
-                                        )
-                                    }
+                                    encryptedContent?.let { put("encrypted_content", it) }
                                 })
                             }
 
                             is UIMessagePart.Image -> {
-                                val callId = part.metadata?.get("openai_image_call_id")?.jsonPrimitive?.contentOrNull
-                                if (callId != null) {
-                                    if (contentBuffer.isNotEmpty()) {
-                                        addContentItem(MessageRole.ASSISTANT, contentBuffer)
-                                        contentBuffer.clear()
-                                    }
-                                    add(buildJsonObject {
-                                        put("type", "image_generation_call")
-                                        put("id", callId)
-                                    })
-                                } else {
-                                    contentBuffer.add(part)
+                                if (contentBuffer.isNotEmpty()) {
+                                    addContentItem(MessageRole.ASSISTANT, contentBuffer)
+                                    contentBuffer.clear()
                                 }
+                                addContentItem(MessageRole.USER, listOf(part))
                             }
 
                             is UIMessagePart.Text -> {
@@ -362,14 +375,42 @@ class ResponseAPI(
                             put("type", "function_call")
                             put("call_id", tool.toolCallId)
                             put("name", tool.toolName)
-                            put("arguments", tool.input)
+                            // 使用 inputAsJson() 归一化，避免流式中断导致的残缺 JSON 被发送
+                            put("arguments", tool.inputAsJson().toString())
                         })
                         add(buildJsonObject {
                             put("type", "function_call_output")
                             put("call_id", tool.toolCallId)
-                            put(
-                                "output",
-                                tool.output.filterIsInstance<UIMessagePart.Text>().joinToString("\n") { it.text })
+                            val hasImage = tool.output.any { it is UIMessagePart.Image }
+                            if (hasImage) {
+                                putJsonArray("output") {
+                                    tool.output.forEach { part ->
+                                        when (part) {
+                                            is UIMessagePart.Image -> add(buildJsonObject {
+                                                part.encodeBase64().onSuccess { encoded ->
+                                                    put("type", "input_image")
+                                                    put("image_url", encoded.base64)
+                                                }.onFailure {
+                                                    it.printStackTrace()
+                                                    put("type", "input_text")
+                                                    put("text", "Error: Failed to encode image to base64")
+                                                }
+                                            })
+                                            is UIMessagePart.Text -> add(buildJsonObject {
+                                                put("type", "input_text")
+                                                put("text", part.text)
+                                            })
+                                            else -> {}
+                                        }
+                                    }
+                                }
+                            } else {
+                                put(
+                                    "output",
+                                    tool.output.filterIsInstance<UIMessagePart.Text>()
+                                        .joinToString("\n") { it.text }
+                                )
+                            }
                         })
                     }
                 }
@@ -411,7 +452,7 @@ class ResponseAPI(
                             is UIMessagePart.Image -> {
                                 add(buildJsonObject {
                                     part.encodeBase64().onSuccess { encodedImage ->
-                                        put("type", if (role == MessageRole.USER) "input_image" else "output_image")
+                                        put("type", "input_image")
                                         put("image_url", encodedImage.base64)
                                     }.onFailure {
                                         it.printStackTrace()
@@ -430,7 +471,10 @@ class ResponseAPI(
     }
 
     private fun parseResponseDelta(jsonObject: JsonObject): MessageChunk? {
-        val chunkType = jsonObject["type"]?.jsonPrimitive?.content ?: error("chunk type not found")
+        val chunkType = jsonObject["type"]?.jsonPrimitive?.content ?: run {
+            Log.w(TAG, "parseResponseDelta: missing type field in event: $jsonObject")
+            return null
+        }
 
         when (chunkType) {
             "response.output_text.delta" -> {
@@ -476,9 +520,9 @@ class ResponseAPI(
             }
 
             "response.output_item.added" -> {
-                val item = jsonObject["item"]?.jsonObject ?: error("chunk item not found")
-                val type = item["type"]?.jsonPrimitive?.content ?: error("chunk type not found")
-                val id = item["id"]?.jsonPrimitive?.content ?: error("chunk id not found")
+                val item = jsonObject["item"]?.jsonObject ?: return null
+                val type = item["type"]?.jsonPrimitive?.content ?: return null
+                val id = item["id"]?.jsonPrimitive?.content ?: return null
                 if (type == "function_call") {
                     return MessageChunk(
                         id = id,
@@ -503,6 +547,22 @@ class ResponseAPI(
                             )
                         )
                     )
+                } else if (type == "image_generation_call") {
+                    return MessageChunk(
+                        id = id,
+                        model = "",
+                        choices = listOf(
+                            UIMessageChoice(
+                                index = 0,
+                                delta = UIMessage(
+                                    role = MessageRole.ASSISTANT,
+                                    parts = listOf(UIMessagePart.Image(url = ""))
+                                ),
+                                message = null,
+                                finishReason = null
+                            )
+                        )
+                    )
                 } else if (type == "reasoning") {
                     val encryptedContent = item["encrypted_content"]?.jsonPrimitive?.content
                     return MessageChunk(
@@ -519,10 +579,10 @@ class ResponseAPI(
                                             reasoning = "",
                                             createdAt = Clock.System.now(),
                                             finishedAt = null,
-                                            metadata = buildJsonObject {
-                                                put("encrypted_content", encryptedContent)
-                                                put("reasoning_id", id)
-                                            }
+                                            metadata = OpenAIReasoningMetadata(
+                                                reasoningId = id,
+                                                encryptedContent = encryptedContent,
+                                            ).toMetadata()
                                         )
                                     )
                                 ),
@@ -530,37 +590,13 @@ class ResponseAPI(
                             )
                         )
                     )
-                } else if (type == "image_generation_call") {
-                    val callId = item["id"]?.jsonPrimitive?.content ?: error("call_id not found")
-                    return MessageChunk(
-                        id = callId,
-                        model = "",
-                        choices = listOf(
-                            UIMessageChoice(
-                                index = 0,
-                                delta = UIMessage(
-                                    role = MessageRole.ASSISTANT,
-                                    parts = listOf(
-                                        UIMessagePart.Image(
-                                            url = "",
-                                            metadata = buildJsonObject {
-                                                put("openai_image_call_id", callId)
-                                            }
-                                        )
-                                    )
-                                ),
-                                message = null,
-                                finishReason = null
-                            )
-                        )
-                    )
                 }
             }
 
             "response.output_item.done" -> {
-                val item = jsonObject["item"]?.jsonObject ?: error("chunk item not found")
-                val type = item["type"]?.jsonPrimitive?.content ?: error("chunk type not found")
-                val id = item["id"]?.jsonPrimitive?.content ?: error("chunk id not found")
+                val item = jsonObject["item"]?.jsonObject ?: return null
+                val type = item["type"]?.jsonPrimitive?.content ?: return null
+                val id = item["id"]?.jsonPrimitive?.content ?: return null
                 if (type == "reasoning") {
                     val encryptedContent = item["encrypted_content"]?.jsonPrimitive?.content
                     return MessageChunk(
@@ -577,10 +613,10 @@ class ResponseAPI(
                                             reasoning = "",
                                             createdAt = Clock.System.now(),
                                             finishedAt = null,
-                                            metadata = buildJsonObject {
-                                                put("encrypted_content", encryptedContent)
-                                                put("reasoning_id", id)
-                                            }
+                                            metadata = OpenAIReasoningMetadata(
+                                                reasoningId = id,
+                                                encryptedContent = encryptedContent,
+                                            ).toMetadata()
                                         )
                                     )
                                 ),
@@ -599,12 +635,7 @@ class ResponseAPI(
                                 delta = UIMessage(
                                     role = MessageRole.ASSISTANT,
                                     parts = listOf(
-                                        UIMessagePart.Image(
-                                            url = result,
-                                            metadata = buildJsonObject {
-                                                put("openai_image_call_id", item["id"]?.jsonPrimitive?.content ?: "")
-                                            }
-                                        )
+                                        UIMessagePart.Image(url = result)
                                     )
                                 ),
                                 message = null,
@@ -652,10 +683,15 @@ class ResponseAPI(
                     usage = parseTokenUsage(jsonObject["response"]?.jsonObject?.get("usage")?.jsonObject)
                 )
             }
+
+            else -> {
+                Log.d(TAG, "parseResponseDelta: unhandled event type='$chunkType', ignoring")
+            }
         }
 
         return null
     }
+
 
     private fun parseResponseOutput(jsonObject: JsonObject): MessageChunk {
         println(jsonObject)

@@ -3,8 +3,11 @@ package me.rerere.ai.provider.providers
 import android.content.Context
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.channels.onFailure
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.buffer
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
@@ -25,17 +28,21 @@ import kotlinx.serialization.json.putJsonArray
 import me.rerere.ai.core.MessageRole
 import me.rerere.ai.core.ReasoningLevel
 import me.rerere.ai.core.TokenUsage
+import me.rerere.ai.provider.ClaudePromptCacheTtl
 import me.rerere.ai.provider.ImageGenerationParams
 import me.rerere.ai.provider.Model
 import me.rerere.ai.provider.ModelAbility
 import me.rerere.ai.provider.Provider
 import me.rerere.ai.provider.ProviderSetting
 import me.rerere.ai.provider.TextGenerationParams
-import me.rerere.ai.ui.ImageGenerationResult
+import me.rerere.ai.ui.ImageGenerationItem
 import me.rerere.ai.ui.MessageChunk
 import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessageChoice
+import me.rerere.ai.ui.ClaudeReasoningMetadata
 import me.rerere.ai.ui.UIMessagePart
+import me.rerere.ai.ui.metadataAs
+import me.rerere.ai.ui.toMetadata
 import me.rerere.ai.util.KeyRoulette
 import me.rerere.ai.util.configureReferHeaders
 import me.rerere.ai.util.encodeBase64
@@ -95,7 +102,7 @@ class ClaudeProvider(private val client: OkHttpClient, context: Context? = null)
     override suspend fun generateImage(
         providerSetting: ProviderSetting,
         params: ImageGenerationParams
-    ): ImageGenerationResult {
+    ): Flow<ImageGenerationItem> {
         error("Claude provider does not support image generation")
     }
 
@@ -105,16 +112,20 @@ class ClaudeProvider(private val client: OkHttpClient, context: Context? = null)
         params: TextGenerationParams
     ): MessageChunk = withContext(Dispatchers.IO) {
         val requestBody = buildMessageRequest(providerSetting, messages, params)
+        val encoded = json.encodeToString(requestBody)
+        if (encoded.length < 600_000) {
+            Log.i(TAG, "generateText: $encoded")
+        } else {
+            Log.i(TAG, "generateText: (request body too large to log, size=${encoded.length})")
+        }
         val request = Request.Builder()
             .url("${providerSetting.baseUrl}/messages")
             .headers(params.customHeaders.toHeaders())
-            .post(json.encodeToString(requestBody).toRequestBody("application/json".toMediaType()))
+            .post(encoded.toRequestBody("application/json".toMediaType()))
             .addHeader("x-api-key", keyRoulette.next(providerSetting.apiKey, providerSetting.id.toString()))
             .addHeader("anthropic-version", ANTHROPIC_VERSION)
             .configureReferHeaders(providerSetting.baseUrl)
             .build()
-
-        Log.i(TAG, "generateText: ${json.encodeToString(requestBody)}")
 
         val response = client.newCall(request).await()
         if (!response.isSuccessful) {
@@ -152,21 +163,21 @@ class ClaudeProvider(private val client: OkHttpClient, context: Context? = null)
         params: TextGenerationParams
     ): Flow<MessageChunk> = callbackFlow {
         val requestBody = buildMessageRequest(providerSetting, messages, params, stream = true)
+        val encoded = json.encodeToString(requestBody)
+        if (encoded.length < 600_000) {
+            Log.i(TAG, "streamText: $encoded")
+        } else {
+            Log.i(TAG, "streamText: (request body too large to log, size=${encoded.length}, messages=${requestBody["messages"]?.jsonArray?.size})")
+        }
         val request = Request.Builder()
             .url("${providerSetting.baseUrl}/messages")
             .headers(params.customHeaders.toHeaders())
-            .post(json.encodeToString(requestBody).toRequestBody("application/json".toMediaType()))
+            .post(encoded.toRequestBody("application/json".toMediaType()))
             .addHeader("x-api-key", keyRoulette.next(providerSetting.apiKey, providerSetting.id.toString()))
             .addHeader("anthropic-version", ANTHROPIC_VERSION)
             .addHeader("Content-Type", "application/json")
             .configureReferHeaders(providerSetting.baseUrl)
             .build()
-
-        Log.i(TAG, "streamText: ${json.encodeToString(requestBody)}")
-
-        requestBody["messages"]!!.jsonArray.forEach {
-            Log.i(TAG, "streamText: $it")
-        }
 
         val listener = object : EventSourceListener() {
             override fun onEvent(
@@ -206,6 +217,10 @@ class ClaudeProvider(private val client: OkHttpClient, context: Context? = null)
                     usage = tokenUsage
                 )
 
+                trySend(messageChunk).onFailure { e ->
+                    Log.w(TAG, "onEvent: chunk dropped (${e?.message})")
+                }
+
                 when (type) {
                     "message_stop" -> {
                         Log.d(TAG, "Stream ended")
@@ -218,8 +233,6 @@ class ClaudeProvider(private val client: OkHttpClient, context: Context? = null)
                         close(error)
                     }
                 }
-
-                trySend(messageChunk)
             }
 
             override fun onFailure(eventSource: EventSource, t: Throwable?, response: Response?) {
@@ -255,7 +268,8 @@ class ClaudeProvider(private val client: OkHttpClient, context: Context? = null)
             Log.d(TAG, "Closing eventSource")
             eventSource.cancel()
         }
-    }
+        // trySend 在缓冲满时会静默丢弃 delta，导致回复中间缺字 (#1295)，因此缓冲必须无界
+    }.buffer(Channel.UNLIMITED)
 
     private fun buildMessageRequest(
         providerSetting: ProviderSetting.Claude,
@@ -263,14 +277,20 @@ class ClaudeProvider(private val client: OkHttpClient, context: Context? = null)
         params: TextGenerationParams,
         stream: Boolean = false
     ): JsonObject {
-        fun cacheControlEphemeral() = buildJsonObject { put("type", "ephemeral") }
-
         return buildJsonObject {
             put("model", params.model.modelId)
-            put("messages", buildMessages(messages, providerSetting.promptCaching))
+            put(
+                "messages",
+                buildMessages(messages, providerSetting.promptCaching, providerSetting.promptCacheTtl)
+            )
             put("max_tokens", params.maxTokens ?: 64_000)
 
-            if (params.temperature != null && !params.reasoningLevel.isEnabled) put(
+            // 顶层 cache_control: 让 Anthropic 自动管理缓存断点
+            if (providerSetting.promptCaching) {
+                put("cache_control", cacheControlEphemeral(providerSetting.promptCacheTtl))
+            }
+
+            if (params.temperature != null && params.reasoningLevel?.isEnabled != true) put(
                 "temperature",
                 params.temperature
             )
@@ -288,7 +308,7 @@ class ClaudeProvider(private val client: OkHttpClient, context: Context? = null)
                             put("type", "text")
                             put("text", part.text)
                             if (providerSetting.promptCaching && index == systemTextParts.lastIndex) {
-                                put("cache_control", cacheControlEphemeral())
+                                put("cache_control", cacheControlEphemeral(providerSetting.promptCacheTtl))
                             }
                         })
                     }
@@ -298,7 +318,7 @@ class ClaudeProvider(private val client: OkHttpClient, context: Context? = null)
             // 处理 thinking
             // Anthropic 新 API: adaptive 模式 + output_config.effort 控制强度
             // 旧的 type=enabled + budget_tokens 在 Opus 4.7+ 上已不支持
-            if (params.model.abilities.contains(ModelAbility.REASONING)) {
+            if (params.model.abilities.contains(ModelAbility.REASONING) && params.reasoningLevel != null) {
                 when (params.reasoningLevel) {
                     ReasoningLevel.OFF -> {
                         put("thinking", buildJsonObject { put("type", "disabled") })
@@ -332,7 +352,7 @@ class ClaudeProvider(private val client: OkHttpClient, context: Context? = null)
                             put("description", tool.description)
                             put("input_schema", json.encodeToJsonElement(tool.parameters()))
                             if (providerSetting.promptCaching && index == params.tools.lastIndex) {
-                                put("cache_control", cacheControlEphemeral())
+                                put("cache_control", cacheControlEphemeral(providerSetting.promptCacheTtl))
                             }
                         })
                     }
@@ -341,7 +361,16 @@ class ClaudeProvider(private val client: OkHttpClient, context: Context? = null)
         }.mergeCustomBody(params.customBody)
     }
 
-    private fun buildMessages(messages: List<UIMessage>, promptCaching: Boolean) = buildJsonArray {
+    private fun cacheControlEphemeral(promptCacheTtl: ClaudePromptCacheTtl) = buildJsonObject {
+        put("type", "ephemeral")
+        promptCacheTtl.apiValue?.let { put("ttl", it) }
+    }
+
+    private fun buildMessages(
+        messages: List<UIMessage>,
+        promptCaching: Boolean,
+        promptCacheTtl: ClaudePromptCacheTtl
+    ) = buildJsonArray {
         messages
             .filter { it.isValidToUpload() && it.role != MessageRole.SYSTEM }
             .forEach { message ->
@@ -353,13 +382,16 @@ class ClaudeProvider(private val client: OkHttpClient, context: Context? = null)
             }
     }.let { messagesArray ->
         if (!promptCaching) return@let messagesArray
-        insertMessagesCacheControl(messagesArray)
+        insertMessagesCacheControl(messagesArray, promptCacheTtl)
     }
 
     /**
      * 在倒数第二条非 tool_result 的 user message 的最后一个 content block 上插入 cache_control
      */
-    private fun insertMessagesCacheControl(messages: JsonArray): JsonArray {
+    private fun insertMessagesCacheControl(
+        messages: JsonArray,
+        promptCacheTtl: ClaudePromptCacheTtl
+    ): JsonArray {
         // 找出所有非 tool_result 的 user message 的索引
         val realUserIndices = messages.mapIndexedNotNull { index, msg ->
             val obj = msg.jsonObject
@@ -384,12 +416,9 @@ class ClaudeProvider(private val client: OkHttpClient, context: Context? = null)
                 val content = obj["content"]?.jsonArray ?: return@mapIndexed msg
                 val newContent = JsonArray(content.mapIndexed { contentIndex, block ->
                     if (contentIndex == content.lastIndex) {
-                        JsonObject(block.jsonObject + mapOf("cache_control" to buildJsonObject {
-                            put(
-                                "type",
-                                "ephemeral"
-                            )
-                        }))
+                        JsonObject(
+                            block.jsonObject + mapOf("cache_control" to cacheControlEphemeral(promptCacheTtl))
+                        )
                     } else block
                 })
                 JsonObject(obj + mapOf("content" to newContent))
@@ -471,7 +500,7 @@ class ClaudeProvider(private val client: OkHttpClient, context: Context? = null)
         is UIMessagePart.Reasoning -> buildJsonObject {
             put("type", "thinking")
             put("thinking", reasoning)
-            metadata?.forEach { (key, value) -> put(key, value) }
+            metadataAs<ClaudeReasoningMetadata>()?.signature?.let { put("signature", it) }
         }
 
         else -> null
@@ -481,7 +510,7 @@ class ClaudeProvider(private val client: OkHttpClient, context: Context? = null)
         put("type", "tool_use")
         put("id", toolCallId)
         put("name", toolName)
-        put("input", json.parseToJsonElement(input.ifBlank { "{}" }))
+        put("input", inputAsJson())
     }
 
     private fun UIMessagePart.Tool.toToolResultBlock() = buildJsonObject {
@@ -517,9 +546,7 @@ class ClaudeProvider(private val client: OkHttpClient, context: Context? = null)
                             finishedAt = null
                         )
                         if (signature != null) {
-                            reasoning.metadata = buildJsonObject {
-                                put("signature", signature)
-                            }
+                            reasoning.metadata = ClaudeReasoningMetadata(signature = signature).toMetadata()
                         }
                         parts.add(reasoning)
                     }

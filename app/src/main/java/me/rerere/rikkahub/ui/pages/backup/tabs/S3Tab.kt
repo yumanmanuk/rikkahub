@@ -36,7 +36,9 @@ import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.SheetValue
+import androidx.compose.material3.Switch
+import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -53,6 +55,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.dokar.sonner.ToastType
 import kotlinx.coroutines.launch
+import me.rerere.common.android.Logging
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.sync.S3BackupItem
 import me.rerere.rikkahub.data.sync.s3.S3Config
@@ -150,7 +153,7 @@ fun S3Tab(
                         OutlinedTextField(
                             modifier = Modifier.fillMaxWidth(),
                             value = s3Config.secretAccessKey,
-                            onValueChange = { updateS3Config(s3Config.copy(secretAccessKey = it)) },
+                            onValueChange = { updateS3Config(s3Config.copy(secretAccessKey = it.trim())) },
                             visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
                             trailingIcon = {
                                 val image = if (passwordVisible) {
@@ -175,6 +178,16 @@ fun S3Tab(
                             onValueChange = { updateS3Config(s3Config.copy(bucket = it.trim())) },
                             placeholder = { Text("my-bucket") },
                             singleLine = true
+                        )
+                    },
+                )
+                item(
+                    headlineContent = { Text(stringResource(R.string.backup_page_s3_path_style)) },
+                    supportingContent = { Text(stringResource(R.string.backup_page_s3_path_style_desc)) },
+                    trailingContent = {
+                        Switch(
+                            checked = s3Config.pathStyle,
+                            onCheckedChange = { updateS3Config(s3Config.copy(pathStyle = it)) },
                         )
                     },
                 )
@@ -247,6 +260,12 @@ fun S3Tab(
                             )
                         } catch (e: Exception) {
                             e.printStackTrace()
+                            Logging.logError(
+                                tag = "S3Tab",
+                                title = "S3 connection test failed",
+                                message = e.message ?: "Unknown error",
+                                throwable = e
+                            )
                             toaster.show(
                                 context.getString(
                                     R.string.backup_page_connection_failed,
@@ -282,6 +301,12 @@ fun S3Tab(
                             )
                         }.onFailure {
                             it.printStackTrace()
+                            Logging.logError(
+                                tag = "S3Tab",
+                                title = "S3 backup failed",
+                                message = it.message ?: "Unknown error",
+                                throwable = it
+                            )
                             toaster.show(
                                 it.message ?: context.getString(R.string.backup_page_unknown_error),
                                 type = ToastType.Error
@@ -316,9 +341,7 @@ fun S3Tab(
             onDismissRequest = {
                 showBackupFiles = false
             },
-            sheetState = rememberModalBottomSheetState(
-                skipPartiallyExpanded = true
-            ),
+            sheetState = rememberBottomSheetState(initialValue = SheetValue.Hidden, enabledValues = setOf(SheetValue.Hidden, SheetValue.Expanded)),
         ) {
             Column(
                 modifier = Modifier
@@ -353,6 +376,12 @@ fun S3Tab(
                                             vm.loadS3BackupFileItems()
                                         }.onFailure { err ->
                                             err.printStackTrace()
+                                            Logging.logError(
+                                                tag = "S3Tab",
+                                                title = "S3 delete backup failed",
+                                                message = err.message ?: "Unknown error",
+                                                throwable = err
+                                            )
                                             toaster.show(
                                                 context.getString(
                                                     R.string.backup_page_delete_failed,
@@ -376,6 +405,12 @@ fun S3Tab(
                                             onShowRestartDialog()
                                         }.onFailure { err ->
                                             err.printStackTrace()
+                                            Logging.logError(
+                                                tag = "S3Tab",
+                                                title = "S3 restore failed",
+                                                message = err.message ?: "Unknown error",
+                                                throwable = err
+                                            )
                                             toaster.show(
                                                 context.getString(
                                                     R.string.backup_page_restore_failed,

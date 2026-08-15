@@ -36,18 +36,54 @@ sealed class LogEntry {
         val durationMs: Long? = null,
         val error: String? = null
     ) : LogEntry()
+
+    @Serializable
+    data class ErrorLog(
+        override val id: Uuid = Uuid.random(),
+        override val timestamp: Long = System.currentTimeMillis(),
+        override val tag: String,
+        val title: String? = null,
+        val message: String,
+        val stackTrace: String? = null
+    ) : LogEntry()
 }
 
 object Logging {
     private val _logsFlow = MutableStateFlow<List<LogEntry>>(emptyList())
     val logsFlow: StateFlow<List<LogEntry>> = _logsFlow.asStateFlow()
 
+    @Volatile
+    private var requestLoggingEnabled = true
+
     fun log(tag: String, message: String) {
         addLog(LogEntry.TextLog(tag = tag, message = message))
     }
 
+    fun logError(
+        tag: String,
+        title: String? = null,
+        message: String,
+        throwable: Throwable? = null
+    ) {
+        addLog(
+            LogEntry.ErrorLog(
+                tag = tag,
+                title = title,
+                message = message,
+                stackTrace = throwable?.stackTraceToString()
+            )
+        )
+    }
+
     fun logRequest(entry: LogEntry.RequestLog) {
+        if (!requestLoggingEnabled) return
         addLog(entry)
+    }
+
+    fun isRequestLoggingEnabled(): Boolean = requestLoggingEnabled
+
+    fun setRequestLoggingEnabled(enabled: Boolean) {
+        requestLoggingEnabled = enabled
     }
 
     private fun addLog(entry: LogEntry) {
@@ -67,7 +103,14 @@ object Logging {
     fun getRequestLogs(): List<LogEntry.RequestLog> =
         _logsFlow.value.filterIsInstance<LogEntry.RequestLog>()
 
+    fun getErrorLogs(): List<LogEntry.ErrorLog> =
+        _logsFlow.value.filterIsInstance<LogEntry.ErrorLog>()
+
     fun clear() {
         _logsFlow.value = emptyList()
+    }
+
+    fun clearErrorLogs() {
+        _logsFlow.value = _logsFlow.value.filter { it !is LogEntry.ErrorLog }
     }
 }

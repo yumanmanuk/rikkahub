@@ -1,10 +1,8 @@
-package me.rerere.rikkahub.ui.pages.history;
+package me.rerere.rikkahub.ui.pages.history
 
-import me.rerere.hugeicons.HugeIcons
-import me.rerere.hugeicons.stroke.Pin
-import me.rerere.hugeicons.stroke.PinOff
-import me.rerere.hugeicons.stroke.GlobalSearch
-import me.rerere.hugeicons.stroke.Delete01
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -12,6 +10,8 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -22,6 +22,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -38,6 +39,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -48,6 +50,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
+import me.rerere.hugeicons.HugeIcons
+import me.rerere.hugeicons.stroke.Cancel01
+import me.rerere.hugeicons.stroke.Delete01
+import me.rerere.hugeicons.stroke.GlobalSearch
+import me.rerere.hugeicons.stroke.Pin
+import me.rerere.hugeicons.stroke.PinOff
+import me.rerere.hugeicons.stroke.Search01
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.Screen
 import me.rerere.rikkahub.data.model.Conversation
@@ -63,11 +72,27 @@ fun HistoryPage(vm: HistoryVM = koinViewModel()) {
     val navController = LocalNavController.current
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
+    var isSearchVisible by remember { mutableStateOf(false) }
+    var searchText by remember { mutableStateOf("") }
     var showDeleteAllDialog by remember { mutableStateOf(false) }
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
     var conversationToDelete by remember { mutableStateOf<Conversation?>(null) }
 
-    val conversations by vm.conversations.collectAsStateWithLifecycle()
+    val allConversations by vm.conversations.collectAsStateWithLifecycle()
+    val searchConversations by produceState(emptyList(), searchText) {
+        runCatching {
+            vm.searchConversations(searchText).collect {
+                value = it
+            }
+        }.onFailure {
+            it.printStackTrace()
+        }
+    }
+    val showConversations = if (searchText.isEmpty()) {
+        allConversations
+    } else {
+        searchConversations
+    }
 
     val snackMessageDeleted = stringResource(R.string.history_page_conversation_deleted)
     val snackMessageUndo = stringResource(R.string.history_page_undo)
@@ -94,6 +119,17 @@ fun HistoryPage(vm: HistoryVM = koinViewModel()) {
                     }
                     IconButton(
                         onClick = {
+                            isSearchVisible = !isSearchVisible
+                            if (!isSearchVisible) searchText = ""
+                        }
+                    ) {
+                        Icon(
+                            HugeIcons.Search01,
+                            contentDescription = stringResource(R.string.history_page_search)
+                        )
+                    }
+                    IconButton(
+                        onClick = {
                             showDeleteAllDialog = true
                         }
                     ) {
@@ -101,6 +137,18 @@ fun HistoryPage(vm: HistoryVM = koinViewModel()) {
                     }
                 }
             )
+        },
+        bottomBar = {
+            AnimatedVisibility(
+                visible = isSearchVisible,
+                enter = slideInVertically { it },
+                exit = slideOutVertically { it }
+            ) {
+                SearchInput(
+                    value = searchText,
+                    onValueChange = { searchText = it }
+                )
+            }
         },
         snackbarHost = {
             SnackbarHost(hostState = snackbarHostState)
@@ -110,15 +158,25 @@ fun HistoryPage(vm: HistoryVM = koinViewModel()) {
             contentPadding = contentPadding + PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            items(conversations, key = { it.id }) { conversation ->
+            items(showConversations, key = { it.id }) { conversation ->
                 SwipeableConversationItem(
                     conversation = conversation,
                     onClick = {
                         navigateToChatPage(navController, conversation.id)
                     },
                     onDelete = {
-                        conversationToDelete = conversation
-                        showDeleteConfirmDialog = true
+                        scope.launch {
+                            val fullConversation = vm.getFullConversation(conversation.id) ?: conversation
+                            vm.deleteConversation(conversation)
+                            val result = snackbarHostState.showSnackbar(
+                                message = snackMessageDeleted,
+                                actionLabel = snackMessageUndo,
+                                withDismissAction = true,
+                            )
+                            if (result == SnackbarResult.ActionPerformed) {
+                                vm.restoreConversation(fullConversation)
+                            }
+                        }
                     },
                     onTogglePin = { vm.togglePinStatus(conversation.id) },
                     modifier = Modifier
@@ -202,6 +260,42 @@ fun HistoryPage(vm: HistoryVM = koinViewModel()) {
 }
 
 @Composable
+private fun SearchInput(
+    value: String,
+    onValueChange: (String) -> Unit,
+) {
+    Surface(
+        tonalElevation = 4.dp,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier
+                .imePadding()
+                .navigationBarsPadding()
+                .padding(horizontal = 16.dp, vertical = 8.dp)
+        ) {
+            OutlinedTextField(
+                value = value,
+                onValueChange = onValueChange,
+                modifier = Modifier.fillMaxWidth(),
+                placeholder = {
+                    Text(stringResource(R.string.history_page_search_placeholder))
+                },
+                shape = RoundedCornerShape(50),
+                singleLine = true,
+                trailingIcon = {
+                    IconButton(
+                        onClick = { onValueChange("") },
+                    ) {
+                        Icon(HugeIcons.Cancel01, stringResource(R.string.history_page_clear))
+                    }
+                }
+            )
+        }
+    }
+}
+
+@Composable
 private fun SwipeableConversationItem(
     conversation: Conversation,
     modifier: Modifier = Modifier,
@@ -222,7 +316,6 @@ private fun SwipeableConversationItem(
             SwipeToDismissBoxValue.EndToStart -> {
                 onDelete()
             }
-
             else -> {}
         }
     }
@@ -253,7 +346,7 @@ private fun SwipeableConversationItem(
         ConversationItem(
             conversation = conversation,
             onTogglePin = onTogglePin,
-            onClick = onClick
+            onClick = onClick,
         )
     }
 }
@@ -298,14 +391,17 @@ private fun ConversationItem(
                 Text(conversation.createAt.toLocalDateTime())
             },
             trailingContent = {
-                IconButton(
-                    onClick = onTogglePin
-                ) {
+                IconButton(onClick = onTogglePin) {
                     Icon(
                         if (conversation.isPinned) HugeIcons.PinOff else HugeIcons.Pin,
-                        contentDescription = if (conversation.isPinned) stringResource(R.string.history_page_unpin) else stringResource(
-                            R.string.history_page_pin
-                        )
+                        contentDescription = if (conversation.isPinned)
+                            stringResource(R.string.history_page_unpin)
+                        else
+                            stringResource(R.string.history_page_pin),
+                        tint = if (conversation.isPinned)
+                            MaterialTheme.colorScheme.primary
+                        else
+                            MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }

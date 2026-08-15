@@ -29,11 +29,17 @@ fun createSearchTools(settings: Settings): Set<Tool> {
 
                     Response format:
                     - items[].id (short id), title, url, text
+                    - images[]: image urls related to the query (may be empty)
 
                     Citations:
                     - After using results, add `[citation,domain](id)` after the sentence.
                     - Multiple citations are allowed.
                     - If no results are cited, omit citations.
+
+                    Images:
+                    - When images help the user understand the answer, embed relevant ones using Markdown: `![](url)`.
+                    - Embed 2 to 4 images, and only use urls from `images[]` (never fabricate or alter urls).
+                    - Usually place the images at the very beginning of your reply; skip them entirely if none are relevant.
 
                     Example:
                     The capital of France is Paris. [citation,example.com](abc123)
@@ -44,7 +50,7 @@ fun createSearchTools(settings: Settings): Set<Tool> {
                         index = settings.searchServiceSelected,
                         defaultValue = { SearchServiceOptions.DEFAULT })
                     val service = SearchService.getService(options)
-                    service.parameters
+                    service.parameters(options)
                 },
                 execute = {
                     val options = settings.searchServices.getOrElse(
@@ -77,7 +83,7 @@ fun createSearchTools(settings: Settings): Set<Tool> {
             index = settings.searchServiceSelected,
             defaultValue = { SearchServiceOptions.DEFAULT })
         val service = SearchService.getService(options)
-        if (service.scrapingParameters != null) {
+        if (service.scrapingParameters(options) != null) {
             add(
                 Tool(
                     name = "scrape_web",
@@ -91,7 +97,7 @@ fun createSearchTools(settings: Settings): Set<Tool> {
                             index = settings.searchServiceSelected,
                             defaultValue = { SearchServiceOptions.DEFAULT })
                         val service = SearchService.getService(options)
-                        service.scrapingParameters
+                        service.scrapingParameters(options)
                     },
                     execute = {
                         val options = settings.searchServices.getOrElse(

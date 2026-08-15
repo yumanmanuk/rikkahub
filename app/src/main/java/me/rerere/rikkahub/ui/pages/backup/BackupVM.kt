@@ -7,24 +7,22 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.jsonArray
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
-import me.rerere.ai.provider.Modality
-import me.rerere.ai.provider.Model
-import me.rerere.ai.provider.ModelAbility
-import me.rerere.ai.provider.ProviderSetting
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.SettingsStore
+import me.rerere.rikkahub.data.datastore.WebDavConfig
+import me.rerere.rikkahub.data.repository.ConversationRepository
+import me.rerere.rikkahub.data.sync.importer.ChatboxImporter
 import me.rerere.rikkahub.data.sync.importer.CherryStudioProviderImporter
+import me.rerere.rikkahub.data.sync.importer.GoogleAiStudioImporter
+import me.rerere.rikkahub.data.sync.importer.GoogleAiStudioExport
 import me.rerere.rikkahub.data.sync.webdav.WebDavBackupItem
 import me.rerere.rikkahub.data.sync.webdav.WebDavSync
+import me.rerere.common.android.Logging
 import me.rerere.rikkahub.data.sync.S3BackupItem
 import me.rerere.rikkahub.data.sync.S3Sync
-import me.rerere.rikkahub.utils.JsonInstant
 import me.rerere.rikkahub.utils.UiState
 import java.io.File
+import kotlinx.serialization.json.Json
 
 private const val TAG = "BackupVM"
 
@@ -32,6 +30,7 @@ class BackupVM(
     private val settingsStore: SettingsStore,
     private val webDavSync: WebDavSync,
     private val s3Sync: S3Sync,
+    private val conversationRepository: ConversationRepository,
 ) : ViewModel() {
     val settings = settingsStore.settingsFlow.stateIn(
         scope = viewModelScope,
@@ -66,6 +65,12 @@ class BackupVM(
                 )
             }.onFailure {
                 webDavBackupItems.emit(UiState.Error(it))
+                Logging.logError(
+                    tag = TAG,
+                    title = "Failed to load WebDAV backup list",
+                    message = it.message ?: "Unknown error",
+                    throwable = it
+                )
             }
         }
     }
@@ -88,90 +93,65 @@ class BackupVM(
     }
 
     suspend fun exportToFile(): File {
-        val file = webDavSync.prepareBackupFile(settings.value.webDavConfig.copy())
-        recordBackupTime()
-        return file
+        // 本地导出始终备份全部内容（DATABASE + FILES），不受 WebDav items 配置影响
+        val fullConfig = settings.value.webDavConfig.copy(
+            items = WebDavConfig.BackupItem.entries
+        )
+        // 注意：recordBackupTime() 由调用方在文件真正写入用户存储后调用
+        return webDavSync.prepareBackupFile(fullConfig)
     }
 
     suspend fun restoreFromLocalFile(file: File) {
-        webDavSync.restoreFromLocalFile(file, settings.value.webDavConfig)
+        // 本地恢复始终还原全部内容（DATABASE + FILES），不受 WebDav items 配置影响
+        val fullConfig = settings.value.webDavConfig.copy(
+            items = WebDavConfig.BackupItem.entries
+        )
+        webDavSync.restoreFromLocalFile(file, fullConfig)
     }
 
-    fun restoreFromChatBox(file: File) {
-        val importProviders = arrayListOf<ProviderSetting>()
-
-        val jsonElements = JsonInstant.parseToJsonElement(file.readText()).jsonObject
-        val settingsObj = jsonElements["settings"]?.jsonObject
-        if (settingsObj != null) {
-            settingsObj["providers"]?.jsonObject?.let { providers ->
-                providers["openai"]?.jsonObject?.let { openai ->
-                    val apiHost = openai["apiHost"]?.jsonPrimitive?.contentOrNull ?: "https://api.openai.com"
-                    val apiKey = openai["apiKey"]?.jsonPrimitive?.contentOrNull ?: ""
-                    val models = openai["models"]?.jsonArray?.map { element ->
-                        val modelId = element.jsonObject["modelId"]?.jsonPrimitive?.contentOrNull ?: ""
-                        val capabilities =
-                            element.jsonObject["capabilities"]?.jsonArray?.map { it.jsonPrimitive.contentOrNull }
-                                ?: emptyList()
-                        Model(
-                            modelId = modelId,
-                            displayName = modelId,
-                            inputModalities = buildList {
-                                if (capabilities.contains("vision")) {
-                                    add(Modality.IMAGE)
-                                }
-                            },
-                            abilities = buildList {
-                                if (capabilities.contains("tool_use")) {
-                                    add(ModelAbility.TOOL)
-                                }
-                                if (capabilities.contains("reasoning")) {
-                                    add(ModelAbility.REASONING)
-                                }
-                            }
-                        )
-                    } ?: emptyList()
-                    if (apiKey.isNotBlank()) importProviders.add(
-                        ProviderSetting.OpenAI(
-                            name = "OpenAI",
-                            baseUrl = "$apiHost/v1",
-                            apiKey = apiKey,
-                            models = models,
-                        )
-                    )
-                }
-                providers["claude"]?.jsonObject?.let { claude ->
-                    val apiHost =
-                        claude["apiHost"]?.jsonPrimitive?.contentOrNull ?: "https://api.anthropic.com"
-                    val apiKey = claude["apiKey"]?.jsonPrimitive?.contentOrNull ?: ""
-                    if (apiKey.isNotBlank()) importProviders.add(
-                        ProviderSetting.Claude(
-                            name = "Claude",
-                            baseUrl = "${apiHost}/v1",
-                            apiKey = apiKey,
-                        )
-                    )
-                }
-                providers["gemini"]?.jsonObject?.let { gemini ->
-                    val apiHost = gemini["apiHost"]?.jsonPrimitive?.contentOrNull
-                        ?: "https://generativelanguage.googleapis.com"
-                    val apiKey = gemini["apiKey"]?.jsonPrimitive?.contentOrNull ?: ""
-                    if (apiKey.isNotBlank()) importProviders.add(
-                        ProviderSetting.Google(
-                            name = "Gemini",
-                            baseUrl = "$apiHost/v1beta",
-                            apiKey = apiKey,
-                        )
-                    )
+    suspend fun restoreFromChatBox(file: File): ChatboxRestoreResult {
+        var importedConversations = 0
+        var skippedExistingConversations = 0
+        val result = ChatboxImporter.importStreaming(
+            file = file,
+            assistantId = settings.value.assistantId,
+            providers = settings.value.providers,
+            onConversation = { conversation ->
+                if (conversationRepository.existsConversationById(conversation.id)) {
+                    skippedExistingConversations++
+                } else {
+                    conversationRepository.insertConversation(conversation)
+                    importedConversations++
                 }
             }
-        }
+        )
 
-        Log.i(TAG, "restoreFromChatBox: import ${importProviders.size} providers: $importProviders")
-
-        updateSettings(
+        val targetAssistantId = settings.value.assistantId
+        settingsStore.update(
             settings.value.copy(
-                providers = importProviders + settings.value.providers,
+                providers = result.providers + settings.value.providers,
+                assistants = settings.value.assistants.map { assistant ->
+                    if (result.hasConversationSystemPrompt && assistant.id == targetAssistantId) {
+                        assistant.copy(allowConversationSystemPrompt = true)
+                    } else {
+                        assistant
+                    }
+                }
             )
+        )
+
+        Log.i(
+            TAG,
+            "restoreFromChatBox: import ${result.providers.size} providers, " +
+                "$importedConversations conversations, skip $skippedExistingConversations existing, " +
+                "drop ${result.skippedImageParts} images"
+        )
+        return ChatboxRestoreResult(
+            importedProviders = result.providers.size,
+            importedConversations = importedConversations,
+            skippedExistingConversations = skippedExistingConversations,
+            skippedImageParts = result.skippedImageParts,
+            skippedEmptyMessages = result.skippedEmptyMessages,
         )
     }
 
@@ -191,6 +171,55 @@ class BackupVM(
         )
     }
 
+    suspend fun restoreFromGoogleAiStudio(file: File, filename: String? = null): GoogleAiStudioRestoreResult {
+        // 从 runSettings.model 提取模型显示名：去掉 "models/" 前缀和 "-preview" 后缀
+        val modelName = runCatching {
+            val lenientJson = Json {
+                ignoreUnknownKeys = true
+                isLenient = true
+                coerceInputValues = true
+            }
+            val export = lenientJson.decodeFromString<GoogleAiStudioExport>(file.readText())
+            export.runSettings?.model
+                ?.substringAfterLast("/")
+                ?.removeSuffix("-preview")
+                ?.takeIf { it.isNotBlank() }
+        }.getOrNull()
+
+        val result = GoogleAiStudioImporter.import(
+            file = file,
+            assistantId = settings.value.assistantId,
+            filename = filename,
+            modelName = modelName,
+        )
+
+        var importedConversations = 0
+        var skippedExistingConversations = 0
+
+        result.conversations.forEach { conversation ->
+            if (conversationRepository.existsConversationById(conversation.id)) {
+                skippedExistingConversations++
+            } else {
+                conversationRepository.insertConversation(conversation)
+                importedConversations++
+            }
+        }
+
+        Log.i(
+            TAG,
+            "restoreFromGoogleAiStudio: $importedConversations imported, " +
+                "$skippedExistingConversations skipped, " +
+                "${result.skippedImageParts} image parts dropped, " +
+                "modelName: $modelName"
+        )
+
+        return GoogleAiStudioRestoreResult(
+            importedConversations = importedConversations,
+            skippedExistingConversations = skippedExistingConversations,
+            skippedImageParts = result.skippedImageParts,
+        )
+    }
+
     // S3 Backup methods
     fun loadS3BackupFileItems() {
         viewModelScope.launch {
@@ -205,6 +234,12 @@ class BackupVM(
                 )
             }.onFailure {
                 s3BackupItems.emit(UiState.Error(it))
+                Logging.logError(
+                    tag = TAG,
+                    title = "Failed to load S3 backup list",
+                    message = it.message ?: "Unknown error",
+                    throwable = it
+                )
             }
         }
     }
@@ -226,7 +261,8 @@ class BackupVM(
         s3Sync.deleteS3BackupFile(settings.value.s3Config, item)
     }
 
-    private suspend fun recordBackupTime() {
+    // internal：让 UI 层在 SAF 写入真正成功后调用，确保 lastBackupTime 准确
+    internal suspend fun recordBackupTime() {
         settingsStore.update { settings ->
             settings.copy(
                 backupReminderConfig = settings.backupReminderConfig.copy(
@@ -236,3 +272,17 @@ class BackupVM(
         }
     }
 }
+
+data class ChatboxRestoreResult(
+    val importedProviders: Int,
+    val importedConversations: Int,
+    val skippedExistingConversations: Int,
+    val skippedImageParts: Int,
+    val skippedEmptyMessages: Int,
+)
+
+data class GoogleAiStudioRestoreResult(
+    val importedConversations: Int,
+    val skippedExistingConversations: Int,
+    val skippedImageParts: Int,
+)

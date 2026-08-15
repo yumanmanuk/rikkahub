@@ -3,6 +3,7 @@ package me.rerere.rikkahub.utils
 import android.content.Context
 import android.util.Log
 import androidx.core.content.edit
+import me.rerere.common.android.Logging
 
 private const val TAG = "CrashHandler"
 private const val PREFS_NAME = "crash_handler"
@@ -46,5 +47,12 @@ object CrashHandler {
                 putBoolean(KEY_CRASHED, true)
                 putString(KEY_STACKTRACE, stackTrace)
             } // commit() 同步写入，确保崩溃前写完
+        // 同时写入应用内错误日志，方便用户在"设置-错误日志"中查看
+        Logging.logError(
+            tag = TAG,
+            title = "Uncaught exception on thread ${thread.name}",
+            message = throwable.message ?: "Unknown crash",
+            throwable = throwable
+        )
     }
 }

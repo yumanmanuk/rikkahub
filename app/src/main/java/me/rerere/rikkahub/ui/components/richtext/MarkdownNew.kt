@@ -200,7 +200,13 @@ private fun HtmlBlockElement(
     listLevel: Int = 0,
 ) {
     when (element.tagName().lowercase()) {
-        "p" -> HtmlParagraph(element = element, onClickCitation = onClickCitation)
+        "p" -> HtmlParagraph(
+            element = element,
+            onClickCitation = onClickCitation,
+            modifier = if (element.nextElementSibling() != null)
+                Modifier.padding(bottom = LocalTextStyle.current.fontSize.toDp())
+            else Modifier,
+        )
 
         "h1", "h2", "h3", "h4", "h5", "h6" -> HtmlHeading(
             element = element,
@@ -285,7 +291,11 @@ private fun HtmlBlockElement(
 // ---- Block renderers ----
 
 @Composable
-private fun HtmlParagraph(element: Element, onClickCitation: (String) -> Unit) {
+private fun HtmlParagraph(
+    element: Element,
+    onClickCitation: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val baseTextStyle = LocalTextStyle.current
     val density = LocalDensity.current
     val paragraphStyle = remember(element.attr("style"), density, baseTextStyle) {
@@ -300,10 +310,10 @@ private fun HtmlParagraph(element: Element, onClickCitation: (String) -> Unit) {
 
     if (paragraphStyle != null) {
         ProvideTextStyle(baseTextStyle.merge(paragraphStyle)) {
-            HtmlParagraphContent(element = element, onClickCitation = onClickCitation, density = density)
+            HtmlParagraphContent(element = element, onClickCitation = onClickCitation, density = density, modifier = modifier)
         }
     } else {
-        HtmlParagraphContent(element = element, onClickCitation = onClickCitation, density = density)
+        HtmlParagraphContent(element = element, onClickCitation = onClickCitation, density = density, modifier = modifier)
     }
 }
 
@@ -312,6 +322,7 @@ private fun HtmlParagraphContent(
     element: Element,
     onClickCitation: (String) -> Unit,
     density: Density,
+    modifier: Modifier = Modifier,
 ) {
     val hasImages = element.select("img").isNotEmpty()
     // A span.math with inline != "true" is a block math element
@@ -320,7 +331,7 @@ private fun HtmlParagraphContent(
     if (hasImages || hasBlockMath) {
         // Mixed block content: render children individually in a FlowRow
         FlowRow(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = modifier.fillMaxWidth(),
             itemVerticalAlignment = Alignment.CenterVertically,
         ) {
             element.childNodes().fastForEach { child ->
@@ -365,7 +376,7 @@ private fun HtmlParagraphContent(
         inlineContent = inlineContents,
         softWrap = true,
         overflow = TextOverflow.Visible,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
         style = textStyle.copy(
             lineHeight = if (hasInlineMath && enableLatexRendering)
                 TextUnit.Unspecified
@@ -378,17 +389,11 @@ private fun HtmlParagraphContent(
 @Composable
 private fun HtmlHeading(element: Element, onClickCitation: (String) -> Unit) {
     val level = element.tagName().removePrefix("h").toIntOrNull() ?: 1
-    val headingStyle = when (level) {
-        1 -> HeaderStyle.H1
-        2 -> HeaderStyle.H2
-        3 -> HeaderStyle.H3
-        4 -> HeaderStyle.H4
-        5 -> HeaderStyle.H5
-        else -> HeaderStyle.H6
-    }
-    val verticalPadding = when (level) {
-        1 -> 16.dp; 2 -> 14.dp; 3 -> 12.dp; 4 -> 10.dp; 5 -> 8.dp; else -> 6.dp
-    }
+    val headingStyle = HeaderStyle.fromLevel(
+        level = level,
+        fontSizeRatio = LocalSettings.current.displaySetting.fontSizeRatio,
+    )
+    val verticalPadding = HeaderStyle.verticalPadding(level)
     ProvideTextStyle(LocalTextStyle.current.merge(headingStyle)) {
         Box(modifier = Modifier.padding(vertical = verticalPadding)) {
             HtmlParagraph(element = element, onClickCitation = onClickCitation)
@@ -870,7 +875,7 @@ private fun AnnotatedString.Builder.appendHtmlInlineElement(
     }
 
     when (element.tagName().lowercase()) {
-        "b", "strong" -> appendElementChildren(SpanStyle(fontWeight = FontWeight.SemiBold))
+        "b", "strong" -> appendElementChildren(SpanStyle(fontWeight = FontWeight.Bold))
 
         "i", "em" -> appendElementChildren(SpanStyle(fontStyle = FontStyle.Italic))
 
@@ -880,12 +885,14 @@ private fun AnnotatedString.Builder.appendHtmlInlineElement(
 
         "code" -> withStyle(
             SpanStyle(
-                fontFamily = FontFamily.Monospace,
-                fontSize = 0.95.em,
-                background = colorScheme.secondaryContainer.copy(alpha = 0.2f),
+                fontFamily = JetbrainsMono,
+                fontSize = 0.9.em,
+                color = colorScheme.primary,
             ).merge(cssStyle ?: SpanStyle())
         ) {
+            append(' ')
             append(element.text())
+            append(' ')
         }
 
         "a" -> {
@@ -896,7 +903,7 @@ private fun AnnotatedString.Builder.appendHtmlInlineElement(
                     // Citation link: [citation,domain](id)
                     val domain = text.substringAfter("citation,")
                     val id = href
-                    if (id.length == 6) {
+                    if (id.isNotEmpty()) {
                         inlineContents.putIfAbsent(
                             "citation:$id",
                             InlineTextContent(
@@ -968,7 +975,7 @@ private fun AnnotatedString.Builder.appendHtmlInlineElement(
                                 placeholderVerticalAlign = PlaceholderVerticalAlign.TextCenter,
                             ),
                             children = {
-                                MathInline(latex = formula, modifier = Modifier)
+                                MathInline(latex = formula, modifier = Modifier, fontSize = style.fontSize)
                             },
                         ),
                     )
@@ -1431,7 +1438,7 @@ private fun parseColor(colorString: String): Color? {
 private fun parseFontWeight(weightString: String): FontWeight? {
     return when (weightString.lowercase()) {
         "normal" -> FontWeight.Normal
-        "bold" -> FontWeight.SemiBold
+        "bold" -> FontWeight.Bold
         "bolder" -> FontWeight.ExtraBold
         "lighter" -> FontWeight.Light
         "100" -> FontWeight.W100
