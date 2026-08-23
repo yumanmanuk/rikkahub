@@ -7,7 +7,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -508,6 +510,8 @@ class BattleService(
                     }
                 }
                 delay(retryDelayMs)
+                // 兜底：provider 层的取消信号可能被错误体解析吞掉，delay 不抛异常时这里再检查一次
+                currentCoroutineContext().ensureActive()
                 generateForModel(
                     model = model,
                     contextMessages = contextMessages,
