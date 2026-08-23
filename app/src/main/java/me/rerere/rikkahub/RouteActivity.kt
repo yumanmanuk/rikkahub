@@ -49,6 +49,7 @@ import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
 import androidx.navigation3.ui.NavDisplay
 import coil3.ImageLoader
 import coil3.compose.setSingletonImageLoaderFactory
+import coil3.memory.MemoryCache
 import coil3.gif.AnimatedImageDecoder
 import coil3.gif.GifDecoder
 import coil3.network.cachecontrol.CacheControlCacheStrategy
@@ -173,6 +174,12 @@ class RouteActivity : ComponentActivity() {
                 setSingletonImageLoaderFactory { context ->
                     ImageLoader.Builder(context)
                         .crossfade(true)
+                        // 限制内存缓存上限，避免多图对话时缓存堆积大位图导致 OOM
+                        .memoryCache(
+                            MemoryCache.Builder()
+                                .maxSizePercent(context, 0.2)
+                                .build()
+                        )
                         .components {
                             add(
                                 OkHttpNetworkFetcherFactory(
