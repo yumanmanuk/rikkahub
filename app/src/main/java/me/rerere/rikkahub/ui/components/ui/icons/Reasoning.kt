@@ -305,7 +305,7 @@ val ReasoningHigh: ImageVector
 
 private var _reasoningHigh: ImageVector? = null
 
-// [FORK] 超高思考深度图标：灯泡内加闪电符号，光线比 High 更长，便于与 High 区分
+// [FORK] 超高思考深度图标：光线与 High 相同，仅在灯泡内增加灯丝符号以作区分
 val ReasoningXHigh: ImageVector
     get() {
         if (_reasoningXHigh != null) return _reasoningXHigh!!
@@ -359,14 +359,14 @@ val ReasoningXHigh: ImageVector
                 lineTo(13.3f, 12.3f)
                 lineTo(10.7f, 15.4f)
             }
-            // 8 个方向加长的光线
+            // 8 个方向的光线（与 High 长度一致）
             path(
                 stroke = SolidColor(Color.Black),
                 strokeLineWidth = 2.0f,
                 strokeLineCap = StrokeCap.Round,
                 strokeLineJoin = StrokeJoin.Miter
             ) {
-                moveTo(12f, 1.09921f)
+                moveTo(12f, 1.99921f)
                 verticalLineTo(2.99921f)
             }
             path(
@@ -375,7 +375,7 @@ val ReasoningXHigh: ImageVector
                 strokeLineCap = StrokeCap.Round,
                 strokeLineJoin = StrokeJoin.Miter
             ) {
-                moveTo(22.9f, 11.9992f)
+                moveTo(22f, 11.9992f)
                 horizontalLineTo(21f)
             }
             path(
@@ -385,7 +385,7 @@ val ReasoningXHigh: ImageVector
                 strokeLineJoin = StrokeJoin.Miter
             ) {
                 moveTo(3f, 11.9992f)
-                horizontalLineTo(1.1f)
+                horizontalLineTo(2f)
             }
             path(
                 stroke = SolidColor(Color.Black),
@@ -393,7 +393,7 @@ val ReasoningXHigh: ImageVector
                 strokeLineCap = StrokeCap.Round,
                 strokeLineJoin = StrokeJoin.Miter
             ) {
-                moveTo(19.7068f, 4.29156f)
+                moveTo(19.0704f, 4.92792f)
                 lineTo(18.3633f, 5.63503f)
             }
             path(
@@ -403,7 +403,7 @@ val ReasoningXHigh: ImageVector
                 strokeLineJoin = StrokeJoin.Miter
             ) {
                 moveTo(5.6368f, 5.636f)
-                lineTo(4.29333f, 4.29253f)
+                lineTo(4.92969f, 4.92889f)
             }
             path(
                 stroke = SolidColor(Color.Black),
@@ -411,7 +411,7 @@ val ReasoningXHigh: ImageVector
                 strokeLineCap = StrokeCap.Round,
                 strokeLineJoin = StrokeJoin.Miter
             ) {
-                moveTo(16.1712f, 1.9298f)
+                moveTo(15.8268f, 2.7612f)
                 lineTo(15.4441f, 3.6851f)
             }
             path(
@@ -420,7 +420,7 @@ val ReasoningXHigh: ImageVector
                 strokeLineCap = StrokeCap.Round,
                 strokeLineJoin = StrokeJoin.Miter
             ) {
-                moveTo(7.8288f, 1.9298f)
+                moveTo(8.1732f, 2.7612f)
                 lineTo(8.5559f, 3.6851f)
             }
             path(
@@ -429,7 +429,7 @@ val ReasoningXHigh: ImageVector
                 strokeLineCap = StrokeCap.Round,
                 strokeLineJoin = StrokeJoin.Miter
             ) {
-                moveTo(22.0702f, 7.8288f)
+                moveTo(21.2388f, 8.1732f)
                 lineTo(20.3149f, 8.5559f)
             }
             path(
@@ -438,7 +438,7 @@ val ReasoningXHigh: ImageVector
                 strokeLineCap = StrokeCap.Round,
                 strokeLineJoin = StrokeJoin.Miter
             ) {
-                moveTo(1.9298f, 7.8288f)
+                moveTo(2.7612f, 8.1732f)
                 lineTo(3.6851f, 8.5559f)
             }
         }.build()
