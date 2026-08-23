@@ -4,7 +4,7 @@ import androidx.compose.ui.util.fastForEachIndexed
 import me.rerere.ai.ui.UIMessagePart
 
 /**
- * 思考步骤类型，用于分组 Reasoning 和 Tool
+ * 思考步骤类型，用于分组 Reasoning、客户端 Tool 和 ServerTool
  */
 sealed interface ThinkingStep {
     data class ReasoningStep(
@@ -13,6 +13,10 @@ sealed interface ThinkingStep {
 
     data class ToolStep(
         val tool: UIMessagePart.Tool,
+    ) : ThinkingStep
+
+    data class ServerToolStep(
+        val tool: UIMessagePart.ServerTool,
     ) : ThinkingStep
 }
 
@@ -26,12 +30,13 @@ sealed interface MessagePartBlock {
 
 /**
  * 将 parts 分组成 ThinkingBlock 和 ContentBlock
- * 连续的 Reasoning 和 Tool 会被分组到一个 ThinkingBlock 中
+ * 连续的 Reasoning、客户端 Tool 和 ServerTool 会被分组到一个 ThinkingBlock 中
  */
 fun List<UIMessagePart>.groupMessageParts(): List<MessagePartBlock> {
     // 强制：将所有 Reasoning/Tool parts 提取到最前面，绝不让思考过程出现在正文中
     val reasoningParts = mutableListOf<UIMessagePart.Reasoning>()
     val toolSteps = mutableListOf<ThinkingStep.ToolStep>()
+    val serverToolSteps = mutableListOf<ThinkingStep.ServerToolStep>()
     val contentBlocks = mutableListOf<MessagePartBlock>()
 
     this.fastForEachIndexed { index, part ->
@@ -42,6 +47,10 @@ fun List<UIMessagePart>.groupMessageParts(): List<MessagePartBlock> {
 
             is UIMessagePart.Tool -> {
                 toolSteps.add(ThinkingStep.ToolStep(part))
+            }
+
+            is UIMessagePart.ServerTool -> {
+                serverToolSteps.add(ThinkingStep.ServerToolStep(part))
             }
 
             else -> {
@@ -62,6 +71,7 @@ fun List<UIMessagePart>.groupMessageParts(): List<MessagePartBlock> {
         mergedThinkingSteps.add(ThinkingStep.ReasoningStep(merged))
     }
     mergedThinkingSteps.addAll(toolSteps)
+    mergedThinkingSteps.addAll(serverToolSteps)
 
     // 思考过程始终在最前面
     return if (mergedThinkingSteps.isNotEmpty()) {
