@@ -58,6 +58,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.DpOffset
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.paging.compose.collectAsLazyPagingItems
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
@@ -186,6 +187,22 @@ fun ChatDrawerContent(
     val allConversations by drawerVm.allConversations.collectAsStateWithLifecycle()
     var tagSheetConversation by remember { mutableStateOf<Conversation?>(null) }
 
+    val updateCheckDisabledUntil = settings.displaySetting.updateCheckDisabledUntilEpochMillis
+    var updateChecksEnabled by remember(updateCheckDisabledUntil) {
+        mutableStateOf(updateCheckDisabledUntil <= System.currentTimeMillis())
+    }
+    LaunchedEffect(updateCheckDisabledUntil) {
+        while (true) {
+            val remaining = updateCheckDisabledUntil - System.currentTimeMillis()
+            if (remaining <= 0) {
+                updateChecksEnabled = true
+                break
+            }
+            updateChecksEnabled = false
+            delay(minOf(remaining, 60 * 60 * 1_000L))
+        }
+    }
+
     ModalDrawerSheet(
         modifier = Modifier.width(300.dp)
     ) {
@@ -193,7 +210,7 @@ fun ChatDrawerContent(
             modifier = Modifier.padding(8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            if (settings.displaySetting.showUpdates && !isPlayStore) {
+            if (updateChecksEnabled && !isPlayStore) {
                 UpdateCard(vm)
             }
 
