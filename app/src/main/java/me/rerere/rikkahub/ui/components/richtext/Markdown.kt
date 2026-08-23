@@ -2,6 +2,7 @@ package me.rerere.rikkahub.ui.components.richtext
 
 import android.content.ClipData
 import android.content.Intent
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
@@ -16,9 +17,12 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.rememberScrollState
@@ -27,15 +31,19 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.InlineTextContent
 import androidx.compose.foundation.text.appendInlineContent
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.BasicAlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.ProvideTextStyle
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -45,6 +53,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -80,6 +89,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.fastForEach
+import androidx.compose.ui.window.DialogProperties
 import androidx.core.net.toUri
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.catch
@@ -87,6 +97,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 import me.rerere.hugeicons.HugeIcons
@@ -897,18 +908,29 @@ private fun TableNode(node: ASTNode, content: String, modifier: Modifier = Modif
     val tableMarkdown = remember(node, content) { node.getTextInNode(content).trim() }
     val tableCsv = remember(headerCells, rows) { buildTableCsv(headerCells, rows) }
 
+    // 导出文件名输入对话框是否可见
+    var showExportDialog by remember { mutableStateOf(false) }
+
+    // 系统"保存文件"对话框，用于选择保存位置（文件名在应用内对话框中输入并预填）
     val createDocumentLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("text/csv")
     ) { uri ->
-        uri?.let {
+        if (uri != null) {
             scope.launch {
-                try {
-                    context.contentResolver.openOutputStream(it)?.use { outputStream ->
-                        outputStream.write(tableCsv.toByteArray())
+                val success = runCatching {
+                    withContext(Dispatchers.IO) {
+                        context.contentResolver.openOutputStream(uri)?.use { outputStream ->
+                            // 写入 UTF-8 BOM，避免 Excel 等软件用系统本地编码(如 GBK)解析导致中文乱码
+                            outputStream.write(byteArrayOf(0xEF.toByte(), 0xBB.toByte(), 0xBF.toByte()))
+                            outputStream.write(tableCsv.toByteArray(Charsets.UTF_8))
+                        } ?: error("openOutputStream returned null")
                     }
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                }
+                }.isSuccess
+                Toast.makeText(
+                    context,
+                    if (success) "已导出表格" else "导出表格失败",
+                    Toast.LENGTH_SHORT
+                ).show()
             }
         }
     }
@@ -965,14 +987,7 @@ private fun TableNode(node: ASTNode, content: String, modifier: Modifier = Modif
                     modifier = Modifier
                         .clip(RoundedCornerShape(4.dp))
                         .onClick {
-                            // 文件名精确到分钟，格式 yyyy-MM-dd_HH-mm（避免冒号等非法文件名字符）
-                            val timestamp = Clock.System.now()
-                                .toLocalDateTime(TimeZone.currentSystemDefault())
-                                .toString()
-                                .take(16)
-                                .replace("T", "_")
-                                .replace(":", "-")
-                            createDocumentLauncher.launch("table_$timestamp.csv")
+                            showExportDialog = true
                         }
                         .padding(4.dp)
                         .size(iconSize)
@@ -987,6 +1002,74 @@ private fun TableNode(node: ASTNode, content: String, modifier: Modifier = Modif
             outerBorder = null,
             shape = RectangleShape,
         )
+    }
+
+    // 导出 CSV 文件名输入对话框
+    // 文件名在应用内对话框输入（配合 imePadding，输入法弹出时输入框随之上浮、始终可见），
+    // 确认后拉起系统"保存文件"对话框选择保存位置（文件名已预填）
+    if (showExportDialog) {
+        var fileName by remember { mutableStateOf(defaultCsvFileName()) }
+        val hasInvalidChars = fileName.any { it in INVALID_FILENAME_CHARS }
+
+        BasicAlertDialog(
+            onDismissRequest = { showExportDialog = false },
+            properties = DialogProperties(decorFitsSystemWindows = false),
+        ) {
+            Surface(
+                shape = MaterialTheme.shapes.extraLarge,
+                tonalElevation = 6.dp,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp)
+                    .imePadding(),
+            ) {
+                Column(
+                    modifier = Modifier.padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Text(
+                        text = "导出表格",
+                        style = MaterialTheme.typography.headlineSmall,
+                    )
+                    Spacer(Modifier.height(16.dp))
+                    OutlinedTextField(
+                        value = fileName,
+                        onValueChange = { fileName = it },
+                        label = { Text("文件名") },
+                        singleLine = true,
+                        isError = hasInvalidChars,
+                        supportingText = {
+                            Text(
+                                if (hasInvalidChars) {
+                                    "文件名不能包含 \\ / : * ? \" < > | 字符"
+                                } else {
+                                    ".csv"
+                                }
+                            )
+                        },
+                    )
+                    Spacer(Modifier.height(24.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                    ) {
+                        TextButton(onClick = { showExportDialog = false }) {
+                            Text("取消")
+                        }
+                        Spacer(Modifier.width(8.dp))
+                        Button(
+                            enabled = fileName.isNotBlank() && !hasInvalidChars,
+                            onClick = {
+                                showExportDialog = false
+                                createDocumentLauncher.launch(sanitizeCsvFileName(fileName))
+                            }
+                        ) {
+                            Text("保存")
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -1005,6 +1088,24 @@ private fun buildTableCsv(headerCells: List<String>, rows: List<List<String>>): 
             appendLine(row.joinToString(",") { escape(it) })
         }
     }
+}
+
+// 文件名中不允许出现的字符（Windows/Android 通用非法字符）
+private val INVALID_FILENAME_CHARS = setOf('\\', '/', ':', '*', '?', '"', '<', '>', '|')
+
+// 生成默认导出文件名：精确到分钟，格式 yyyy-MM-dd_HH-mm（避免冒号等非法文件名字符）
+private fun defaultCsvFileName(): String =
+    "table_" + Clock.System.now()
+        .toLocalDateTime(TimeZone.currentSystemDefault())
+        .toString()
+        .take(16)
+        .replace("T", "_")
+        .replace(":", "-")
+
+// 清理文件名中的非法字符，并确保以 .csv 结尾
+private fun sanitizeCsvFileName(raw: String): String {
+    val cleaned = raw.map { if (it in INVALID_FILENAME_CHARS) '_' else it }.joinToString("").trim()
+    return if (cleaned.endsWith(".csv", ignoreCase = true)) cleaned else "$cleaned.csv"
 }
 
 private fun AnnotatedString.Builder.appendMarkdownNodeContent(
