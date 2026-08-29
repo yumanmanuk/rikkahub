@@ -6,9 +6,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExposedDropdownMenu
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
-import androidx.compose.material3.MenuAnchorType
+import androidx.compose.material3.ExposedDropdownMenuAnchorType
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -318,7 +319,7 @@ private fun MiMoTTSConfiguration(
                 },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .menuAnchor(MenuAnchorType.PrimaryEditable),
+                    .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryEditable),
                 placeholder = { Text("mimo-v2.5-tts") },
                 trailingIcon = {
                     ExposedDropdownMenuDefaults.TrailingIcon(expanded = modelExpanded)
@@ -366,7 +367,7 @@ private fun MiMoTTSConfiguration(
                 },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .menuAnchor(MenuAnchorType.PrimaryEditable),
+                    .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryEditable),
                 placeholder = { Text("mimo_default") },
                 trailingIcon = {
                     ExposedDropdownMenuDefaults.TrailingIcon(expanded = voiceExpanded)
@@ -463,7 +464,7 @@ private fun MiniMaxTTSConfiguration(
                 },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .menuAnchor(MenuAnchorType.PrimaryEditable),
+                    .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryEditable),
                 placeholder = { Text("speech-2.8-turbo") },
                 trailingIcon = {
                     ExposedDropdownMenuDefaults.TrailingIcon(expanded = modelExpanded)
@@ -564,7 +565,7 @@ private fun MiniMaxTTSConfiguration(
                 },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .menuAnchor(MenuAnchorType.PrimaryEditable),
+                    .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryEditable),
                 trailingIcon = {
                     ExposedDropdownMenuDefaults.TrailingIcon(expanded = emotionExpanded)
                 }

@@ -15,6 +15,7 @@ import me.rerere.asr.ASRProviderSetting
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.ui.components.ui.FormItem
 import me.rerere.rikkahub.ui.components.ui.OutlinedNumberInput
+import me.rerere.rikkahub.ui.components.ui.SelectTextField
 
 @Composable
 fun ASRProviderConfigure(
@@ -533,6 +534,17 @@ private fun StepASRConfiguration(
     }
 }
 
+/**
+ * chirp_3 实际部署的 location（官方 Regional availability 表）。
+ * 前 4 个为 GA，其余为 Preview；不在表里的 us-central1 / global 调用会报
+ * "the model chirp_3 does not exist in the location named X"。
+ */
+private val CHIRP3_REGIONS = listOf(
+    "us", "eu",
+    "asia-northeast1", "asia-southeast1",
+    "asia-south1", "europe-west2", "europe-west3", "northamerica-northeast1",
+)
+
 @Composable
 private fun Chirp3ASRConfiguration(
     setting: ASRProviderSetting.Chirp3,
@@ -577,13 +589,15 @@ private fun Chirp3ASRConfiguration(
 
     FormItem(
         label = { Text("Region") },
-        description = { Text("Google Cloud 地址（如 us-central1）") }
+        description = { Text("chirp_3 仅支持 us / eu 等多区域，不支持 us-central1 / global") }
     ) {
-        OutlinedTextField(
+        SelectTextField(
             value = setting.region,
+            options = CHIRP3_REGIONS,
+            onOptionSelected = { onValueChange(setting.copy(region = it)) },
             onValueChange = { onValueChange(setting.copy(region = it)) },
             modifier = Modifier.fillMaxWidth(),
-            placeholder = { Text("us-central1") }
+            placeholder = { Text("us") }
         )
     }
 

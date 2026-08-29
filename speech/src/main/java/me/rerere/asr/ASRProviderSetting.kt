@@ -184,7 +184,8 @@ sealed class ASRProviderSetting {
         val serviceAccountEmail: String = "",
         val privateKey: String = "",
         val projectId: String = "",
-        val region: String = "us-central1",
+        // chirp_3 仅部署在 us / eu 等多区域（见 CHIRP3_REGIONS），不支持 us-central1 / global
+        val region: String = "us",
         val recognizerId: String = "",
         val language: String = "cmn-Hans-CN",
         val sampleRate: Int = 16000,

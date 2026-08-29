@@ -37,6 +37,8 @@ fun ZoomableAsyncImage(
     val export = LocalExportContext.current
     val coilModel = ImageRequest.Builder(context)
         .data(model)
+        // 限制解码尺寸避免 OOM：内联展示 2048px 足够清晰（单张 ≤16MB），导出模式用 4096px 保持清晰度
+        .size(if (export) 4096 else 2048, if (export) 4096 else 2048)
         .placeholder(placeholder)
         .crossfade(false)
         .allowHardware(!export)

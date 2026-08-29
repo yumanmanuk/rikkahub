@@ -6,7 +6,9 @@ import android.util.Log
 import androidx.core.net.toUri
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -26,10 +28,12 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.jsonObject
 import me.rerere.ai.core.MessageRole
 import me.rerere.ai.core.ReasoningLevel
 import me.rerere.ai.core.Tool
+import me.rerere.ai.provider.BuiltInTools
 import me.rerere.ai.provider.Model
 import me.rerere.ai.provider.ModelAbility
 import me.rerere.ai.provider.ProviderManager
@@ -108,6 +112,10 @@ internal fun backgroundTextGenerationParams(
     customHeaders = model.customHeaders,
     customBody = model.customBodies,
 )
+
+internal fun shouldUseExternalWebSearch(assistant: Assistant, model: Model): Boolean {
+    return assistant.enableWebSearch && BuiltInTools.Search !in model.tools
+}
 
 data class ChatError(
     val id: Uuid = Uuid.random(),
@@ -765,6 +773,7 @@ class ChatService(
         } else {
             model.displayName
         }
+        val useExternalWebSearch = shouldUseExternalWebSearch(assistant, model)
 
         runCatching {
 
@@ -773,7 +782,7 @@ class ChatService(
 
             // memory tool
             if (!model.abilities.contains(ModelAbility.TOOL)) {
-                if (assistant.enableWebSearch || mcpManager.getAllAvailableTools().isNotEmpty()) {
+                if (useExternalWebSearch || mcpManager.getAllAvailableTools().isNotEmpty()) {
                     addError(
                         IllegalStateException(context.getString(R.string.tools_warning)),
                         conversationId,
@@ -834,7 +843,7 @@ class ChatService(
                 },
                 outputTransformers = outputTransformers,
                 tools = buildList {
-                    if (assistant.enableWebSearch) {
+                    if (useExternalWebSearch) {
                         addAll(createSearchTools(settings))
                     }
                     addAll(localTools.getTools(assistant.localTools))
@@ -930,6 +939,10 @@ class ChatService(
                 Log.i(TAG, "Auto-retry ${retryCount + 1}/$maxRetries after error: ${it.message}")
                 addError(it, conversationId, title = "${context.getString(R.string.error_title_generation)} (${retryCount + 1}/$maxRetries 重试中...)")
                 delay(retryDelayMs)
+                // 兜底：provider 层的取消信号可能被错误体解析吞掉（见各 provider onFailure），
+                // 导致 delay 不抛 CancellationException；这里在重试发起前再检查一次协程活性，
+                // 确保用户点"暂停"后不会继续发起新的重试请求。
+                currentCoroutineContext().ensureActive()
                 handleMessageComplete(conversationId, messageRange, retryCount + 1)
                 return
             }
@@ -1047,18 +1060,19 @@ class ChatService(
         conversationId: Uuid,
         conversation: Conversation,
         force: Boolean = false
-    ) {
+    ) = withContext(Dispatchers.IO) {
         val shouldGenerate = when {
             force -> true
             conversation.title.isBlank() -> true
             else -> false
         }
-        if (!shouldGenerate) return
+        if (!shouldGenerate) return@withContext
 
         runCatching {
             val settings = settingsStore.settingsFlow.first()
-            val model = settings.findModelById(settings.titleModelId, fallback = settings.fastModelId) ?: return
-            val provider = model.findProvider(settings.providers) ?: return
+            val model = settings.findModelById(settings.titleModelId, fallback = settings.fastModelId)
+                ?: return@runCatching
+            val provider = model.findProvider(settings.providers) ?: return@runCatching
 
             val providerHandler = providerManager.getProviderByType(provider)
             val result = providerHandler.generateText(
@@ -1078,7 +1092,7 @@ class ChatService(
             conversationRepo.getConversationById(conversation.id)?.let {
                 saveConversation(
                     conversationId,
-                    it.copy(title = result.choices[0].message?.toText()?.trim() ?: "")
+                    it.copy(title = result.message.toText().trim())
                 )
             }
         }.onFailure {
@@ -1094,12 +1108,16 @@ class ChatService(
 
     // ---- 生成建议 ----
 
-    suspend fun generateSuggestion(conversationId: Uuid, conversation: Conversation) {
+    suspend fun generateSuggestion(
+        conversationId: Uuid,
+        conversation: Conversation,
+    ) = withContext(Dispatchers.IO) {
         runCatching {
             val settings = settingsStore.settingsFlow.first()
-            if (!settings.enableSuggestion) return
-            val model = settings.findModelById(settings.suggestionModelId, fallback = settings.fastModelId) ?: return
-            val provider = model.findProvider(settings.providers) ?: return
+            if (!settings.enableSuggestion) return@runCatching
+            val model = settings.findModelById(settings.suggestionModelId, fallback = settings.fastModelId)
+                ?: return@runCatching
+            val provider = model.findProvider(settings.providers) ?: return@runCatching
 
             sessions[conversationId]?.let { session ->
                 updateConversation(
@@ -1122,8 +1140,8 @@ class ChatService(
                 params = backgroundTextGenerationParams(model),
             )
             val suggestions =
-                result.choices[0].message?.toText()?.split("\n")?.map { it.trim() }
-                    ?.filter { it.isNotBlank() } ?: emptyList()
+                result.message.toText().split("\n").map { it.trim() }
+                    .filter { it.isNotBlank() }
 
             val latestConversation = conversationRepo.getConversationById(conversationId)
                 ?: sessions[conversationId]?.state?.value
@@ -1207,7 +1225,7 @@ class ChatService(
                 params = backgroundTextGenerationParams(model),
             )
 
-            return result.choices[0].message?.toText()?.trim()
+            return result.message.toText().trim().takeIf { it.isNotBlank() }
                 ?: throw IllegalStateException("Failed to generate compressed summary")
         }
 

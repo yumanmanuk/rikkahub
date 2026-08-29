@@ -19,6 +19,7 @@ import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import coil3.compose.rememberAsyncImagePainter
+import coil3.request.ImageRequest
 import com.dokar.sonner.ToastType
 import com.jvziyaoyao.scale.image.pager.ImagePager
 import com.jvziyaoyao.scale.zoomable.pager.rememberZoomablePagerState
@@ -32,11 +33,12 @@ import org.koin.compose.koinInject
 @Composable
 fun ImagePreviewDialog(
     images: List<String>,
+    initialPage: Int = 0,
     onDismissRequest: () -> Unit,
 ) {
     val context = LocalContext.current
     val filesManager: FilesManager = koinInject()
-    val state = rememberZoomablePagerState { images.size }
+    val state = rememberZoomablePagerState(initialPage = initialPage.coerceIn(0, (images.size - 1).coerceAtLeast(0))) { images.size }
     val toaster = LocalToaster.current
     val lifecycleOwner = LocalLifecycleOwner.current
     Dialog(
@@ -51,7 +53,13 @@ fun ImagePreviewDialog(
                 modifier = Modifier.fillMaxSize(),
                 pagerState = state,
                 imageLoader = { index ->
-                    val painter = rememberAsyncImagePainter(images[index])
+                    // 限制解码尺寸到 4096px，避免全尺寸解码导致 OOM（单张 ≤64MB）
+                    val painter = rememberAsyncImagePainter(
+                        ImageRequest.Builder(context)
+                            .data(images[index])
+                            .size(4096, 4096)
+                            .build()
+                    )
                     return@ImagePager Pair(painter, painter.intrinsicSize)
                 },
             )

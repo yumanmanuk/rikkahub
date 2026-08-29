@@ -23,7 +23,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -42,6 +44,7 @@ import me.rerere.hugeicons.stroke.Files02
 import me.rerere.hugeicons.stroke.MusicNote03
 import me.rerere.hugeicons.stroke.Video01
 import me.rerere.rikkahub.data.files.FilesManager
+import me.rerere.rikkahub.ui.components.ui.ImagePreviewDialog
 import me.rerere.rikkahub.ui.hooks.ChatInputState
 import org.koin.compose.koinInject
 
@@ -65,6 +68,17 @@ internal fun MediaFileInputRow(
         }
     }
 
+    // 点击图片缩略图后放大预览，支持在多张图片间滑动
+    val imageUrls = state.messageContent.filterIsInstance<UIMessagePart.Image>().map { it.url }
+    var previewImageUrl by remember { mutableStateOf<String?>(null) }
+    previewImageUrl?.let { url ->
+        ImagePreviewDialog(
+            images = imageUrls,
+            initialPage = imageUrls.indexOf(url).coerceAtLeast(0),
+            onDismissRequest = { previewImageUrl = null },
+        )
+    }
+
     Row(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -78,6 +92,7 @@ internal fun MediaFileInputRow(
                 is UIMessagePart.Image -> {
                     ImageAttachmentPreview(
                         url = part.url,
+                        onClick = { previewImageUrl = part.url },
                         onRemove = { removePart(part, part.url) }
                     )
                 }
@@ -129,13 +144,15 @@ internal fun MediaFileInputRow(
 
 /**
  * 输入框中已选图片的预览：只显示较大的方形缩略图（不显示文件名），右上角为删除按钮。
+ * 点击缩略图可放大查看。
  */
 @Composable
 private fun ImageAttachmentPreview(
     url: String,
+    onClick: () -> Unit,
     onRemove: () -> Unit,
 ) {
-    Box(modifier = Modifier.size(72.dp)) {
+    Box(modifier = Modifier.size(94.dp)) {
         Surface(
             modifier = Modifier.fillMaxSize(),
             shape = RoundedCornerShape(12.dp),
@@ -145,7 +162,9 @@ private fun ImageAttachmentPreview(
                 model = url,
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize()
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clickable(onClick = onClick)
             )
         }
         Box(
