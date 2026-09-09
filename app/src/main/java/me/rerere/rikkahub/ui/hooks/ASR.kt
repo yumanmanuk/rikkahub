@@ -20,6 +20,7 @@ import me.rerere.asr.providers.DashScopeASRController
 import me.rerere.asr.providers.MiMoASRController
 import me.rerere.asr.providers.OpenAIRealtimeASRController
 import me.rerere.asr.providers.StepASRController
+import me.rerere.asr.providers.TencentASRController
 import me.rerere.asr.providers.VolcengineASRController
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.datastore.getSelectedASRProvider
@@ -130,6 +131,11 @@ private class CustomAsrStateImpl(
             is ASRProviderSetting.Step -> {
                 if (provider.apiKey.isBlank()) return null
                 StepASRController(context, httpClient, provider)
+            }
+
+            is ASRProviderSetting.Tencent -> {
+                if (provider.secretId.isBlank() || provider.secretKey.isBlank() || provider.appId.isBlank()) return null
+                TencentASRController(context, httpClient, provider)
             }
 
             is ASRProviderSetting.Chirp3 -> {

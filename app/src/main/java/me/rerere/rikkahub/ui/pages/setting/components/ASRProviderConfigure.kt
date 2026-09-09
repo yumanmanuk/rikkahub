@@ -39,6 +39,7 @@ fun ASRProviderConfigure(
                     is ASRProviderSetting.MiMo -> "MiMo"
                     is ASRProviderSetting.Step -> "Step"
                     is ASRProviderSetting.Chirp3 -> "Google Chirp3"
+                    is ASRProviderSetting.Tencent -> "Tencent ASR"
                 },
                 onValueChange = {},
                 readOnly = true,
@@ -65,6 +66,7 @@ fun ASRProviderConfigure(
             is ASRProviderSetting.MiMo -> MiMoASRConfiguration(setting, onValueChange)
             is ASRProviderSetting.Step -> StepASRConfiguration(setting, onValueChange)
             is ASRProviderSetting.Chirp3 -> Chirp3ASRConfiguration(setting, onValueChange)
+            is ASRProviderSetting.Tencent -> TencentASRConfiguration(setting, onValueChange)
         }
     }
 }
@@ -610,6 +612,156 @@ private fun Chirp3ASRConfiguration(
             onValueChange = { onValueChange(setting.copy(language = it)) },
             modifier = Modifier.fillMaxWidth(),
             placeholder = { Text("cmn-Hans-CN") }
+        )
+    }
+}
+
+@Composable
+private fun TencentASRConfiguration(
+    setting: ASRProviderSetting.Tencent,
+    onValueChange: (ASRProviderSetting) -> Unit
+) {
+    FormItem(
+        label = { Text("SecretId") },
+        description = { Text("腾讯云 SecretId") }
+    ) {
+        OutlinedTextField(
+            value = setting.secretId,
+            onValueChange = { onValueChange(setting.copy(secretId = it)) },
+            modifier = Modifier.fillMaxWidth(),
+            placeholder = { Text("AKID...") }
+        )
+    }
+
+    FormItem(
+        label = { Text("SecretKey") },
+        description = { Text("腾讯云 SecretKey，仅保存在本机，用于本地生成签名 URL") }
+    ) {
+        OutlinedTextField(
+            value = setting.secretKey,
+            onValueChange = { onValueChange(setting.copy(secretKey = it)) },
+            modifier = Modifier.fillMaxWidth(),
+            placeholder = { Text("your-secret-key") }
+        )
+    }
+
+    FormItem(
+        label = { Text("AppId") },
+        description = { Text("腾讯云 APPID，实时语音识别必填") }
+    ) {
+        OutlinedTextField(
+            value = setting.appId,
+            onValueChange = { onValueChange(setting.copy(appId = it)) },
+            modifier = Modifier.fillMaxWidth(),
+            placeholder = { Text("1258650085") }
+        )
+    }
+
+    FormItem(
+        label = { Text("Engine Model Type") },
+        description = { Text("腾讯云引擎模型，例如 16k_zh / 16k_en / 16k_zh_large") }
+    ) {
+        OutlinedTextField(
+            value = setting.engineModelType,
+            onValueChange = { onValueChange(setting.copy(engineModelType = it)) },
+            modifier = Modifier.fillMaxWidth(),
+            placeholder = { Text("16k_zh") }
+        )
+    }
+
+    FormItem(
+        label = { Text("Sample Rate") },
+        description = { Text("PCM 采样率，16k_zh 使用 16000") }
+    ) {
+        OutlinedNumberInput(
+            value = setting.sampleRate,
+            onValueChange = { value ->
+                if (value in 8000..48000) {
+                    onValueChange(setting.copy(sampleRate = value))
+                }
+            },
+            modifier = Modifier.fillMaxWidth(),
+            label = "Sample Rate"
+        )
+    }
+
+    FormItem(
+        label = { Text("Voice Format") },
+        description = { Text("音频格式，1 = 16k PCM") }
+    ) {
+        OutlinedNumberInput(
+            value = setting.voiceFormat,
+            onValueChange = { value ->
+                if (value >= 0) {
+                    onValueChange(setting.copy(voiceFormat = value))
+                }
+            },
+            modifier = Modifier.fillMaxWidth(),
+            label = "Voice Format"
+        )
+    }
+
+    FormItem(
+        label = { Text("Filter Dirty") },
+        description = { Text("过滤脏词（0 或 1）") }
+    ) {
+        androidx.compose.material3.Switch(
+            checked = setting.filterDirty == 1,
+            onCheckedChange = { onValueChange(setting.copy(filterDirty = if (it) 1 else 0)) }
+        )
+    }
+
+    FormItem(
+        label = { Text("Filter Modal") },
+        description = { Text("过滤语气词（0 或 1）") }
+    ) {
+        androidx.compose.material3.Switch(
+            checked = setting.filterModal == 1,
+            onCheckedChange = { onValueChange(setting.copy(filterModal = if (it) 1 else 0)) }
+        )
+    }
+
+    FormItem(
+        label = { Text("Filter Punctuation") },
+        description = { Text("过滤标点（0 或 1）") }
+    ) {
+        androidx.compose.material3.Switch(
+            checked = setting.filterPunc == 1,
+            onCheckedChange = { onValueChange(setting.copy(filterPunc = if (it) 1 else 0)) }
+        )
+    }
+
+    FormItem(
+        label = { Text("Convert Num Mode") },
+        description = { Text("数字转换：1 = 阿拉伯数字，0 = 中文数字") }
+    ) {
+        androidx.compose.material3.Switch(
+            checked = setting.convertNumMode == 1,
+            onCheckedChange = { onValueChange(setting.copy(convertNumMode = if (it) 1 else 0)) }
+        )
+    }
+
+    FormItem(
+        label = { Text("Hotword ID") },
+        description = { Text("热词表 ID（可选）") }
+    ) {
+        OutlinedTextField(
+            value = setting.hotwordId,
+            onValueChange = { onValueChange(setting.copy(hotwordId = it)) },
+            modifier = Modifier.fillMaxWidth(),
+            placeholder = { Text("可选") }
+        )
+    }
+
+    FormItem(
+        label = { Text("Customization ID") },
+        description = { Text("自定义模型 ID（可选）") }
+    ) {
+        OutlinedTextField(
+            value = setting.customizationId,
+            onValueChange = { onValueChange(setting.copy(customizationId = it)) },
+            modifier = Modifier.fillMaxWidth(),
+            placeholder = { Text("可选") }
         )
     }
 }

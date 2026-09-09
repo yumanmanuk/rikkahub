@@ -203,6 +203,42 @@ sealed class ASRProviderSetting {
         }
     }
 
+    /**
+     * 腾讯云 ASR（实时语音识别 WebSocket v2）。
+     *
+     * 与 OpenAI/DashScope 类似也是 WebSocket 流式接口，但鉴权使用腾讯云 HMAC-SHA1
+     * 预签名 URL（SecretId/SecretKey 不出设备）。音频为 16-bit PCM 二进制帧，
+     * 结束时发送 {"type":"end"} 控制帧。
+     */
+    @Serializable
+    @SerialName("tencent")
+    data class Tencent(
+        override val id: Uuid = Uuid.random(),
+        override val name: String = "Tencent ASR",
+        val secretId: String = "",
+        val secretKey: String = "",
+        val appId: String = "",
+        val engineModelType: String = "16k_zh",
+        val voiceFormat: Int = 1,
+        val sampleRate: Int = 16000,
+        val filterDirty: Int = 0,
+        val filterModal: Int = 0,
+        val filterPunc: Int = 0,
+        val convertNumMode: Int = 1,
+        val hotwordId: String = "",
+        val customizationId: String = "",
+    ) : ASRProviderSetting() {
+        override fun copyProvider(
+            id: Uuid,
+            name: String,
+        ): ASRProviderSetting {
+            return this.copy(
+                id = id,
+                name = name,
+            )
+        }
+    }
+
     companion object {
         val Types by lazy {
             listOf(
@@ -212,6 +248,7 @@ sealed class ASRProviderSetting {
                 MiMo::class,
                 Step::class,
                 Chirp3::class,
+                Tencent::class,
             )
         }
     }
