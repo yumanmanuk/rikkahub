@@ -1,6 +1,5 @@
 package me.rerere.ai.provider.providers.openai
 
-import android.util.Log
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
@@ -21,8 +20,6 @@ import me.rerere.ai.util.json
 import me.rerere.ai.util.parseErrorDetail
 import me.rerere.common.http.jsonObjectOrNull
 
-private const val TAG = "ResponseApiStreamDecoder"
-
 internal class ResponseApiStreamDecoder : StreamChunkDecoder {
     private val state = ResponseStreamState()
 
@@ -41,10 +38,7 @@ internal class ResponseApiStreamDecoder : StreamChunkDecoder {
     override fun onClosed(): List<StreamChunk> = state.finish()
 
     private fun parseEvent(payload: JsonObject): List<StreamChunk> {
-        val chunkType = payload["type"]?.jsonPrimitive?.content ?: run {
-            Log.w(TAG, "parseEvent: missing type field in event, skipping: $payload")
-            return emptyList()
-        }
+        val chunkType = payload["type"]?.jsonPrimitive?.content ?: error("chunk type not found")
         val itemId = payload["item_id"]?.jsonPrimitive?.contentOrNull
         val contentIndex = payload["content_index"]?.jsonPrimitive?.intOrNull ?: 0
         val summaryIndex = payload["summary_index"]?.jsonPrimitive?.intOrNull ?: contentIndex
@@ -54,17 +48,17 @@ internal class ResponseApiStreamDecoder : StreamChunkDecoder {
 
         return when (chunkType) {
             "response.output_text.delta" -> state.textDelta(
-                textId ?: return missingItemId(chunkType),
+                textId ?: error("item_id not found"),
                 payload["delta"]?.jsonPrimitive?.contentOrNull ?: "",
             )
             "response.reasoning_summary_text.delta" -> state.reasoningDelta(
-                summaryReasoningId ?: return missingItemId(chunkType),
+                summaryReasoningId ?: error("item_id not found"),
                 payload["delta"]?.jsonPrimitive?.contentOrNull ?: "",
                 state.reasoningMetadata[itemId],
                 ReasoningType.SUMMARY_TEXT,
             )
             "response.reasoning_text.delta" -> state.reasoningDelta(
-                contentReasoningId ?: return missingItemId(chunkType),
+                contentReasoningId ?: error("item_id not found"),
                 payload["delta"]?.jsonPrimitive?.contentOrNull ?: "",
                 state.reasoningMetadata[itemId],
                 ReasoningType.REASONING_TEXT,
@@ -72,13 +66,13 @@ internal class ResponseApiStreamDecoder : StreamChunkDecoder {
             "response.content_part.added" -> {
                 val part = payload["part"]?.jsonObject ?: return emptyList()
                 if (part["type"]?.jsonPrimitive?.contentOrNull == "output_text") {
-                    state.startText(textId ?: return missingItemId(chunkType))
+                    state.startText(textId ?: error("item_id not found"))
                 } else emptyList()
             }
             "response.content_part.done", "response.output_text.done" ->
-                state.endText(textId ?: return missingItemId(chunkType))
+                state.endText(textId ?: error("item_id not found"))
             "response.reasoning_summary_part.added" -> state.startReasoning(
-                summaryReasoningId ?: return missingItemId(chunkType),
+                summaryReasoningId ?: error("item_id not found"),
                 state.reasoningMetadata[itemId],
                 ReasoningType.SUMMARY_TEXT,
             )
@@ -86,9 +80,9 @@ internal class ResponseApiStreamDecoder : StreamChunkDecoder {
             "response.reasoning_summary_text.done",
             "response.reasoning_text.done" -> emptyList()
             "response.output_item.added" -> {
-                val item = payload["item"]?.jsonObject ?: return missingItem(chunkType)
-                val type = item["type"]?.jsonPrimitive?.content ?: return missingItem(chunkType)
-                val id = item["id"]?.jsonPrimitive?.content ?: return missingItem(chunkType)
+                val item = payload["item"]?.jsonObject ?: error("chunk item not found")
+                val type = item["type"]?.jsonPrimitive?.content ?: error("chunk type not found")
+                val id = item["id"]?.jsonPrimitive?.content ?: error("chunk id not found")
                 when (type) {
                     "function_call" -> {
                         val callId = item["call_id"]?.jsonPrimitive?.contentOrNull ?: id
@@ -113,9 +107,9 @@ internal class ResponseApiStreamDecoder : StreamChunkDecoder {
                 }
             }
             "response.output_item.done" -> {
-                val item = payload["item"]?.jsonObject ?: return missingItem(chunkType)
-                val type = item["type"]?.jsonPrimitive?.content ?: return missingItem(chunkType)
-                val id = item["id"]?.jsonPrimitive?.content ?: return missingItem(chunkType)
+                val item = payload["item"]?.jsonObject ?: error("chunk item not found")
+                val type = item["type"]?.jsonPrimitive?.content ?: error("chunk type not found")
+                val id = item["id"]?.jsonPrimitive?.content ?: error("chunk id not found")
                 when (type) {
                     "reasoning" -> {
                         val metadata = OpenAIReasoningMetadata(
@@ -147,14 +141,14 @@ internal class ResponseApiStreamDecoder : StreamChunkDecoder {
                 }
             }
             "response.function_call_arguments.delta" -> {
-                val requiredItemId = itemId ?: return missingItemId(chunkType)
+                val requiredItemId = itemId ?: error("item_id not found")
                 state.toolDelta(
                     state.toolCallIdsByItemId[requiredItemId] ?: requiredItemId,
                     payload["delta"]?.jsonPrimitive?.contentOrNull ?: "",
                 )
             }
             "response.function_call_arguments.done" -> {
-                val requiredItemId = itemId ?: return missingItemId(chunkType)
+                val requiredItemId = itemId ?: error("item_id not found")
                 val toolCallId = state.toolCallIdsByItemId[requiredItemId] ?: requiredItemId
                 buildList {
                     if (toolCallId !in state.toolIdsWithInput) {
@@ -167,7 +161,7 @@ internal class ResponseApiStreamDecoder : StreamChunkDecoder {
                 }
             }
             "response.image_generation_call.partial_image" -> {
-                val requiredItemId = itemId ?: return missingItemId(chunkType)
+                val requiredItemId = itemId ?: error("item_id not found")
                 buildList {
                     addAll(state.startImage(requiredItemId))
                     add(StreamChunk.ImageSnapshot(
@@ -181,17 +175,6 @@ internal class ResponseApiStreamDecoder : StreamChunkDecoder {
             "error" -> failWithError(payload)
             else -> parseServerToolStatusEvent(chunkType, itemId)
         }
-    }
-
-    // 单个 chunk 缺字段时告警并跳过，而不是抛异常终止整条流
-    private fun missingItemId(chunkType: String): List<StreamChunk> {
-        Log.w(TAG, "parseEvent: missing item_id in event '$chunkType', skipping")
-        return emptyList()
-    }
-
-    private fun missingItem(chunkType: String): List<StreamChunk> {
-        Log.w(TAG, "parseEvent: missing item/type/id in event '$chunkType', skipping")
-        return emptyList()
     }
 
     private fun parseTerminalResponse(payload: JsonObject): List<StreamChunk> {

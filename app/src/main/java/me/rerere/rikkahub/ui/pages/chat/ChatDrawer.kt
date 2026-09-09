@@ -186,7 +186,6 @@ fun ChatDrawerContent(
     val conversationTags = drawerSettings.conversationTags
     val allConversations by drawerVm.allConversations.collectAsStateWithLifecycle()
     var tagSheetConversation by remember { mutableStateOf<Conversation?>(null) }
-
     val updateCheckDisabledUntil = settings.displaySetting.updateCheckDisabledUntilEpochMillis
     var updateChecksEnabled by remember(updateCheckDisabledUntil) {
         mutableStateOf(updateCheckDisabledUntil <= System.currentTimeMillis())

@@ -73,6 +73,7 @@ data class TextGenerationParams(
     val reasoningLevel: ReasoningLevel? = null,
     val customHeaders: List<CustomHeader> = emptyList(),
     val customBody: List<CustomBody> = emptyList(),
+    val sessionId: String? = null,
 )
 
 @Serializable

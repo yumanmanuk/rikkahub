@@ -1,6 +1,10 @@
 # Repository Guidelines
 
-本文档面向贡献者，概述本仓库的模块结构、开发流程，便于快速上手并保持一致的协作质量。
+## Project Overview
+
+RikkaHub is a native Android LLM chat client that supports switching between different AI providers
+for conversations.
+Built with Jetpack Compose, Kotlin, and follows Material Design 3 principles.
 
 ## Project Overview
 
@@ -9,7 +13,6 @@ for conversations.
 Built with Jetpack Compose, Kotlin, and follows Material Design 3 principles.
 
 ## Build, Test, and Development Commands
-
 ```bash
 ./gradlew assembleDebug          # 构建 Debug APK
 ./gradlew test                   # 运行所有模块的 JVM 单元测试
@@ -65,7 +68,6 @@ ReorderableItem(reorderState, key = tag.id.toString()) { ... }
 
 - 单元测试：`FooTest.kt`
 - 仪器测试：`FooInstrumentedTest.kt` 或 `*Test.kt`
-
 ## Module Structure
 
 - **app**: Main application module with UI, ViewModels, and core logic

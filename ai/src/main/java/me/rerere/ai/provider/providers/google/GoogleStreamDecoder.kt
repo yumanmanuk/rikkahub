@@ -1,6 +1,5 @@
 package me.rerere.ai.provider.providers.google
 
-import android.util.Log
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
@@ -22,8 +21,6 @@ import me.rerere.ai.ui.toMetadata
 import me.rerere.ai.util.json
 import me.rerere.common.http.jsonPrimitiveOrNull
 import kotlin.time.Clock
-
-private const val TAG = "GoogleStreamDecoder"
 
 internal class GoogleStreamDecoder(
     private val responseId: String,
@@ -104,32 +101,7 @@ internal class GoogleStreamDecoder(
                 )
             }
         }
-        // Gemini 代码执行功能: 模型输出的可执行代码
-        part.containsKey("executableCode") -> {
-            val codeObj = part["executableCode"]!!.jsonObject
-            val language = codeObj["language"]?.jsonPrimitive?.contentOrNull ?: ""
-            val code = codeObj["code"]?.jsonPrimitive?.contentOrNull ?: ""
-            UIMessagePart.Text("\n```${language.lowercase()}\n$code\n```\n")
-        }
-        // Gemini 代码执行功能: 代码执行结果
-        part.containsKey("codeExecutionResult") -> {
-            val resultObj = part["codeExecutionResult"]!!.jsonObject
-            val outcome = resultObj["outcome"]?.jsonPrimitive?.contentOrNull ?: ""
-            val output = resultObj["output"]?.jsonPrimitive?.contentOrNull ?: ""
-            val isError = outcome == "OUTCOME_FAILED" || outcome == "OUTCOME_DEADLINE_EXCEEDED"
-            if (output.isNotBlank()) {
-                UIMessagePart.Text("\n```\n$output\n```\n")
-            } else if (isError) {
-                UIMessagePart.Text("\n> ⚠️ Code execution failed: $outcome\n")
-            } else {
-                UIMessagePart.Text("")
-            }
-        }
-        else -> {
-            // 未知 part 类型，降级处理避免崩溃，打印警告日志
-            Log.w(TAG, "parsePart: unknown part type, skipping: $part")
-            UIMessagePart.Text("")
-        }
+        else -> error("unknown message part type: $part")
     }
 
     private fun parseAnnotations(metadata: JsonObject?): List<UIMessageAnnotation> =

@@ -46,6 +46,11 @@ private data class MiMoResponseAudio(
     val data: String? = null
 )
 
+internal fun decodeMiMoAudioData(responseBody: String): ByteArray? {
+    val mimoResponse = runCatching { mimoJson.decodeFromString<MiMoResponse>(responseBody) }.getOrNull() ?: return null
+    val base64Audio = mimoResponse.choices.firstOrNull()?.message?.audio?.data ?: return null
+    return runCatching { Base64.getDecoder().decode(base64Audio) }.getOrNull()
+}
 class MiMoTTSProvider : TTSProvider<TTSProviderSetting.MiMo> {
     private val httpClient = OkHttpClient.Builder()
         .readTimeout(120, TimeUnit.SECONDS)
@@ -114,11 +119,8 @@ class MiMoTTSProvider : TTSProvider<TTSProviderSetting.MiMo> {
         val responseBody = response.body?.string()
             ?: throw Exception("MiMo TTS response body is empty")
 
-        val mimoResponse = mimoJson.decodeFromString<MiMoResponse>(responseBody)
-        val base64Audio = mimoResponse.choices.firstOrNull()?.message?.audio?.data
+        val audioBytes = decodeMiMoAudioData(responseBody)
             ?: throw Exception("MiMo TTS: no audio data in response")
-
-        val audioBytes = Base64.getDecoder().decode(base64Audio)
 
         emit(
             AudioChunk(

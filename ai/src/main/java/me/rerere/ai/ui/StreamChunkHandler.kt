@@ -1,7 +1,6 @@
 package me.rerere.ai.ui
 
 import kotlinx.datetime.TimeZone
-import kotlinx.datetime.toInstant
 import kotlinx.datetime.toLocalDateTime
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -71,12 +70,7 @@ class StreamChunkHandler(private val model: Model? = null) {
         require(messages.isNotEmpty()) { "messages must not be empty" }
 
         val targetMessages = if (messages.last().role != MessageRole.ASSISTANT) {
-            messages + UIMessage(
-                modelId = model?.id,
-                modelName = model?.displayName,
-                role = MessageRole.ASSISTANT,
-                parts = emptyList(),
-            )
+            messages + UIMessage(modelId = model?.id, role = MessageRole.ASSISTANT, parts = emptyList())
         } else {
             messages
         }
@@ -328,7 +322,6 @@ fun List<UIMessage>.handleTextGenerationResult(
     require(isNotEmpty()) { "messages must not be empty" }
     val incoming = result.message.copy(
         modelId = model?.id,
-        modelName = model?.displayName,
         usage = result.usage,
         finishedAt = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()),
     ).finishReasoning()
@@ -367,28 +360,19 @@ private fun UIMessage.appendMessage(delta: UIMessage): UIMessage {
                 if (deltaPart.reasoning.isEmpty() && deltaPart.metadata == null) {
                     acc
                 } else {
-                    // 查找任意位置且 reasoningType 匹配的已有 Reasoning（不只是 lastPart），
-                    // 防止中间穿插 Text 导致创建新的零时长 Reasoning
-                    val existingIndex = acc.indexOfLast {
-                        it is UIMessagePart.Reasoning && it.reasoningType == deltaPart.reasoningType
-                    }
-                    if (existingIndex >= 0) {
-                        val existing = acc[existingIndex] as UIMessagePart.Reasoning
-                        acc.toMutableList().apply {
-                            this[existingIndex] = UIMessagePart.Reasoning(
-                                reasoning = existing.reasoning + deltaPart.reasoning,
-                                createdAt = existing.createdAt,
-                                finishedAt = null,
-                                metadata = deltaPart.metadata ?: existing.metadata,
-                                reasoningType = existing.reasoningType,
-                            )
-                        }
-                    } else {
-                        // 新建 Reasoning 时把 createdAt 锚定到宿主消息的创建时间，
-                        // 避免非流式响应显示 0.0s 时长
-                        acc + deltaPart.copy(
-                            createdAt = this.createdAt.toInstant(TimeZone.currentSystemDefault())
+                    val lastPart = acc.lastOrNull()
+                    if (lastPart is UIMessagePart.Reasoning &&
+                        lastPart.reasoningType == deltaPart.reasoningType
+                    ) {
+                        acc.dropLast(1) + UIMessagePart.Reasoning(
+                            reasoning = lastPart.reasoning + deltaPart.reasoning,
+                            createdAt = lastPart.createdAt,
+                            finishedAt = null,
+                            metadata = deltaPart.metadata ?: lastPart.metadata,
+                            reasoningType = lastPart.reasoningType,
                         )
+                    } else {
+                        acc + deltaPart
                     }
                 }
             }

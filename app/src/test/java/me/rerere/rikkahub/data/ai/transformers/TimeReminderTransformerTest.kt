@@ -28,6 +28,7 @@ class TimeReminderTransformerTest {
         val result = applyTimeReminder(messages)
         // 首条用户消息前固定注入一条当前时间提醒
         assertEquals(2, result.size)
+        assertTrue(result[0].isSynthetic)
         assertTrue(getMessageText(result[0]).contains("<time_reminder>"))
         assertFalse(getMessageText(result[0]).contains("since last message"))
         assertEquals("Hello", getMessageText(result[1]))

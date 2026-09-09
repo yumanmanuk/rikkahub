@@ -331,15 +331,15 @@ class ResponseAPI(
                     group.parts.forEach { part ->
                         when (part) {
                             is UIMessagePart.Reasoning -> {
-                                // includeHistoryReasoning gates the optional reasoning content;
-                                // id + encrypted_content are the Responses API chain anchors and stay on.
-                                val reasoningMetadata = part.metadataAs<OpenAIReasoningMetadata>()
-                                val reasoningId = reasoningMetadata?.reasoningId
-                                val encryptedContent = reasoningMetadata?.encryptedContent
-                                // If history reasoning is disabled and there is no chain anchor, skip the item entirely.
-                                if (!includeHistoryReasoning && reasoningId == null && encryptedContent == null) {
-                                    return@forEach
-                                }
+// includeHistoryReasoning gates the optional reasoning content;
+// id + encrypted_content are the Responses API chain anchors and stay on.
+val reasoningMetadata = part.metadataAs<OpenAIReasoningMetadata>()
+val reasoningId = reasoningMetadata?.reasoningId
+val encryptedContent = reasoningMetadata?.encryptedContent
+// If history reasoning is disabled and there is no chain anchor, skip the item entirely.
+if (!includeHistoryReasoning && reasoningId == null && encryptedContent == null) {
+    return@forEach
+}
                                 if (reasoningId != null && !emittedReasoningIds.add(reasoningId)) {
                                     return@forEach
                                 }
@@ -359,36 +359,36 @@ class ResponseAPI(
                                 add(buildJsonObject {
                                     put("type", "reasoning")
                                     reasoningId?.let { put("id", it) }
-                                    // summary 字段是 Responses API 的必填字段，不能省略
-                                    // includeHistoryReasoning=false 时发送空数组，不回传思考内容但满足 API 约束
-                                    put("summary", buildJsonArray {
-                                        if (includeHistoryReasoning) {
-                                            reasoningParts
-                                                .filter { it.reasoningType == ReasoningType.SUMMARY_TEXT }
-                                                .filter { it.reasoning.isNotEmpty() }
-                                                .forEach {
-                                                    add(buildJsonObject {
-                                                        put("type", "summary_text")
-                                                        put("text", it.reasoning)
-                                                    })
-                                                }
-                                        }
-                                    })
-                                    if (includeHistoryReasoning) {
-                                        val content = reasoningParts
-                                            .filter { it.reasoningType == ReasoningType.REASONING_TEXT }
-                                            .filter { it.reasoning.isNotEmpty() }
-                                        if (content.isNotEmpty()) {
-                                            put("content", buildJsonArray {
-                                                content.forEach {
-                                                    add(buildJsonObject {
-                                                        put("type", "reasoning_text")
-                                                        put("text", it.reasoning)
-                                                    })
-                                                }
-                                            })
-                                        }
-                                    }
+// summary 字段是 Responses API 的必填字段，不能省略
+// includeHistoryReasoning=false 时发送空数组，不回传思考内容但满足 API 约束
+put("summary", buildJsonArray {
+    if (includeHistoryReasoning) {
+        reasoningParts
+            .filter { it.reasoningType == ReasoningType.SUMMARY_TEXT }
+            .filter { it.reasoning.isNotEmpty() }
+            .forEach {
+                add(buildJsonObject {
+                    put("type", "summary_text")
+                    put("text", it.reasoning)
+                })
+            }
+    }
+})
+if (includeHistoryReasoning) {
+    val content = reasoningParts
+        .filter { it.reasoningType == ReasoningType.REASONING_TEXT }
+        .filter { it.reasoning.isNotEmpty() }
+    if (content.isNotEmpty()) {
+        put("content", buildJsonArray {
+            content.forEach {
+                add(buildJsonObject {
+                    put("type", "reasoning_text")
+                    put("text", it.reasoning)
+                })
+            }
+        })
+    }
+}
                                     encryptedContent?.let { put("encrypted_content", it) }
                                 })
                             }

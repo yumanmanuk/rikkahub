@@ -1,5 +1,6 @@
 package me.rerere.rikkahub.ui.pages.setting
 
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -30,6 +31,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -49,6 +51,7 @@ import me.rerere.hugeicons.stroke.Package
 import me.rerere.hugeicons.stroke.ServerStack01
 import me.rerere.hugeicons.stroke.Settings03
 import me.rerere.hugeicons.stroke.Sun01
+import me.rerere.hugeicons.stroke.Tiktok
 import me.rerere.hugeicons.stroke.WavingHand01
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.Screen
@@ -302,9 +305,6 @@ private fun ProviderConfigWarningCard(navController: Navigator) {
             horizontalAlignment = Alignment.End
         ) {
             ListItem(
-                headlineContent = {
-                    Text(stringResource(R.string.setting_page_config_api_title))
-                },
                 supportingContent = {
                     Text(stringResource(R.string.setting_page_config_api_desc))
                 },
@@ -314,7 +314,9 @@ private fun ProviderConfigWarningCard(navController: Navigator) {
                 colors = ListItemDefaults.colors(
                     containerColor = Color.Transparent
                 )
-            )
+            ) {
+                Text(stringResource(R.string.setting_page_config_api_title))
+            }
 
             TextButton(
                 onClick = {
@@ -326,4 +328,5 @@ private fun ProviderConfigWarningCard(navController: Navigator) {
         }
     }
 }
+
 

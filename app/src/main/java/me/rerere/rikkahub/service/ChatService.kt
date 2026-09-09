@@ -52,6 +52,7 @@ import me.rerere.rikkahub.RouteActivity
 import me.rerere.rikkahub.service.BattleService
 import me.rerere.rikkahub.data.ai.GenerationChunk
 import me.rerere.rikkahub.data.ai.GenerationHandler
+import me.rerere.rikkahub.data.ai.TranslationHandler
 import me.rerere.rikkahub.data.ai.mcp.McpManager
 import me.rerere.rikkahub.data.ai.tools.createConversationTools
 import me.rerere.rikkahub.data.ai.tools.local.LocalTools
@@ -117,6 +118,20 @@ internal fun shouldUseExternalWebSearch(assistant: Assistant, model: Model): Boo
     return assistant.enableWebSearch && BuiltInTools.Search !in model.tools
 }
 
+internal fun createForkConversation(
+    source: Conversation,
+    messageNodes: List<MessageNode>,
+): Conversation = Conversation(
+    id = Uuid.random(),
+    assistantId = source.assistantId,
+    messageNodes = messageNodes,
+    conversationParams = source.conversationParams,
+    customSystemPrompt = source.customSystemPrompt,
+    modeInjectionIds = source.modeInjectionIds,
+    lorebookIds = source.lorebookIds,
+    workspaceCwd = source.workspaceCwd,
+    folderId = source.folderId,
+)
 data class ChatError(
     val id: Uuid = Uuid.random(),
     val title: String? = null,
@@ -156,6 +171,7 @@ class ChatService(
     private val conversationRepo: ConversationRepository,
     private val memoryRepository: MemoryRepository,
     private val generationHandler: GenerationHandler,
+    private val translationHandler: TranslationHandler,
     private val templateTransformer: TemplateTransformer,
     private val providerManager: ProviderManager,
     private val localTools: LocalTools,
@@ -311,8 +327,7 @@ class ChatService(
     }
 
     fun getProcessingStatusFlow(conversationId: Uuid): StateFlow<String?> {
-        val session = sessions[conversationId] ?: return MutableStateFlow(null)
-        return session.processingStatus
+        return getOrCreateSession(conversationId).processingStatus
     }
 
     fun getConversationJobs(): Flow<Map<Uuid, Job?>> {
@@ -325,6 +340,30 @@ class ChatService(
                     s.generationJob.map { job -> s.id to job }
                 }) { pairs ->
                     pairs.filter { it.second != null }.toMap()
+                }
+            }
+        }
+    }
+
+    private fun launchGenerationJob(
+        conversationId: Uuid,
+        keepAliveInBackground: Boolean = true,
+        block: suspend () -> Unit,
+    ): Job {
+        if (!keepAliveInBackground) return appScope.launch { block() }
+
+        val generationId = Uuid.random()
+        val foregroundStarted = ChatGenerationForegroundService.acquire(
+            context = context,
+            generationId = generationId,
+            conversationId = conversationId,
+        )
+        return appScope.launch {
+            try {
+                block()
+            } finally {
+                if (foregroundStarted) {
+                    ChatGenerationForegroundService.release(context, generationId)
                 }
             }
         }
@@ -382,7 +421,10 @@ class ChatService(
         val previousJob = session.getJob()
         previousJob?.cancel()
 
-        val job = appScope.launch {
+        val job = launchGenerationJob(
+            conversationId = conversationId,
+            keepAliveInBackground = answer,
+        ) {
             try {
                 runCatching { previousJob?.join() }
                 finishInterruptedPendingTools(conversationId)
@@ -558,7 +600,10 @@ class ChatService(
         val previousJob = session.getJob()
         previousJob?.cancel()
 
-        val job = appScope.launch {
+        val job = launchGenerationJob(
+            conversationId = conversationId,
+            keepAliveInBackground = message.role == MessageRole.USER || regenerateAssistantMsg,
+        ) {
             try {
                 runCatching { previousJob?.join() }
                 finishInterruptedPendingTools(conversationId)
@@ -577,7 +622,7 @@ class ChatService(
                     // 此处宁可放弃本次重试，也不能丢历史数据。
                     if (nodeInner == null || indexAt < 0) {
                         Log.w(TAG, "regenerateAtMessage: USER node not found (id=${message.id}), abort to avoid data loss")
-                        return@launch
+                        return@launchGenerationJob
                     }
                     // subList(0, indexAt + 1) 保留“该 USER 消息及其之前”的全部历史，仅移除其之后的回答。
                     val newConversation = conversation.copy(
@@ -623,7 +668,7 @@ class ChatService(
                             // 绝不截断保存，避免 subList 越界或把历史误删。宁可放弃本次重试。
                             if (nodeInner == null || nodeIndex < 0) {
                                 Log.w(TAG, "regenerateAtMessage: ASSISTANT node not found (id=${message.id}), abort to avoid data loss")
-                                return@launch
+                                return@launchGenerationJob
                             }
                             // [FORK] Battle Mode: 非 battle 节点或普通模式，统一走 dispatchGeneration
                             // subList(0, nodeIndex) 只保留“被重试节点之前”的全部历史，
@@ -670,7 +715,16 @@ class ChatService(
         val previousJob = session.getJob()
         previousJob?.cancel()
 
-        val job = appScope.launch {
+        val hasOtherPendingTools = session.state.value.messageNodes.any { node ->
+            node.currentMessage.parts.any { part ->
+                part is UIMessagePart.Tool && part.isPending && part.toolCallId != toolCallId
+            }
+        }
+
+        val job = launchGenerationJob(
+            conversationId = conversationId,
+            keepAliveInBackground = !hasOtherPendingTools,
+        ) {
             try {
                 runCatching { previousJob?.join() }
                 finishInterruptedPendingTools(conversationId)
@@ -828,6 +882,8 @@ class ChatService(
                 // (若不传,generateInternal 会用默认空 ConversationParams(),只能读到助手级别设置)
                 conversationParams = conversation.conversationParams,
                 assistant = assistant,
+                conversationId = conversationId,
+                conversationSystemPrompt = conversation.customSystemPrompt,
                 conversationModeInjectionIds = conversation.modeInjectionIds,
                 conversationLorebookIds = conversation.lorebookIds,
                 workspaceCwd = conversation.workspaceCwd,
@@ -1373,7 +1429,7 @@ class ChatService(
                 val loadingText = context.getString(R.string.translating)
                 updateTranslationField(conversationId, message.id, loadingText)
 
-                generationHandler.translateText(
+                translationHandler.translateText(
                     settings = settings,
                     sourceText = messageText,
                     targetLanguage = targetLanguage
