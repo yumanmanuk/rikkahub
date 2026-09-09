@@ -7,16 +7,20 @@ import android.widget.Toast
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Book02
 import me.rerere.hugeicons.stroke.Book04
+import me.rerere.hugeicons.stroke.Download04
 import me.rerere.hugeicons.stroke.Earth
 import me.rerere.hugeicons.stroke.File02
 import me.rerere.hugeicons.stroke.Image02
 import me.rerere.hugeicons.stroke.Search01
 import me.rerere.hugeicons.stroke.Wrench01
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -24,9 +28,9 @@ import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
@@ -122,6 +126,89 @@ fun ChatExportSheet(
     val settings = LocalSettings.current
     var imageExportOptions by remember { mutableStateOf(ImageExportOptions()) }
 
+    val markdownSuccessMessage =
+        stringResource(id = R.string.chat_page_export_success, "Markdown")
+    val imageSuccessMessage =
+        stringResource(id = R.string.chat_page_export_success, "Image")
+
+    // 保存 Markdown 到指定位置：系统保存对话框选择路径并自定义文件名（预填会话标题）
+    val saveMarkdownLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("text/markdown")
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        val messages = selectedMessages
+        if (messages.isEmpty()) return@rememberLauncherForActivityResult
+        scope.launch {
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    context.contentResolver.openOutputStream(uri)?.use { output ->
+                        output.write(buildMarkdownContent(conversation, messages).toByteArray())
+                    } ?: error("openOutputStream returned null")
+                }
+            }.onSuccess {
+                toaster.show(markdownSuccessMessage, type = ToastType.Success)
+                onDismissRequest()
+            }.onFailure {
+                it.printStackTrace()
+                toaster.show(
+                    message = "Failed to export markdown: ${it.message}",
+                    type = ToastType.Error
+                )
+            }
+        }
+    }
+
+    // 保存图片到指定位置：系统保存对话框选择路径并自定义文件名（预填会话标题）
+    val saveImageLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("image/png")
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        val messages = selectedMessages
+        if (messages.isEmpty()) return@rememberLauncherForActivityResult
+        scope.launch {
+            val bitmap = runCatching {
+                renderChatImage(
+                    context = context,
+                    scope = scope,
+                    density = density,
+                    conversation = conversation,
+                    messages = messages,
+                    settings = settings,
+                    options = imageExportOptions
+                )
+            }.onFailure {
+                it.printStackTrace()
+            }.getOrNull()
+            if (bitmap == null) {
+                toaster.show(
+                    message = "Failed to export image",
+                    type = ToastType.Error
+                )
+                return@launch
+            }
+            try {
+                runCatching {
+                    withContext(Dispatchers.IO) {
+                        context.contentResolver.openOutputStream(uri)?.use { output ->
+                            bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)
+                        } ?: error("openOutputStream returned null")
+                    }
+                }.onSuccess {
+                    toaster.show(imageSuccessMessage, type = ToastType.Success)
+                    onDismissRequest()
+                }.onFailure {
+                    it.printStackTrace()
+                    toaster.show(
+                        message = "Failed to export image: ${it.message}",
+                        type = ToastType.Error
+                    )
+                }
+            } finally {
+                bitmap.recycle()
+            }
+        }
+    }
+
     if (visible) {
         ModalBottomSheet(
             onDismissRequest = onDismissRequest,
@@ -136,8 +223,7 @@ fun ChatExportSheet(
             ) {
                 Text(text = stringResource(id = R.string.chat_page_export_format))
 
-                val markdownSuccessMessage =
-                    stringResource(id = R.string.chat_page_export_success, "Markdown")
+                // 点击卡片主体分享；角标按钮保存到指定位置
                 OutlinedCard(
                     onClick = {
                         exportToMarkdown(context, conversation, selectedMessages)
@@ -158,13 +244,55 @@ fun ChatExportSheet(
                         },
                         leadingContent = {
                             Icon(HugeIcons.File02, contentDescription = null)
+                        },
+                        trailingContent = {
+                            FilledTonalButton(
+                                onClick = {
+                                    saveMarkdownLauncher.launch(
+                                        suggestedExportFileName(conversation.title, "md")
+                                    )
+                                }
+                            ) {
+                                Icon(
+                                    HugeIcons.Download04,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(Modifier.width(4.dp))
+                                Text("保存")
+                            }
                         }
                     )
                 }
 
-                val imageSuccessMessage =
-                    stringResource(id = R.string.chat_page_export_success, "Image")
+                // 点击卡片主体保存到相册并分享；角标按钮保存到指定位置
                 OutlinedCard(
+                    onClick = {
+                        scope.launch {
+                            runCatching {
+                                exportToImage(
+                                    context = context,
+                                    scope = scope,
+                                    density = density,
+                                    conversation = conversation,
+                                    messages = selectedMessages,
+                                    settings = settings,
+                                    options = imageExportOptions
+                                )
+                            }.onFailure {
+                                it.printStackTrace()
+                                toaster.show(
+                                    message = "Failed to export image: ${it.message}",
+                                    type = ToastType.Error
+                                )
+                            }
+                        }
+                        toaster.show(
+                            imageSuccessMessage,
+                            type = ToastType.Success
+                        )
+                        onDismissRequest()
+                    },
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column {
@@ -177,6 +305,23 @@ fun ChatExportSheet(
                             },
                             leadingContent = {
                                 Icon(HugeIcons.Image02, contentDescription = null)
+                            },
+                            trailingContent = {
+                                FilledTonalButton(
+                                    onClick = {
+                                        saveImageLauncher.launch(
+                                            suggestedExportFileName(conversation.title, "png")
+                                        )
+                                    }
+                                ) {
+                                    Icon(
+                                        HugeIcons.Download04,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(Modifier.width(4.dp))
+                                    Text("保存")
+                                }
                             }
                         )
 
@@ -193,44 +338,6 @@ fun ChatExportSheet(
                                 )
                             }
                         )
-
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 8.dp),
-                            horizontalArrangement = Arrangement.End
-                        ) {
-                            Button(
-                                onClick = {
-                                    scope.launch {
-                                        runCatching {
-                                            exportToImage(
-                                                context = context,
-                                                scope = scope,
-                                                density = density,
-                                                conversation = conversation,
-                                                messages = selectedMessages,
-                                                settings = settings,
-                                                options = imageExportOptions
-                                            )
-                                        }.onFailure {
-                                            it.printStackTrace()
-                                            toaster.show(
-                                                message = "Failed to export image: ${it.message}",
-                                                type = ToastType.Error
-                                            )
-                                        }
-                                    }
-                                    toaster.show(
-                                        imageSuccessMessage,
-                                        type = ToastType.Success
-                                    )
-                                    onDismissRequest()
-                                }
-                            ) {
-                                Text(stringResource(R.string.mermaid_export))
-                            }
-                        }
                     }
                 }
             }
@@ -238,13 +345,23 @@ fun ChatExportSheet(
     }
 }
 
-private fun exportToMarkdown(
-    context: Context,
+// 文件名中不允许出现的字符（Windows/Android 通用非法字符）
+private val INVALID_FILENAME_CHARS = setOf('\\', '/', ':', '*', '?', '"', '<', '>', '|')
+
+// 由会话标题生成建议文件名：清理非法字符，为空时回退默认名，并追加扩展名
+private fun suggestedExportFileName(title: String, ext: String): String {
+    val cleaned = title.map { if (it in INVALID_FILENAME_CHARS) '_' else it }
+        .joinToString("")
+        .trim()
+        .ifBlank { "chat-export" }
+    return "$cleaned.$ext"
+}
+
+// 构建 Markdown 导出内容
+private fun buildMarkdownContent(
     conversation: Conversation,
     messages: List<UIMessage>
-) {
-    val filename = "chat-export-${LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss"))}.md"
-
+): String {
     val sb = buildAnnotatedString {
         append("# ${conversation.title}\n\n")
         append("*Exported on ${LocalDateTime.now().toLocalString()}*\n\n")
@@ -350,6 +467,15 @@ private fun exportToMarkdown(
             appendLine()
         }
     }
+    return sb.toString()
+}
+
+private fun exportToMarkdown(
+    context: Context,
+    conversation: Conversation,
+    messages: List<UIMessage>
+) {
+    val filename = "chat-export-${LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss"))}.md"
 
     try {
         val dir = context.appTempFolder
@@ -361,7 +487,7 @@ private fun exportToMarkdown(
             file.createNewFile()
         }
         FileOutputStream(file).use {
-            it.write(sb.toString().toByteArray())
+            it.write(buildMarkdownContent(conversation, messages).toByteArray())
         }
 
         // Share the file
@@ -377,26 +503,19 @@ private fun exportToMarkdown(
     }
 }
 
-private suspend fun exportToImage(
+// 渲染导出图片的 Bitmap（无法获取 Activity 时返回 null）
+private suspend fun renderChatImage(
     context: Context,
     scope: CoroutineScope,
     density: Density,
     conversation: Conversation,
     messages: List<UIMessage>,
     settings: Settings,
-    options: ImageExportOptions = ImageExportOptions()
-) {
-    val filename = "chat-export-${LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss"))}.png"
+    options: ImageExportOptions
+): Bitmap? {
+    val activity = context.getActivity() ?: return null
     val composer = BitmapComposer(scope)
-    val activity = context.getActivity()
-    if (activity == null) {
-        withContext(Dispatchers.Main) {
-            Toast.makeText(context, "Failed to get activity", Toast.LENGTH_SHORT).show()
-        }
-        return
-    }
-
-    val bitmap = composer.composableToBitmap(
+    return composer.composableToBitmap(
         activity = activity,
         width = 540.dp,
         screenDensity = density,
@@ -410,6 +529,32 @@ private suspend fun exportToImage(
             }
         }
     )
+}
+
+private suspend fun exportToImage(
+    context: Context,
+    scope: CoroutineScope,
+    density: Density,
+    conversation: Conversation,
+    messages: List<UIMessage>,
+    settings: Settings,
+    options: ImageExportOptions = ImageExportOptions()
+) {
+    val filename = "chat-export-${LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss"))}.png"
+    val bitmap = renderChatImage(
+        context = context,
+        scope = scope,
+        density = density,
+        conversation = conversation,
+        messages = messages,
+        settings = settings,
+        options = options
+    ) ?: run {
+        withContext(Dispatchers.Main) {
+            Toast.makeText(context, "Failed to get activity", Toast.LENGTH_SHORT).show()
+        }
+        return
+    }
 
     try {
         val dir = context.appTempFolder
@@ -426,7 +571,8 @@ private suspend fun exportToImage(
         }
 
         // Save to gallery
-        context.exportImage(activity, bitmap, filename)
+        val activity = context.getActivity() ?: return
+        context.getActivity()?.let { context.exportImage(it, bitmap, filename) }
 
         // Share the file
         val uri = FileProvider.getUriForFile(

@@ -1,12 +1,10 @@
 package me.rerere.rikkahub.ui.pages.chat
 
 import me.rerere.hugeicons.HugeIcons
-import me.rerere.hugeicons.stroke.Tick01
 import me.rerere.hugeicons.stroke.ArrowDown01
 import me.rerere.hugeicons.stroke.ArrowUp01
 import me.rerere.hugeicons.stroke.ArrowDownDouble
 import me.rerere.hugeicons.stroke.ArrowUpDouble
-import me.rerere.hugeicons.stroke.CursorPointer01
 import me.rerere.hugeicons.stroke.Search01
 import me.rerere.hugeicons.stroke.Cancel01
 import me.rerere.hugeicons.stroke.Filter
@@ -51,7 +49,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.FilledIconButton
+import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalFloatingToolbar
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -59,6 +57,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.surfaceColorAtElevation
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -610,7 +609,7 @@ private fun ChatListNormal(
                 ) {
                     Tooltip(
                         tooltip = {
-                            Text("Clear selection")
+                            Text("取消选择")
                         }
                     ) {
                         IconButton(
@@ -622,39 +621,29 @@ private fun ChatListNormal(
                             Icon(HugeIcons.Cancel01, null)
                         }
                     }
-                    Tooltip(
-                        tooltip = {
-                            Text("Select all")
+                    // 未全选时点击全选；已全选时点击清空
+                    val allSelected = conversation.messageNodes.isNotEmpty() &&
+                        selectedItems.size == conversation.messageNodes.size
+                    TextButton(
+                        onClick = {
+                            selectedItems.clear()
+                            if (!allSelected) {
+                                selectedItems.addAll(conversation.messageNodes.map { it.id })
+                            }
                         }
                     ) {
-                        IconButton(
-                            onClick = {
-                                if (selectedItems.isNotEmpty()) {
-                                    selectedItems.clear()
-                                } else {
-                                    selectedItems.addAll(conversation.messageNodes.map { it.id })
-                                }
-                            }
-                        ) {
-                            Icon(HugeIcons.CursorPointer01, null)
-                        }
+                        Text(if (allSelected) "取消全选" else "全选")
                     }
-                    Tooltip(
-                        tooltip = {
-                            Text("Confirm")
+                    Button(
+                        onClick = {
+                            selecting = false
+                            val messages = conversation.messageNodes.filter { it.id in selectedItems }
+                            if (messages.isNotEmpty()) {
+                                showExportSheet = true
+                            }
                         }
                     ) {
-                        FilledIconButton(
-                            onClick = {
-                                selecting = false
-                                val messages = conversation.messageNodes.filter { it.id in selectedItems }
-                                if (messages.isNotEmpty()) {
-                                    showExportSheet = true
-                                }
-                            }
-                        ) {
-                            Icon(HugeIcons.Tick01, null)
-                        }
+                        Text("确认")
                     }
                 }
             }
@@ -807,26 +796,6 @@ private fun ChatListPreview(
         Triple(rounds, questionChars, answerChars)
     }
 
-    // 统计数据：对话轮次、提问总字数、回答总字数
-    val conversationStats = remember(conversation.messageNodes) {
-        var rounds = 0
-        var questionChars = 0
-        var answerChars = 0
-        conversation.messageNodes.forEach { node ->
-            val msg = node.currentMessage
-            when (msg.role) {
-                me.rerere.ai.core.MessageRole.USER -> {
-                    rounds++
-                    questionChars += msg.toText().wordCount()
-                }
-                me.rerere.ai.core.MessageRole.ASSISTANT -> {
-                    answerChars += msg.toText().wordCount()
-                }
-                else -> {}
-            }
-        }
-        Triple(rounds, questionChars, answerChars)
-    }
 
     // 统计收藏和固定的“组”数（一问一答算一组，口径一致）
     val favoriteAndPinnedStats = remember(conversation.messageNodes) {
